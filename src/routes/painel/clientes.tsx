@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Building2, Plus, Search, Phone, Mail, MapPin, Users,
   ChevronRight, X, Check, Pencil, Trash2, AlertCircle,
   FileText, Wrench, ChevronDown, ChevronUp, History, Loader2,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -355,7 +356,33 @@ function PainelDetalhe({ cliente, onClose, onEdit }: {
   const [propostas, setPropostas] = useState<PropostaResumida[]>([]);
   const [atendimentos, setAtendimentos] = useState<AtendimentoResumido[]>([]);
   const [aba, setAba] = useState<"dados"|"crm"|"atendimentos">("dados");
+  const [criandoLead, setCriandoLead] = useState(false);
+  const navigate = useNavigate();
   const st = STATUS_CLIENTE[cliente.status];
+
+  async function criarCardCRM() {
+    setCriandoLead(true);
+    try {
+      const endereco = [cliente.endereco, cliente.bairro, cliente.cidade && cliente.uf ? `${cliente.cidade} - ${cliente.uf}` : cliente.cidade, cliente.cep].filter(Boolean).join(", ");
+      await supabase.from("crm_leads").insert({
+        nome: cliente.sindico || cliente.nome,
+        empresa: cliente.nome,
+        cnpj: cliente.cnpj?.replace(/\D/g, "") || "",
+        telefone: cliente.telefone || cliente.whatsapp || "",
+        email: cliente.email || "",
+        etapa: "prospecto",
+        endereco_fiscal: endereco,
+        endereco_atendimento: endereco,
+        observacoes: "",
+        cliente_id: cliente.id,
+      });
+      navigate({ to: "/painel/crm" });
+    } catch (e) {
+      console.error("Erro ao criar lead:", e);
+    } finally {
+      setCriandoLead(false);
+    }
+  }
 
   useEffect(() => {
     supabase.from("crm_propostas").select("id,titulo,status,tipo_orcamento,valor_total,criado_em,enviado_logistica")
@@ -455,7 +482,12 @@ function PainelDetalhe({ cliente, onClose, onEdit }: {
 
         {aba === "crm" && (
           <div className="space-y-2">
-            {propostas.length === 0 && <p className="py-8 text-center text-sm text-gray-400">Nenhuma proposta vinculada</p>}
+            <button onClick={criarCardCRM} disabled={criandoLead}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#1a6b2f] px-4 py-2.5 text-sm font-medium text-[#1a6b2f] hover:bg-[#1a6b2f]/5 disabled:opacity-50 transition-colors">
+              {criandoLead ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+              Criar card no CRM
+            </button>
+            {propostas.length === 0 && <p className="py-6 text-center text-sm text-gray-400">Nenhuma proposta vinculada</p>}
             {propostas.map(p => (
               <div key={p.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
                 <div className="flex items-start justify-between gap-2">
