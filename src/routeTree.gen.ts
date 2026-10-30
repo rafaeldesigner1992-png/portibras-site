@@ -20,6 +20,8 @@ import { Route as PainelContratosRouteImport } from './routes/painel/contratos'
 import { Route as PainelOrcamentosRouteImport } from './routes/painel/orcamentos'
 import { Route as PainelLogisticaRouteImport } from './routes/painel/logistica'
 import { Route as PainelFinanceiroRouteImport } from './routes/painel/financeiro'
+import { Route as PainelClientesRouteImport } from './routes/painel/clientes'
+import { Route as PainelScriptVendasRouteImport } from './routes/painel/script-vendas'
 
 const AcessoRoute = AcessoRouteImport.update({
   id: '/acesso',
@@ -87,6 +89,18 @@ const PainelFinanceiroRoute = PainelFinanceiroRouteImport.update({
   getParentRoute: () => PainelRoute,
 } as any)
 
+const PainelClientesRoute = PainelClientesRouteImport.update({
+  id: '/clientes',
+  path: '/clientes',
+  getParentRoute: () => PainelRoute,
+} as any)
+
+const PainelScriptVendasRoute = PainelScriptVendasRouteImport.update({
+  id: '/script-vendas',
+  path: '/script-vendas',
+  getParentRoute: () => PainelRoute,
+} as any)
+
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/acesso': typeof AcessoRoute
@@ -99,6 +113,8 @@ export interface FileRoutesByFullPath {
   '/painel/orcamentos': typeof PainelOrcamentosRoute
   '/painel/logistica': typeof PainelLogisticaRoute
   '/painel/financeiro': typeof PainelFinanceiroRoute
+  '/painel/clientes': typeof PainelClientesRoute
+  '/painel/script-vendas': typeof PainelScriptVendasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -112,6 +128,8 @@ export interface FileRoutesByTo {
   '/painel/orcamentos': typeof PainelOrcamentosRoute
   '/painel/logistica': typeof PainelLogisticaRoute
   '/painel/financeiro': typeof PainelFinanceiroRoute
+  '/painel/clientes': typeof PainelClientesRoute
+  '/painel/script-vendas': typeof PainelScriptVendasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -126,6 +144,8 @@ export interface FileRoutesById {
   '/painel/orcamentos': typeof PainelOrcamentosRoute
   '/painel/logistica': typeof PainelLogisticaRoute
   '/painel/financeiro': typeof PainelFinanceiroRoute
+  '/painel/clientes': typeof PainelClientesRoute
+  '/painel/script-vendas': typeof PainelScriptVendasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +161,8 @@ export interface FileRouteTypes {
     | '/painel/orcamentos'
     | '/painel/logistica'
     | '/painel/financeiro'
+    | '/painel/clientes'
+    | '/painel/script-vendas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -154,6 +176,8 @@ export interface FileRouteTypes {
     | '/painel/orcamentos'
     | '/painel/logistica'
     | '/painel/financeiro'
+    | '/painel/clientes'
+    | '/painel/script-vendas'
   id:
     | '__root__'
     | '/'
@@ -167,6 +191,8 @@ export interface FileRouteTypes {
     | '/painel/orcamentos'
     | '/painel/logistica'
     | '/painel/financeiro'
+    | '/painel/clientes'
+    | '/painel/script-vendas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -255,6 +281,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PainelFinanceiroRouteImport
       parentRoute: typeof PainelRouteImport
     }
+    '/painel/clientes': {
+      id: '/painel/clientes'
+      path: '/clientes'
+      fullPath: '/painel/clientes'
+      preLoaderRoute: typeof PainelClientesRouteImport
+      parentRoute: typeof PainelRouteImport
+    }
+    '/painel/script-vendas': {
+      id: '/painel/script-vendas'
+      path: '/script-vendas'
+      fullPath: '/painel/script-vendas'
+      preLoaderRoute: typeof PainelScriptVendasRouteImport
+      parentRoute: typeof PainelRouteImport
+    }
   }
 }
 
@@ -266,6 +306,8 @@ interface PainelRouteChildren {
   PainelOrcamentosRoute: typeof PainelOrcamentosRoute
   PainelLogisticaRoute: typeof PainelLogisticaRoute
   PainelFinanceiroRoute: typeof PainelFinanceiroRoute
+  PainelClientesRoute: typeof PainelClientesRoute
+  PainelScriptVendasRoute: typeof PainelScriptVendasRoute
 }
 
 const painelRouteChildren: PainelRouteChildren = {
@@ -276,6 +318,8 @@ const painelRouteChildren: PainelRouteChildren = {
   PainelOrcamentosRoute: PainelOrcamentosRoute,
   PainelLogisticaRoute: PainelLogisticaRoute,
   PainelFinanceiroRoute: PainelFinanceiroRoute,
+  PainelClientesRoute: PainelClientesRoute,
+  PainelScriptVendasRoute: PainelScriptVendasRoute,
 }
 
 const PainelRouteWithChildren = PainelRoute._addFileChildren(painelRouteChildren)
