@@ -498,93 +498,173 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
 
       const docDef = {
         pageSize: "A4",
-        pageMargins: [36, 32, 36, 32],
+        pageMargins: [36, 28, 36, 28],
         defaultStyle: { font: "Roboto" },
         content: [
-          // Header
+          // ── CABEÇALHO ─────────────────────────────────────────────────────────
           {
             columns: [
               {
                 stack: [
-                  { image: LOGO_PORTIBRAS_B64, width: 160, margin: [0, 0, 0, 4] },
-                  { text: `Proposta nº ${numPropostaOrc.current}`, fontSize: 9, color: laranja, bold: true, margin: [0, 2, 0, 0] },
+                  { image: LOGO_PORTIBRAS_B64, width: 130, margin: [0, 0, 0, 3] },
+                  { text: `Orçamento nº ${numPropostaOrc.current}`, fontSize: 8, color: laranja, bold: true },
                 ],
               },
               {
                 stack: [
-                  { text: `Para: ${empresa}`, fontSize: 8, color: "#374151", alignment: "right" },
-                  { text: `Responsável: ${lead.nome || "—"}`, fontSize: 8, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
-                  { text: `Data: ${dataHoje}`, fontSize: 8, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
-                  { text: `CNPJ: 63.823.452/0001-93`, fontSize: 7.5, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
+                  { text: `${empresa}`, fontSize: 9, bold: true, color: "#111827", alignment: "right" },
+                  { text: `Responsável: ${lead.nome || "—"}`, fontSize: 7.5, color: cinza, alignment: "right", margin: [0, 1, 0, 0] },
+                  { text: `Data: ${dataHoje}  |  CNPJ: 63.823.452/0001-93`, fontSize: 7, color: cinza, alignment: "right", margin: [0, 1, 0, 0] },
                 ],
+              },
+            ],
+            margin: [0, 0, 0, 6],
+          },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 2, lineColor: laranja }], margin: [0, 0, 0, 8] },
+
+          // ── INTRO PERSUASIVA ─────────────────────────────────────────────────
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "Por que a Portibras?", fontSize: 8, bold: true, color: verde, margin: [0, 0, 0, 3] },
+                  {
+                    ul: [
+                      { text: "Mais de 10 anos de experiência em manutenção de elevadores", fontSize: 7, color: "#374151", margin: [0, 0, 0, 1] },
+                      { text: "Equipe técnica certificada NR-12 e NR-18", fontSize: 7, color: "#374151", margin: [0, 0, 0, 1] },
+                      { text: "Atendimento emergencial em até 4 horas", fontSize: 7, color: "#374151", margin: [0, 0, 0, 1] },
+                      { text: "Peças originais com garantia e rastreabilidade", fontSize: 7, color: "#374151", margin: [0, 0, 0, 1] },
+                      { text: "Relatório técnico após cada intervenção", fontSize: 7, color: "#374151" },
+                    ],
+                    margin: [4, 0, 0, 0],
+                  },
+                ],
+                width: "*",
+              },
+              {
+                stack: [
+                  { text: "Garantias inclusas", fontSize: 8, bold: true, color: verde, margin: [0, 0, 0, 3] },
+                  {
+                    ul: [
+                      { text: "90 dias em peças instaladas", fontSize: 7, color: "#374151", margin: [0, 0, 0, 1] },
+                      { text: "30 dias em mão de obra", fontSize: 7, color: "#374151", margin: [0, 0, 0, 1] },
+                      { text: "Suporte técnico pós-serviço", fontSize: 7, color: "#374151", margin: [0, 0, 0, 1] },
+                      { text: "Laudo técnico emitido pelo CREA", fontSize: 7, color: "#374151" },
+                    ],
+                    margin: [4, 0, 0, 0],
+                  },
+                ],
+                width: 180,
               },
             ],
             margin: [0, 0, 0, 8],
           },
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1.5, lineColor: laranja }], margin: [0, 0, 0, 10] },
 
-          { text: "ORÇAMENTO DE MATERIAIS E SERVIÇOS", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 6] },
+          // ── TÍTULO DA SEÇÃO ──────────────────────────────────────────────────
+          {
+            canvas: [{ type: "rect", x: 0, y: 0, w: 523, h: 14, r: 2, color: "#1a6b2f" }],
+            margin: [0, 0, 0, 0],
+          },
+          {
+            text: "  ORÇAMENTO DE MATERIAIS E SERVIÇOS",
+            fontSize: 7.5, bold: true, color: "#ffffff", characterSpacing: 0.5,
+            margin: [0, -12, 0, 6],
+          },
 
-          // Tabela de itens
+          // ── TABELA DE ITENS ──────────────────────────────────────────────────
           {
             table: {
               headerRows: 1,
-              widths: ["*", 45, 75, 75],
+              widths: ["*", 36, 68, 68],
               body: [
                 [
-                  { text: "Item", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", border: [false, false, false, true] },
-                  { text: "Qtd", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "center", border: [false, false, false, true] },
-                  { text: "Custo unit.", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
-                  { text: "Total", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
+                  { text: "Descrição do Item", fontSize: 7, bold: true, color: "#ffffff", fillColor: "#374151", border: [false, false, false, false], margin: [4, 3, 4, 3] },
+                  { text: "Qtd", fontSize: 7, bold: true, color: "#ffffff", fillColor: "#374151", alignment: "center", border: [false, false, false, false], margin: [2, 3, 2, 3] },
+                  { text: "Valor Unit.", fontSize: 7, bold: true, color: "#ffffff", fillColor: "#374151", alignment: "right", border: [false, false, false, false], margin: [2, 3, 4, 3] },
+                  { text: "Total", fontSize: 7, bold: true, color: "#ffffff", fillColor: "#374151", alignment: "right", border: [false, false, false, false], margin: [2, 3, 4, 3] },
                 ],
-                ...linhasItens,
+                ...itens.map((i, idx) => [
+                  { text: i.nome, fontSize: 7.5, color: "#111827", fillColor: idx % 2 === 0 ? "#ffffff" : "#f9fafb", border: [false, false, false, false], margin: [4, 3, 4, 3] },
+                  { text: i.quantidade.toString(), fontSize: 7.5, color: cinza, alignment: "center", fillColor: idx % 2 === 0 ? "#ffffff" : "#f9fafb", border: [false, false, false, false], margin: [2, 3, 2, 3] },
+                  { text: i.custo_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 7.5, color: cinza, alignment: "right", fillColor: idx % 2 === 0 ? "#ffffff" : "#f9fafb", border: [false, false, false, false], margin: [2, 3, 4, 3] },
+                  { text: (i.custo_unitario * i.quantidade).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 7.5, bold: true, color: "#111827", alignment: "right", fillColor: idx % 2 === 0 ? "#ffffff" : "#f9fafb", border: [false, false, false, false], margin: [2, 3, 4, 3] },
+                ]),
               ],
             },
-            layout: { defaultBorder: false, hLineColor: () => "#f3f4f6", vLineColor: () => "transparent", paddingTop: () => 4, paddingBottom: () => 4 },
-            margin: [0, 0, 0, 10],
+            layout: { defaultBorder: false, hLineColor: () => "transparent", vLineColor: () => "transparent", paddingTop: () => 0, paddingBottom: () => 0 },
+            margin: [0, 0, 0, 6],
           },
 
-          // Resumo financeiro
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 8] },
+          // ── RESUMO FINANCEIRO ────────────────────────────────────────────────
           {
             columns: [
-              { text: "", width: "*" },
               {
                 stack: [
-                  { text: `Custo total: ${fmt(custoTotal)}`, fontSize: 8, color: cinza, margin: [0, 0, 0, 2] },
-                  { text: `Margem (${margemPct}%): ${fmt(valorMargem)}`, fontSize: 8, color: cinza, margin: [0, 0, 0, 2] },
-                  { text: `Impostos (${impostoPct}%): ${fmt(valorImposto)}`, fontSize: 8, color: cinza, margin: [0, 0, 0, 6] },
+                  ...(obsOrc ? [
+                    { text: "Observações", fontSize: 7.5, bold: true, color: laranja, margin: [0, 0, 0, 2] },
+                    { text: obsOrc, fontSize: 7.5, color: "#374151", lineHeight: 1.3 },
+                  ] : [
+                    { text: "Próximos passos", fontSize: 7.5, bold: true, color: laranja, margin: [0, 0, 0, 2] },
+                    { text: "1. Aprovação deste orçamento", fontSize: 7.5, color: "#374151", margin: [0, 0, 0, 1] },
+                    { text: "2. Emissão de OS e agendamento", fontSize: 7.5, color: "#374151", margin: [0, 0, 0, 1] },
+                    { text: "3. Execução do serviço com relatório técnico", fontSize: 7.5, color: "#374151" },
+                  ]),
+                ],
+                width: "*",
+              },
+              {
+                stack: [
                   {
                     table: {
-                      widths: ["*"],
-                      body: [[{
-                        text: `PREÇO FINAL: ${fmt(precoFinal)}`,
-                        fontSize: 11, bold: true, color: "#ffffff",
-                        fillColor: verde, alignment: "right",
-                        margin: [10, 5, 10, 5], border: [false, false, false, false],
-                      }]],
+                      widths: ["*", "auto"],
+                      body: [
+                        [
+                          { text: "Custo materiais:", fontSize: 7.5, color: cinza, border: [false, false, false, false], margin: [0, 1, 8, 1] },
+                          { text: fmt(custoTotal), fontSize: 7.5, color: cinza, alignment: "right", border: [false, false, false, false], margin: [0, 1, 0, 1] },
+                        ],
+                        [
+                          { text: `Margem (${margemPct}%):`, fontSize: 7.5, color: cinza, border: [false, false, false, false], margin: [0, 1, 8, 1] },
+                          { text: fmt(valorMargem), fontSize: 7.5, color: cinza, alignment: "right", border: [false, false, false, false], margin: [0, 1, 0, 1] },
+                        ],
+                        [
+                          { text: `Impostos (${impostoPct}%):`, fontSize: 7.5, color: cinza, border: [false, false, false, true], borderColor: ["", "", "", "#e5e7eb"], margin: [0, 1, 8, 4] },
+                          { text: fmt(valorImposto), fontSize: 7.5, color: cinza, alignment: "right", border: [false, false, false, true], borderColor: ["", "", "", "#e5e7eb"], margin: [0, 1, 0, 4] },
+                        ],
+                        [
+                          { text: "INVESTIMENTO TOTAL:", fontSize: 9, bold: true, color: "#ffffff", fillColor: verde, border: [false, false, false, false], margin: [6, 4, 6, 4] },
+                          { text: fmt(precoFinal), fontSize: 9, bold: true, color: "#ffffff", fillColor: verde, alignment: "right", border: [false, false, false, false], margin: [0, 4, 6, 4] },
+                        ],
+                      ],
                     },
                     layout: "noBorders",
                   },
                 ],
-                width: 200,
+                width: 220,
               },
             ],
-            margin: [0, 0, 0, 10],
+            margin: [0, 0, 0, 8],
           },
 
-          ...(obsOrc ? [
-            { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 6] },
-            { text: "OBSERVAÇÕES", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 3] },
-            { text: obsOrc, fontSize: 8, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 10] },
-          ] : []),
-
-          // Rodapé
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 8] },
+          // ── FAIXA CTA ────────────────────────────────────────────────────────
           {
-            stack: [
-              { image: LOGO_PORTIBRAS_B64, width: 80, margin: [0, 0, 0, 2] },
-              { text: "63.823.452/0001-93  ·  (22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 7, color: cinza, margin: [0, 1, 0, 0] },
+            table: {
+              widths: ["*"],
+              body: [[{
+                stack: [
+                  { text: "✓ Validade desta proposta: 15 dias  |  Atendimento: (22) 99104-8162  |  vendas@portibras.com.br", fontSize: 7.5, color: "#ffffff", alignment: "center" },
+                ],
+                fillColor: laranja, border: [false, false, false, false], margin: [0, 5, 0, 5],
+              }]],
+            },
+            layout: "noBorders",
+            margin: [0, 0, 0, 6],
+          },
+
+          // ── RODAPÉ ───────────────────────────────────────────────────────────
+          {
+            columns: [
+              { image: LOGO_PORTIBRAS_B64, width: 70, margin: [0, 0, 0, 0] },
+              { text: "Portibras Elevadores  ·  CNPJ 63.823.452/0001-93\n(22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 6.5, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
             ],
           },
         ],
@@ -1037,19 +1117,38 @@ function PropostaDetalhe({
     setAlterandoStatus(true);
     const agora = new Date().toISOString();
 
-    // Tenta com atualizado_em; se falhar (coluna pode não existir), tenta sem
-    let { error } = await supabase
+    // Verificar se há sessão ativa antes de tentar atualizar
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error("alterarStatus: sem sessão autenticada");
+      alert("Sessão expirada. Faça login novamente.");
+      setAlterandoStatus(false);
+      return;
+    }
+
+    // Tenta com atualizado_em
+    let { error, data: updateData } = await supabase
       .from("crm_propostas")
       .update({ status: novoStatus, atualizado_em: agora })
-      .eq("id", proposta.id);
+      .eq("id", proposta.id)
+      .select();
+
+    console.log("[alterarStatus] tentativa 1:", { novoStatus, id: proposta.id, error, updateData });
 
     if (error) {
-      // Fallback: atualiza só o status (sem atualizado_em)
+      // Fallback: só o status
       const fallback = await supabase
         .from("crm_propostas")
         .update({ status: novoStatus })
-        .eq("id", proposta.id);
+        .eq("id", proposta.id)
+        .select();
+      console.log("[alterarStatus] fallback:", { error: fallback.error, data: fallback.data });
       error = fallback.error;
+      // Se não retornou dados mesmo sem erro, provavelmente RLS bloqueou silenciosamente
+      if (!error && (!fallback.data || fallback.data.length === 0)) {
+        console.error("[alterarStatus] update retornou 0 linhas — RLS pode estar bloqueando. Proposta ID:", proposta.id, "| Session user:", session.user.id);
+        error = { message: "Sem permissão para atualizar (RLS)", details: "", hint: "Verifique as políticas RLS da tabela crm_propostas no Supabase.", code: "PGRST" } as unknown as typeof error;
+      }
     }
 
     if (!error) {
@@ -1057,8 +1156,8 @@ function PropostaDetalhe({
       setDataAtualizacaoLocal(agora);
       onStatusAtualizado(novoStatus);
     } else {
-      console.error("Erro ao atualizar status:", error);
-      alert("Não foi possível atualizar o status. Tente novamente.");
+      console.error("[alterarStatus] ERRO FINAL:", JSON.stringify(error, null, 2));
+      alert(`Não foi possível atualizar o status.\n\nErro: ${error.message || "desconhecido"}\n\nVerifique o console para detalhes.`);
     }
     setAlterandoStatus(false);
   }
