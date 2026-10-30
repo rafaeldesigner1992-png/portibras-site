@@ -752,20 +752,20 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
           </div>
 
           {/* Painel de parâmetros e resultado */}
-          <div className="border-t border-gray-100 p-4 space-y-3 bg-gray-50/50">
+          <div className="border-t border-gray-100 px-3 py-2 space-y-2 bg-gray-50/50">
 
             {/* Tipo de Orçamento */}
-            <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Tipo de orçamento</label>
-              <div className="flex gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Tipo</span>
+              <div className="flex gap-1 flex-1">
                 {([
-                  { v: "completo", label: "Fornecimento + Serviço" },
-                  { v: "so_fornecimento", label: "Só Fornecimento" },
-                  { v: "so_mao_obra", label: "Só Mão de Obra" },
+                  { v: "completo", label: "Forn. + Serviço" },
+                  { v: "so_fornecimento", label: "Só Forn." },
+                  { v: "so_mao_obra", label: "Só MO" },
                 ] as { v: "completo" | "so_fornecimento" | "so_mao_obra"; label: string }[]).map(({ v, label }) => (
                   <button key={v} onClick={() => setTipoOrcamento(v)}
                     className={cn(
-                      "flex-1 rounded-lg border px-2 py-1.5 text-[10px] font-semibold transition-colors",
+                      "flex-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold transition-colors",
                       tipoOrcamento === v
                         ? "border-[#1a6b2f] bg-[#1a6b2f] text-white"
                         : "border-gray-200 bg-white text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
@@ -778,266 +778,198 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
 
             {/* Mão de Obra Manual (Logística) — visível em "completo" e "so_mao_obra" */}
             {tipoOrcamento !== "so_fornecimento" && (
-              <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-2">
+              <div className="rounded-lg border border-blue-100 bg-blue-50/30 px-2 py-1.5 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">Mão de obra (logística)</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-600">MO / Logística</span>
                   <button onClick={addMoManual}
-                    className="flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-50">
-                    <Plus className="h-2.5 w-2.5" /> Adicionar
+                    className="flex items-center gap-0.5 rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-blue-600 hover:bg-blue-50">
+                    <Plus className="h-2 w-2" /> Adicionar
                   </button>
                 </div>
-                {/* MO automática dos profissionais cadastrados */}
                 {custoPorProfissional.length > 0 && custoPorProfissional.map(p => (
-                  <div key={p.id} className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-2.5 py-1.5">
-                    <div className="flex-1 text-[10px] text-gray-600">
-                      <span className="font-semibold">{p.especialidade || p.nome}</span>
-                      <span className="text-gray-400 ml-1">({p.descCobranca})</span>
-                    </div>
-                    <span className="text-xs font-bold text-blue-700">{fmt(p.total)}</span>
+                  <div key={p.id} className="flex items-center gap-1.5 rounded border border-blue-100 bg-white px-2 py-0.5">
+                    <span className="flex-1 text-[9px] text-gray-600 font-semibold">{p.especialidade || p.nome}</span>
+                    <span className="text-[9px] text-gray-400">({p.descCobranca})</span>
+                    <span className="text-[10px] font-bold text-blue-700">{fmt(p.total)}</span>
                   </div>
                 ))}
-                {/* MO manual */}
                 {moManual.map(m => (
-                  <div key={m.id} className="flex items-center gap-2">
+                  <div key={m.id} className="flex items-center gap-1">
                     <input value={m.descricao} onChange={e => setMoDesc(m.id, e.target.value)}
-                      placeholder="Descrição (ex: Instalação 3 portas)"
-                      className="flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[10px] outline-none focus:border-blue-400" />
+                      placeholder="Descrição do serviço"
+                      className="flex-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-[9px] outline-none focus:border-blue-400" />
                     <input type="number" min={0} step={0.01} value={m.valor} onChange={e => setMoValor(m.id, Number(e.target.value))}
-                      className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold text-center outline-none focus:border-blue-400" />
-                    <button onClick={() => removeMoManual(m.id)} className="text-gray-300 hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
+                      className="w-20 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-blue-400" />
+                    <button onClick={() => removeMoManual(m.id)} className="text-gray-300 hover:text-red-400"><X className="h-3 w-3" /></button>
                   </div>
                 ))}
                 {custoPorProfissional.length === 0 && moManual.length === 0 && (
-                  <p className="text-[10px] text-blue-400 text-center py-1">Nenhuma mão de obra adicionada</p>
+                  <p className="text-[9px] text-blue-400 text-center">Nenhuma MO adicionada</p>
                 )}
-                {(custoMOTotal > 0) && (
-                  <div className="flex justify-between pt-1 border-t border-blue-100">
-                    <span className="text-[10px] font-semibold text-blue-600">Total MO</span>
-                    <span className="text-xs font-bold text-blue-700">{fmt(custoMOTotal)}</span>
+                {custoMOTotal > 0 && (
+                  <div className="flex justify-between pt-0.5 border-t border-blue-100">
+                    <span className="text-[9px] font-semibold text-blue-600">Total MO</span>
+                    <span className="text-[10px] font-bold text-blue-700">{fmt(custoMOTotal)}</span>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Parâmetros */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Margem de lucro (%)</label>
+            {/* Parâmetros + Tempo instalação em linha */}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="block text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Margem (%)</label>
                 <input type="number" min={0} max={100} step={0.5} value={margemPct}
                   onChange={e => setMargemPct(Number(e.target.value))}
-                  className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+                  className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]" />
               </div>
-              <div>
-                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
-                  Imposto / Encargos (%)
-                  <span className="ml-1 font-normal text-gray-300 normal-case tracking-normal">· alíquota fiscal</span>
-                </label>
+              <div className="flex-1">
+                <label className="block text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Imposto (%)</label>
                 <input type="number" min={0} max={100} step={0.5} value={impostoPct}
                   onChange={e => setImpostoPct(Number(e.target.value))}
-                  className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+                  className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]" />
               </div>
+              {totalMinInstalacao > 0 && (
+                <div className="flex items-center gap-1 rounded border border-blue-100 bg-blue-50/60 px-2 py-1 text-[9px] text-blue-600 whitespace-nowrap">
+                  <Clock className="h-3 w-3 flex-shrink-0" />
+                  <span className="font-semibold">
+                    {totalMinInstalacao < 60 ? `${totalMinInstalacao}min` : `${Math.floor(totalMinInstalacao/60)}h${totalMinInstalacao%60>0?totalMinInstalacao%60+"m":""}`}
+                  </span>
+                  <span className="text-blue-400">· {diasCampo}d{custoMO>0?` · ${fmt(custoMO)}`:""}</span>
+                </div>
+              )}
             </div>
 
-            {/* Tempo de instalação */}
-            {totalMinInstalacao > 0 && (
-              <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-2.5 flex items-start gap-2 text-xs">
-                <Clock className="h-3.5 w-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <span className="font-semibold text-blue-700">
-                    {totalMinInstalacao < 60
-                      ? `${totalMinInstalacao} min`
-                      : `${Math.floor(totalMinInstalacao / 60)}h${totalMinInstalacao % 60 > 0 ? `${totalMinInstalacao % 60}min` : ""}`}
-                    {" "}de instalação estimada
-                  </span>
-                  <span className="text-blue-500 ml-1">
-                    = {diasCampo} {diasCampo === 1 ? "dia" : "dias"} de roteiro
-                    {custoMO > 0 && ` · MO: ${fmt(custoMO)}`}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Breakdown de custos */}
-            <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-1.5 text-xs">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Composição do preço</p>
+            {/* Breakdown de custos — compacto */}
+            <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 space-y-0.5 text-[10px]">
               {incluiMateriais && (
                 <div className="flex justify-between text-gray-500">
-                  <span>💼 Custo de peças/materiais</span>
+                  <span>Peças/materiais</span>
                   <span className="font-semibold text-gray-700">{fmt(custoMateriais)}</span>
                 </div>
               )}
               {incluiMO && custoMOTotal > 0 && (
                 <div className="flex justify-between text-gray-500">
-                  <span>🔧 Mão de obra</span>
+                  <span>Mão de obra</span>
                   <span className="font-semibold text-blue-600">{fmt(custoMOTotal)}</span>
                 </div>
               )}
               <div className="flex justify-between text-gray-500">
-                <span>📈 Margem de lucro ({margemPct}%)</span>
-                <span className="font-semibold text-green-600">+ {fmt(valorMargem)}</span>
+                <span>Margem ({margemPct}%)</span>
+                <span className="font-semibold text-green-600">+{fmt(valorMargem)}</span>
               </div>
               <div className="flex justify-between text-gray-500">
-                <span>🏛️ Impostos/Encargos ({impostoPct}%)</span>
-                <span className="font-semibold text-orange-500">+ {fmt(valorImposto)}</span>
+                <span>Impostos ({impostoPct}%)</span>
+                <span className="font-semibold text-orange-500">+{fmt(valorImposto)}</span>
               </div>
-              <div className="flex justify-between border-t border-gray-100 pt-1.5 text-sm font-bold text-gray-900">
-                <span>Preço de venda sugerido</span>
-                <span className="text-[#1a6b2f] text-base">{fmt(precoFinal)}</span>
+              <div className="flex justify-between border-t border-gray-100 pt-1 text-xs font-bold text-gray-900">
+                <span>Preço de venda</span>
+                <span className="text-[#1a6b2f] text-sm">{fmt(precoFinal)}</span>
               </div>
-
-              {/* Entrada mínima sugerida */}
               {incluiMateriais && custoMateriais > 0 && (
-                <div className="mt-1 rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1.5 flex justify-between items-center">
-                  <span className="text-[10px] font-semibold text-amber-700">⚠️ Entrada mínima sugerida</span>
-                  <span className="text-xs font-bold text-amber-700">{fmt(entradaMinima)}</span>
+                <div className="flex justify-between rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 mt-0.5">
+                  <span className="font-semibold text-amber-700">⚠ Entrada mín.</span>
+                  <span className="font-bold text-amber-700">{fmt(entradaMinima)}</span>
                 </div>
               )}
-              <p className="text-[9px] text-gray-300 leading-tight">
-                Entrada mínima = peças ({fmt(custoMateriais)}) + impostos ({fmt(valorImposto)}) — garante cobertura dos custos antes do serviço.
-              </p>
-
-              {/* Semáforo de margem */}
               {custoTotal > 0 && (() => {
                 const abaixoMin = margemRealPct < margemMin;
                 const abaixoIdeal = margemRealPct < margemIdeal;
-                const cor = abaixoMin
-                  ? "bg-red-50 border-red-200 text-red-700"
-                  : abaixoIdeal
-                  ? "bg-amber-50 border-amber-200 text-amber-700"
-                  : "bg-green-50 border-green-200 text-green-700";
+                const cor = abaixoMin ? "bg-red-50 border-red-200 text-red-700" : abaixoIdeal ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-green-50 border-green-200 text-green-700";
                 const emoji = abaixoMin ? "🔴" : abaixoIdeal ? "🟡" : "🟢";
-                const msg = abaixoMin
-                  ? `Margem abaixo do mínimo (${margemMin}%)`
-                  : abaixoIdeal
-                  ? `Margem aceitável — ideal é ${margemIdeal}%`
-                  : `Margem excelente!`;
+                const msg = abaixoMin ? `Abaixo do mín. (${margemMin}%)` : abaixoIdeal ? `Aceitável · ideal ${margemIdeal}%` : "Margem excelente";
                 return (
-                  <div className={cn("mt-1 flex items-center justify-between rounded-lg border px-2.5 py-1.5", cor)}>
-                    <span className="flex items-center gap-1.5 font-semibold text-xs">
-                      <span>{emoji}</span><span>{msg}</span>
-                    </span>
-                    <span className="font-bold text-sm">{margemRealPct.toFixed(1)}%</span>
+                  <div className={cn("flex items-center justify-between rounded border px-1.5 py-0.5 mt-0.5", cor)}>
+                    <span className="flex items-center gap-1 font-semibold">{emoji} {msg}</span>
+                    <span className="font-bold">{margemRealPct.toFixed(1)}%</span>
                   </div>
                 );
               })()}
             </div>
 
-            {/* Forma de Pagamento */}
-            <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Forma de pagamento</p>
-              <div className="flex gap-2">
-                {([
-                  { v: "avista", label: "À vista" },
-                  { v: "parcelado", label: "Parcelado" },
-                ] as { v: "avista" | "parcelado"; label: string }[]).map(({ v, label }) => (
-                  <button key={v} onClick={() => setPagamento(p => ({ ...p, tipo: v }))}
-                    className={cn(
-                      "flex-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
-                      pagamento.tipo === v
-                        ? "border-[#1a6b2f] bg-[#1a6b2f] text-white"
-                        : "border-gray-200 text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
-                    )}>{label}</button>
-                ))}
-              </div>
-
-              {/* Sinal (entrada) */}
+            {/* Forma de Pagamento — inline compacto */}
+            <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 space-y-1.5">
               <div className="flex items-center gap-2">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Pagamento</span>
+                <div className="flex gap-1 flex-1">
+                  {([{ v: "avista", label: "À vista" }, { v: "parcelado", label: "Parcelado" }] as { v: "avista"|"parcelado"; label: string }[]).map(({ v, label }) => (
+                    <button key={v} onClick={() => setPagamento(p => ({ ...p, tipo: v }))}
+                      className={cn(
+                        "flex-1 rounded border px-2 py-0.5 text-[9px] font-semibold transition-colors",
+                        pagamento.tipo === v ? "border-[#1a6b2f] bg-[#1a6b2f] text-white" : "border-gray-200 text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
+                      )}>{label}</button>
+                  ))}
+                </div>
+                {/* Sinal inline */}
                 <button onClick={() => setPagamento(p => ({ ...p, temSinal: !p.temSinal }))}
-                  className={cn(
-                    "h-4 w-4 rounded border flex items-center justify-center transition-colors flex-shrink-0",
-                    pagamento.temSinal ? "border-[#1a6b2f] bg-[#1a6b2f]" : "border-gray-300"
-                  )}>
-                  {pagamento.temSinal && <Check className="h-2.5 w-2.5 text-white" />}
+                  className={cn("h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0", pagamento.temSinal ? "border-[#1a6b2f] bg-[#1a6b2f]" : "border-gray-300")}>
+                  {pagamento.temSinal && <Check className="h-2 w-2 text-white" />}
                 </button>
-                <label className="text-xs text-gray-600 flex-1">Cobrar entrada (sinal)</label>
+                <span className="text-[9px] text-gray-500 whitespace-nowrap">Sinal</span>
                 {pagamento.temSinal && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-gray-400">R$</span>
-                    <input type="number" min={0} step={0.01} value={pagamento.valorSinal}
-                      onChange={e => setPagamento(p => ({ ...p, valorSinal: Number(e.target.value) }))}
-                      className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]" />
-                  </div>
+                  <input type="number" min={0} step={0.01} value={pagamento.valorSinal}
+                    onChange={e => setPagamento(p => ({ ...p, valorSinal: Number(e.target.value) }))}
+                    className="w-20 rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-[#1a6b2f]" />
                 )}
               </div>
 
-              {/* Parcelas (apenas se parcelado) */}
               {pagamento.tipo === "parcelado" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-gray-400 mb-1">Nº de parcelas</label>
-                    <input type="number" min={1} max={60} value={pagamento.parcelas}
-                      onChange={e => setPagamento(p => ({ ...p, parcelas: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-gray-400 mb-1">Vencimento (dia)</label>
-                    <select value={pagamento.diaVencimento}
-                      onChange={e => setPagamento(p => ({ ...p, diaVencimento: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f] bg-white">
-                      {[5, 10, 15, 20, 25].map(d => <option key={d} value={d}>Dia {d}</option>)}
-                    </select>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-gray-400 whitespace-nowrap">Parcelas</span>
+                  <input type="number" min={1} max={60} value={pagamento.parcelas}
+                    onChange={e => setPagamento(p => ({ ...p, parcelas: Number(e.target.value) }))}
+                    className="w-14 rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+                  <span className="text-[9px] text-gray-400 whitespace-nowrap">Vencimento</span>
+                  <select value={pagamento.diaVencimento}
+                    onChange={e => setPagamento(p => ({ ...p, diaVencimento: Number(e.target.value) }))}
+                    className="flex-1 rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-semibold outline-none focus:border-[#1a6b2f] bg-white">
+                    {[5, 10, 15, 20, 25].map(d => <option key={d} value={d}>Dia {d}</option>)}
+                  </select>
                 </div>
               )}
 
-              {/* Resumo de pagamento */}
               {precoFinal > 0 && (
-                <div className="rounded-lg bg-gray-50 border border-gray-100 p-2.5 text-xs space-y-1">
+                <div className="flex items-center justify-between rounded bg-gray-50 border border-gray-100 px-2 py-1 text-[10px]">
                   {pagamento.temSinal && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>Entrada (sinal)</span>
-                      <span className="font-semibold text-[#1a6b2f]">{fmt(pagamento.valorSinal)}</span>
-                    </div>
+                    <span className="text-gray-500">Sinal: <span className="font-semibold text-[#1a6b2f]">{fmt(pagamento.valorSinal)}</span> ·</span>
                   )}
                   {pagamento.tipo === "parcelado" ? (
-                    <div className="flex justify-between font-bold text-gray-800">
-                      <span>{pagamento.parcelas}× de</span>
-                      <span className="text-[#C94500] text-sm">{fmt(valorParcela)}</span>
-                    </div>
+                    <span className="font-bold text-gray-800 ml-1">{pagamento.parcelas}× <span className="text-[#C94500]">{fmt(valorParcela)}</span> · dia {pagamento.diaVencimento}</span>
                   ) : (
-                    <div className="flex justify-between font-bold text-gray-800">
-                      <span>Total à vista</span>
-                      <span className="text-[#1a6b2f] text-sm">{fmt(valorRestante)}</span>
-                    </div>
-                  )}
-                  {pagamento.tipo === "parcelado" && (
-                    <p className="text-[10px] text-gray-400">Vencimento todo dia {pagamento.diaVencimento}</p>
+                    <span className="font-bold text-gray-800 ml-1">Total: <span className="text-[#1a6b2f]">{fmt(valorRestante)}</span></span>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Observações */}
-            <textarea rows={2} value={obsOrc} onChange={e => setObsOrc(e.target.value)}
-              placeholder="Observações do orçamento…"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs resize-none outline-none focus:border-[#1a6b2f]" />
+            {/* Obs + Botões */}
+            <textarea rows={1} value={obsOrc} onChange={e => setObsOrc(e.target.value)}
+              placeholder="Observações…"
+              className="w-full rounded border border-gray-200 px-2 py-1 text-[10px] resize-none outline-none focus:border-[#1a6b2f]" />
 
-            {/* Salvar */}
-            <button onClick={salvarOrcamento} disabled={salvando || itens.length === 0}
-              className={cn(
-                "w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-colors",
-                salvo ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
-                (salvando || itens.length === 0) && "opacity-50 cursor-not-allowed"
-              )}>
-              {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : salvo ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-              {salvo ? "Orçamento salvo!" : salvando ? "Salvando…" : "Salvar orçamento no card"}
-            </button>
-
-            {/* Exportar PDF do orçamento */}
-            <button onClick={gerarPdfOrcamento} disabled={gerandoPdfOrc || itens.length === 0}
-              className={cn(
-                "w-full flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors",
-                pdfOrcSalvo
-                  ? "border-green-300 bg-green-50 text-green-700"
-                  : "border-[#1a6b2f] text-[#1a6b2f] hover:bg-green-50",
-                (gerandoPdfOrc || itens.length === 0) && "opacity-50 cursor-not-allowed"
-              )}>
-              {gerandoPdfOrc ? <Loader2 className="h-4 w-4 animate-spin" /> : pdfOrcSalvo ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
-              {gerandoPdfOrc ? "Gerando PDF…" : pdfOrcSalvo ? "PDF salvo no histórico!" : "Baixar PDF do orçamento"}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={salvarOrcamento} disabled={salvando || itens.length === 0}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 rounded px-3 py-1.5 text-xs font-semibold text-white transition-colors",
+                  salvo ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
+                  (salvando || itens.length === 0) && "opacity-50 cursor-not-allowed"
+                )}>
+                {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : salvo ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+                {salvo ? "Salvo!" : salvando ? "Salvando…" : "Salvar"}
+              </button>
+              <button onClick={gerarPdfOrcamento} disabled={gerandoPdfOrc || itens.length === 0}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors",
+                  pdfOrcSalvo ? "border-green-300 bg-green-50 text-green-700" : "border-[#1a6b2f] text-[#1a6b2f] hover:bg-green-50",
+                  (gerandoPdfOrc || itens.length === 0) && "opacity-50 cursor-not-allowed"
+                )}>
+                {gerandoPdfOrc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : pdfOrcSalvo ? <Check className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
+                {gerandoPdfOrc ? "Gerando…" : pdfOrcSalvo ? "PDF salvo!" : "Baixar PDF"}
+              </button>
+            </div>
 
             {itens.length === 0 && (
-              <p className="text-center text-[10px] text-gray-400 flex items-center justify-center gap-1">
+              <p className="text-center text-[9px] text-gray-400 flex items-center justify-center gap-1">
                 <AlertCircle className="h-3 w-3" /> Adicione ao menos um item para salvar
               </p>
             )}
