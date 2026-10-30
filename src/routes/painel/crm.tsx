@@ -53,7 +53,9 @@ interface Profissional {
   id: string;
   nome: string;
   especialidade: string;
-  custo_diario: number;
+  tipo_cobranca: "diaria" | "por_unidade";  // diária = × diasCampo; por_unidade = × qtd de portas
+  custo_diario: number;      // usado quando tipo_cobranca = "diaria"
+  custo_unitario: number;    // usado quando tipo_cobranca = "por_unidade"
   ativo: boolean;
 }
 
@@ -239,16 +241,34 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   }, 0);
   const diasCampo = totalMinInstalacao > 0 ? Math.ceil(totalMinInstalacao / MIN_DIA) : 0;
 
-  // Custo MO por profissional: coleta todos os IDs únicos de profissionais nos itens do orçamento
+  // Custo MO por profissional — dois modelos:
+  // "diaria"      → custo_diario × diasCampo (pedreiro, técnico, ajudante)
+  // "por_unidade" → custo_unitario × quantidade total de portas vinculadas ao profissional (pintor)
   const profIdsNecessarios = new Set<string>();
   itens.forEach(i => {
     const sup = suprimentos.find(s => s.id === i.suprimento_id);
     (sup?.profissionais_ids ?? []).forEach(pid => profIdsNecessarios.add(pid));
   });
-  // Custo de cada profissional = custo_diario × diasCampo
+
   const custoPorProfissional = profissionais
     .filter(p => profIdsNecessarios.has(p.id))
-    .map(p => ({ id: p.id, nome: p.nome, especialidade: p.especialidade, custo_diario: p.custo_diario, total: p.custo_diario * diasCampo }));
+    .map(p => {
+      let total = 0;
+      let descCobranca = "";
+      if (p.tipo_cobranca === "por_unidade") {
+        // soma as quantidades de todos os itens vinculados a este profissional
+        const qtdTotal = itens.reduce((acc, i) => {
+          const sup = suprimentos.find(s => s.id === i.suprimento_id);
+          return (sup?.profissionais_ids ?? []).includes(p.id) ? acc + i.quantidade : acc;
+        }, 0);
+        total = p.custo_unitario * qtdTotal;
+        descCobranca = `${qtdTotal} un × ${fmt(p.custo_unitario)}`;
+      } else {
+        total = p.custo_diario * diasCampo;
+        descCobranca = `${diasCampo}d × ${fmt(p.custo_diario)}`;
+      }
+      return { id: p.id, nome: p.nome, especialidade: p.especialidade, total, descCobranca };
+    });
   const custoMO = custoPorProfissional.reduce((acc, p) => acc + p.total, 0);
 
   // Cálculos financeiros (MO entra na base de custo)
@@ -462,7 +482,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               </div>
               {custoPorProfissional.map(p => (
                 <div key={p.id} className="flex justify-between text-gray-500">
-                  <span>{p.especialidade || p.nome} ({diasCampo}d × {fmt(p.custo_diario)})</span>
+                  <span>{p.especialidade || p.nome} ({p.descCobranca})</span>
                   <span className="font-semibold text-blue-600">+ {fmt(p.total)}</span>
                 </div>
               ))}

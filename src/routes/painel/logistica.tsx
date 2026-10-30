@@ -29,7 +29,9 @@ interface Profissional {
   id: string;
   nome: string;
   especialidade: string;
-  custo_diario: number;
+  tipo_cobranca: "diaria" | "por_unidade";  // diária = × diasCampo; por_unidade = × qtd portas (ex: pintor)
+  custo_diario: number;     // usado quando tipo_cobranca = "diaria"
+  custo_unitario: number;   // usado quando tipo_cobranca = "por_unidade"
   ativo: boolean;
 }
 
@@ -192,7 +194,7 @@ function LogisticaPage() {
   const [modalProf, setModalProf] = useState(false);
   const [selProf, setSelProf] = useState<Profissional | null>(null);
   const [formProf, setFormProf] = useState<Partial<Profissional>>({
-    nome: "", especialidade: "", custo_diario: 0, ativo: true,
+    nome: "", especialidade: "", tipo_cobranca: "diaria", custo_diario: 0, custo_unitario: 0, ativo: true,
   });
 
   useEffect(() => {
@@ -209,7 +211,7 @@ function LogisticaPage() {
 
   function abrirProf(p?: Profissional) {
     if (p) { setSelProf(p); setFormProf({ ...p }); }
-    else { setSelProf(null); setFormProf({ nome: "", especialidade: "", custo_diario: 0, ativo: true }); }
+    else { setSelProf(null); setFormProf({ nome: "", especialidade: "", tipo_cobranca: "diaria", custo_diario: 0, custo_unitario: 0, ativo: true }); }
     setModalProf(true);
   }
 
@@ -757,9 +759,15 @@ function LogisticaPage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                    <span className="text-xs text-gray-400">Custo diário</span>
+                    <span className="text-xs text-gray-400">
+                      {p.tipo_cobranca === "por_unidade" ? "Custo por unidade" : "Custo diário"}
+                    </span>
                     <span className="text-sm font-bold text-[#1a6b2f]">
-                      {p.custo_diario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      {(p.tipo_cobranca === "por_unidade" ? p.custo_unitario : p.custo_diario)
+                        .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      <span className="text-xs font-normal text-gray-400 ml-1">
+                        {p.tipo_cobranca === "por_unidade" ? "/un" : "/dia"}
+                      </span>
                     </span>
                   </div>
                   {!p.ativo && (
@@ -812,11 +820,42 @@ function LogisticaPage() {
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Custo diário (R$)</label>
-                <input type="number" min={0} step={10} value={formProf.custo_diario ?? 0}
-                  onChange={e => setFormProf({ ...formProf, custo_diario: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Forma de cobrança</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["diaria", "por_unidade"] as const).map(tipo => (
+                    <button key={tipo} type="button"
+                      onClick={() => setFormProf({ ...formProf, tipo_cobranca: tipo })}
+                      className={cn(
+                        "rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+                        formProf.tipo_cobranca === tipo
+                          ? "border-[#1a6b2f] bg-[#1a6b2f]/10 text-[#1a6b2f]"
+                          : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                      )}>
+                      {tipo === "diaria" ? "Por diária" : "Por unidade"}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs text-gray-400">
+                  {formProf.tipo_cobranca === "por_unidade"
+                    ? "Cobra por unidade instalada — ex: pintor cobra por porta"
+                    : "Cobra por dia de campo — ex: pedreiro, técnico, ajudante"}
+                </p>
               </div>
+              {formProf.tipo_cobranca === "por_unidade" ? (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Custo por unidade (R$)</label>
+                  <input type="number" min={0} step={10} value={formProf.custo_unitario ?? 0}
+                    onChange={e => setFormProf({ ...formProf, custo_unitario: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Custo diário (R$)</label>
+                  <input type="number" min={0} step={10} value={formProf.custo_diario ?? 0}
+                    onChange={e => setFormProf({ ...formProf, custo_diario: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+              )}
               <div className="flex items-center gap-3">
                 <input type="checkbox" id="ativo-prof" checked={formProf.ativo ?? true}
                   onChange={e => setFormProf({ ...formProf, ativo: e.target.checked })}
@@ -929,7 +968,9 @@ function LogisticaPage() {
                           <span className="flex-1 text-sm text-gray-700">{p.nome}</span>
                           {p.especialidade && <span className="text-xs text-gray-400">{p.especialidade}</span>}
                           <span className="text-xs font-medium text-[#1a6b2f]">
-                            {p.custo_diario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/dia
+                            {(p.tipo_cobranca === "por_unidade" ? p.custo_unitario : p.custo_diario)
+                              .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            {p.tipo_cobranca === "por_unidade" ? "/un" : "/dia"}
                           </span>
                         </label>
                       );
