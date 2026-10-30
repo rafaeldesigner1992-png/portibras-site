@@ -176,7 +176,7 @@ const EMPTY_ATEND = {
 
 const EMPTY_MAT = {
   descricao: "", codigo: "", quantidade: 1, unidade: "un",
-  valor_unitario: "", fornecedor: "", link_compra: "",
+  valor_unitario: null as number | null, fornecedor: "", link_compra: "",
   status: "Solicitado" as const, observacoes: "",
 };
 
