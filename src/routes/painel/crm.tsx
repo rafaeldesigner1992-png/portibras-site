@@ -254,12 +254,17 @@ function CrmPage() {
 
         {/* Badges de etapa */}
         <div className="mb-5 flex gap-2 flex-wrap">
-          {ETAPA_ORDER.map(e => (
+          {ETAPA_ORDER.map(e => {
+            const total = porEtapa[e].reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+            return (
             <button key={e} onClick={() => setFiltroEtapa(filtroEtapa === e ? "todas" : e)}
               className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-opacity", ETAPAS[e].bg, ETAPAS[e].cor, filtroEtapa !== "todas" && filtroEtapa !== e && "opacity-40")}>
-              {ETAPAS[e].label} <span className="font-bold">({porEtapa[e].length})</span>
+              {ETAPAS[e].label}
+              <span className="font-bold">({porEtapa[e].length})</span>
+              {total > 0 && <span className="opacity-80">· {total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {/* LISTA */}
@@ -338,11 +343,19 @@ function CrmPage() {
             {ETAPA_ORDER.map(etapa => {
               const cfg = ETAPAS[etapa];
               const cards = porEtapa[etapa];
+              const totalEtapa = cards.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
               return (
                 <div key={etapa} className="flex-shrink-0 w-64">
-                  <div className={cn("mb-3 flex items-center justify-between rounded-lg px-3 py-2", cfg.bg)}>
-                    <span className={cn("text-xs font-semibold uppercase tracking-wide", cfg.cor)}>{cfg.label}</span>
-                    <span className={cn("text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center", cfg.cor, "bg-white/60")}>{cards.length}</span>
+                  <div className={cn("mb-3 rounded-lg px-3 py-2", cfg.bg)}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={cn("text-xs font-semibold uppercase tracking-wide", cfg.cor)}>{cfg.label}</span>
+                      <span className={cn("text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center", cfg.cor, "bg-white/60")}>{cards.length}</span>
+                    </div>
+                    {totalEtapa > 0 && (
+                      <p className={cn("text-xs font-bold", cfg.cor)}>
+                        {totalEtapa.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col gap-2">
                     {cards.map(lead => {
