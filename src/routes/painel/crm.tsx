@@ -1018,6 +1018,7 @@ function PropostaDetalhe({
   const [gerandoContrato, setGerandoContrato] = useState(false);
   const [alterandoStatus, setAlterandoStatus] = useState(false);
   const [gerandoPdfProposta, setGerandoPdfProposta] = useState(false);
+  const [baixandoStorage, setBaixandoStorage] = useState(false);
   const [statusAtual, setStatusAtual] = useState<StatusProposta>(proposta.status);
   const [excluindo, setExcluindo] = useState(false);
   const [dataAtualizacaoLocal, setDataAtualizacaoLocal] = useState<string | null>(proposta.atualizado_em ?? null);
@@ -1035,10 +1036,22 @@ function PropostaDetalhe({
   async function alterarStatus(novoStatus: StatusProposta) {
     setAlterandoStatus(true);
     const agora = new Date().toISOString();
-    const { error } = await supabase
+
+    // Tenta com atualizado_em; se falhar (coluna pode não existir), tenta sem
+    let { error } = await supabase
       .from("crm_propostas")
       .update({ status: novoStatus, atualizado_em: agora })
       .eq("id", proposta.id);
+
+    if (error) {
+      // Fallback: atualiza só o status (sem atualizado_em)
+      const fallback = await supabase
+        .from("crm_propostas")
+        .update({ status: novoStatus })
+        .eq("id", proposta.id);
+      error = fallback.error;
+    }
+
     if (!error) {
       setStatusAtual(novoStatus);
       setDataAtualizacaoLocal(agora);
@@ -1048,6 +1061,26 @@ function PropostaDetalhe({
       alert("Não foi possível atualizar o status. Tente novamente.");
     }
     setAlterandoStatus(false);
+  }
+
+  async function baixarDoStorage() {
+    setBaixandoStorage(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from("propostas")
+        .download(proposta.storage_path);
+      if (error || !data) throw error ?? new Error("Sem dados");
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = proposta.nome_arquivo;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Não foi possível baixar o arquivo.");
+    } finally {
+      setBaixandoStorage(false);
+    }
   }
 
   async function excluirProposta() {
@@ -1609,12 +1642,13 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {/* Baixar PDF: para manutenção gera via pdfmake; para orçamento baixa do storage */}
           <button
-            onClick={gerarPdfProposta}
-            disabled={gerandoPdfProposta || !c}
+            onClick={proposta.tipo === "manutencao" ? gerarPdfProposta : baixarDoStorage}
+            disabled={proposta.tipo === "manutencao" ? (gerandoPdfProposta || !c) : baixandoStorage}
             className="flex items-center gap-1.5 rounded-lg border border-[#C94500] px-4 py-2 text-sm font-medium text-[#C94500] hover:bg-orange-50 transition-colors disabled:opacity-40"
           >
-            {gerandoPdfProposta ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {(gerandoPdfProposta || baixandoStorage) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Baixar PDF
           </button>
           <button
