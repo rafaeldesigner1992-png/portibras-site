@@ -223,6 +223,22 @@ function fmt(v: number) {
 }
 
 // ─── Calculadora de Orçamento ─────────────────────────────────────────────────
+// Linha de mão de obra manual (sem profissional cadastrado)
+interface MOManual {
+  id: number;
+  descricao: string;
+  valor: number;
+}
+
+// Forma de pagamento do orçamento
+interface FormaPagamento {
+  tipo: "avista" | "parcelado";
+  temSinal: boolean;
+  valorSinal: number;
+  parcelas: number;
+  diaVencimento: number; // dia do mês sugerido
+}
+
 function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const [suprimentos, setSuprimentos] = useState<Suprimento[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -237,6 +253,22 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [orcamentoExistente, setOrcamentoExistente] = useState<Orcamento | null>(null);
   const [busca, setBusca] = useState("");
   const numPropostaOrc = useRef(`ORC-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`);
+
+  // Tipo de orçamento
+  const [tipoOrcamento, setTipoOrcamento] = useState<"completo" | "so_fornecimento" | "so_mao_obra">("completo");
+
+  // Mão de obra manual (linhas livres, sem profissional cadastrado)
+  const [moManual, setMoManual] = useState<MOManual[]>([]);
+  const [proximoMoId, setProximoMoId] = useState(1);
+
+  // Forma de pagamento
+  const [pagamento, setPagamento] = useState<FormaPagamento>({
+    tipo: "avista",
+    temSinal: false,
+    valorSinal: 0,
+    parcelas: 1,
+    diaVencimento: 10,
+  });
 
   // Configs globais de margem (carregadas do banco)
   const [margemMin, setMargemMin] = useState(25);
@@ -355,6 +387,16 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     ));
   }
 
+  // MO Manual helpers
+  function addMoManual() {
+    const id = proximoMoId;
+    setProximoMoId(n => n + 1);
+    setMoManual(prev => [...prev, { id, descricao: "", valor: 0 }]);
+  }
+  function removeMoManual(id: number) { setMoManual(prev => prev.filter(m => m.id !== id)); }
+  function setMoDesc(id: number, desc: string) { setMoManual(prev => prev.map(m => m.id === id ? { ...m, descricao: desc } : m)); }
+  function setMoValor(id: number, val: number) { setMoManual(prev => prev.map(m => m.id === id ? { ...m, valor: val } : m)); }
+
   // Cálculos de tempo e mão de obra
   const totalMinInstalacao = itens.reduce((acc, i) => {
     const sup = suprimentos.find(s => s.id === i.suprimento_id);
@@ -392,17 +434,35 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     });
   const custoMO = custoPorProfissional.reduce((acc, p) => acc + p.total, 0);
 
-  // Cálculos financeiros (MO entra na base de custo)
-  const custoMateriais = itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0);
-  const custoTotal = custoMateriais + custoMO;
+  // Cálculo MO manual
+  const custoMOManual = moManual.reduce((acc, m) => acc + m.valor, 0);
+
+  // Cálculos financeiros respeitando tipo de orçamento
+  const incluiMateriais = tipoOrcamento !== "so_mao_obra";
+  const incluiMO = tipoOrcamento !== "so_fornecimento";
+
+  const custoMateriais = incluiMateriais
+    ? itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0)
+    : 0;
+  const custoMOTotal = incluiMO ? custoMO + custoMOManual : 0;
+  const custoTotal = custoMateriais + custoMOTotal;
   const valorMargem = custoTotal * (margemPct / 100);
   const subtotalComMargem = custoTotal + valorMargem;
   const valorImposto = subtotalComMargem * (impostoPct / 100);
   const precoFinal = subtotalComMargem + valorImposto;
 
+  // Entrada mínima para cobrir materiais + impostos
+  const entradaMinima = custoMateriais + valorImposto;
+
   // Margem real sobre preço de venda (para o semáforo)
-  // margem_real = (precoFinal - custoTotal - valorImposto) / precoFinal * 100
   const margemRealPct = precoFinal > 0 ? ((precoFinal - custoTotal - valorImposto) / precoFinal) * 100 : 0;
+
+  // Cálculo de parcelas
+  const valorEntrada = pagamento.temSinal ? pagamento.valorSinal : 0;
+  const valorRestante = precoFinal - valorEntrada;
+  const valorParcela = pagamento.parcelas > 0 && pagamento.tipo === "parcelado"
+    ? valorRestante / pagamento.parcelas
+    : valorRestante;
 
   async function gerarPdfOrcamento() {
     setGerandoPdfOrc(true);
@@ -693,6 +753,72 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
 
           {/* Painel de parâmetros e resultado */}
           <div className="border-t border-gray-100 p-4 space-y-3 bg-gray-50/50">
+
+            {/* Tipo de Orçamento */}
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Tipo de orçamento</label>
+              <div className="flex gap-1.5">
+                {([
+                  { v: "completo", label: "Fornecimento + Serviço" },
+                  { v: "so_fornecimento", label: "Só Fornecimento" },
+                  { v: "so_mao_obra", label: "Só Mão de Obra" },
+                ] as { v: "completo" | "so_fornecimento" | "so_mao_obra"; label: string }[]).map(({ v, label }) => (
+                  <button key={v} onClick={() => setTipoOrcamento(v)}
+                    className={cn(
+                      "flex-1 rounded-lg border px-2 py-1.5 text-[10px] font-semibold transition-colors",
+                      tipoOrcamento === v
+                        ? "border-[#1a6b2f] bg-[#1a6b2f] text-white"
+                        : "border-gray-200 bg-white text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
+                    )}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mão de Obra Manual (Logística) — visível em "completo" e "so_mao_obra" */}
+            {tipoOrcamento !== "so_fornecimento" && (
+              <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">Mão de obra (logística)</span>
+                  <button onClick={addMoManual}
+                    className="flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-50">
+                    <Plus className="h-2.5 w-2.5" /> Adicionar
+                  </button>
+                </div>
+                {/* MO automática dos profissionais cadastrados */}
+                {custoPorProfissional.length > 0 && custoPorProfissional.map(p => (
+                  <div key={p.id} className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-2.5 py-1.5">
+                    <div className="flex-1 text-[10px] text-gray-600">
+                      <span className="font-semibold">{p.especialidade || p.nome}</span>
+                      <span className="text-gray-400 ml-1">({p.descCobranca})</span>
+                    </div>
+                    <span className="text-xs font-bold text-blue-700">{fmt(p.total)}</span>
+                  </div>
+                ))}
+                {/* MO manual */}
+                {moManual.map(m => (
+                  <div key={m.id} className="flex items-center gap-2">
+                    <input value={m.descricao} onChange={e => setMoDesc(m.id, e.target.value)}
+                      placeholder="Descrição (ex: Instalação 3 portas)"
+                      className="flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[10px] outline-none focus:border-blue-400" />
+                    <input type="number" min={0} step={0.01} value={m.valor} onChange={e => setMoValor(m.id, Number(e.target.value))}
+                      className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold text-center outline-none focus:border-blue-400" />
+                    <button onClick={() => removeMoManual(m.id)} className="text-gray-300 hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
+                  </div>
+                ))}
+                {custoPorProfissional.length === 0 && moManual.length === 0 && (
+                  <p className="text-[10px] text-blue-400 text-center py-1">Nenhuma mão de obra adicionada</p>
+                )}
+                {(custoMOTotal > 0) && (
+                  <div className="flex justify-between pt-1 border-t border-blue-100">
+                    <span className="text-[10px] font-semibold text-blue-600">Total MO</span>
+                    <span className="text-xs font-bold text-blue-700">{fmt(custoMOTotal)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Parâmetros */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -731,29 +857,47 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               </div>
             )}
 
-            {/* Breakdown */}
+            {/* Breakdown de custos */}
             <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-1.5 text-xs">
-              <div className="flex justify-between text-gray-500">
-                <span>Materiais</span><span className="font-semibold text-gray-700">{fmt(custoMateriais)}</span>
-              </div>
-              {custoPorProfissional.map(p => (
-                <div key={p.id} className="flex justify-between text-gray-500">
-                  <span>{p.especialidade || p.nome} ({p.descCobranca})</span>
-                  <span className="font-semibold text-blue-600">+ {fmt(p.total)}</span>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Composição do preço</p>
+              {incluiMateriais && (
+                <div className="flex justify-between text-gray-500">
+                  <span>💼 Custo de peças/materiais</span>
+                  <span className="font-semibold text-gray-700">{fmt(custoMateriais)}</span>
                 </div>
-              ))}
+              )}
+              {incluiMO && custoMOTotal > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>🔧 Mão de obra</span>
+                  <span className="font-semibold text-blue-600">{fmt(custoMOTotal)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-gray-500">
-                <span>Margem ({margemPct}%)</span><span className="font-semibold text-green-600">+ {fmt(valorMargem)}</span>
+                <span>📈 Margem de lucro ({margemPct}%)</span>
+                <span className="font-semibold text-green-600">+ {fmt(valorMargem)}</span>
               </div>
               <div className="flex justify-between text-gray-500">
-                <span>Impostos/Encargos ({impostoPct}%)</span><span className="font-semibold text-orange-500">+ {fmt(valorImposto)}</span>
+                <span>🏛️ Impostos/Encargos ({impostoPct}%)</span>
+                <span className="font-semibold text-orange-500">+ {fmt(valorImposto)}</span>
               </div>
               <div className="flex justify-between border-t border-gray-100 pt-1.5 text-sm font-bold text-gray-900">
-                <span>Preço de venda sugerido</span><span className="text-[#1a6b2f] text-base">{fmt(precoFinal)}</span>
+                <span>Preço de venda sugerido</span>
+                <span className="text-[#1a6b2f] text-base">{fmt(precoFinal)}</span>
               </div>
 
+              {/* Entrada mínima sugerida */}
+              {incluiMateriais && custoMateriais > 0 && (
+                <div className="mt-1 rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1.5 flex justify-between items-center">
+                  <span className="text-[10px] font-semibold text-amber-700">⚠️ Entrada mínima sugerida</span>
+                  <span className="text-xs font-bold text-amber-700">{fmt(entradaMinima)}</span>
+                </div>
+              )}
+              <p className="text-[9px] text-gray-300 leading-tight">
+                Entrada mínima = peças ({fmt(custoMateriais)}) + impostos ({fmt(valorImposto)}) — garante cobertura dos custos antes do serviço.
+              </p>
+
               {/* Semáforo de margem */}
-              {itens.length > 0 && (() => {
+              {custoTotal > 0 && (() => {
                 const abaixoMin = margemRealPct < margemMin;
                 const abaixoIdeal = margemRealPct < margemIdeal;
                 const cor = abaixoMin
@@ -770,13 +914,97 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                 return (
                   <div className={cn("mt-1 flex items-center justify-between rounded-lg border px-2.5 py-1.5", cor)}>
                     <span className="flex items-center gap-1.5 font-semibold text-xs">
-                      <span>{emoji}</span>
-                      <span>{msg}</span>
+                      <span>{emoji}</span><span>{msg}</span>
                     </span>
                     <span className="font-bold text-sm">{margemRealPct.toFixed(1)}%</span>
                   </div>
                 );
               })()}
+            </div>
+
+            {/* Forma de Pagamento */}
+            <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Forma de pagamento</p>
+              <div className="flex gap-2">
+                {([
+                  { v: "avista", label: "À vista" },
+                  { v: "parcelado", label: "Parcelado" },
+                ] as { v: "avista" | "parcelado"; label: string }[]).map(({ v, label }) => (
+                  <button key={v} onClick={() => setPagamento(p => ({ ...p, tipo: v }))}
+                    className={cn(
+                      "flex-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                      pagamento.tipo === v
+                        ? "border-[#1a6b2f] bg-[#1a6b2f] text-white"
+                        : "border-gray-200 text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
+                    )}>{label}</button>
+                ))}
+              </div>
+
+              {/* Sinal (entrada) */}
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPagamento(p => ({ ...p, temSinal: !p.temSinal }))}
+                  className={cn(
+                    "h-4 w-4 rounded border flex items-center justify-center transition-colors flex-shrink-0",
+                    pagamento.temSinal ? "border-[#1a6b2f] bg-[#1a6b2f]" : "border-gray-300"
+                  )}>
+                  {pagamento.temSinal && <Check className="h-2.5 w-2.5 text-white" />}
+                </button>
+                <label className="text-xs text-gray-600 flex-1">Cobrar entrada (sinal)</label>
+                {pagamento.temSinal && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-400">R$</span>
+                    <input type="number" min={0} step={0.01} value={pagamento.valorSinal}
+                      onChange={e => setPagamento(p => ({ ...p, valorSinal: Number(e.target.value) }))}
+                      className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+                  </div>
+                )}
+              </div>
+
+              {/* Parcelas (apenas se parcelado) */}
+              {pagamento.tipo === "parcelado" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-400 mb-1">Nº de parcelas</label>
+                    <input type="number" min={1} max={60} value={pagamento.parcelas}
+                      onChange={e => setPagamento(p => ({ ...p, parcelas: Number(e.target.value) }))}
+                      className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-400 mb-1">Vencimento (dia)</label>
+                    <select value={pagamento.diaVencimento}
+                      onChange={e => setPagamento(p => ({ ...p, diaVencimento: Number(e.target.value) }))}
+                      className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f] bg-white">
+                      {[5, 10, 15, 20, 25].map(d => <option key={d} value={d}>Dia {d}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Resumo de pagamento */}
+              {precoFinal > 0 && (
+                <div className="rounded-lg bg-gray-50 border border-gray-100 p-2.5 text-xs space-y-1">
+                  {pagamento.temSinal && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Entrada (sinal)</span>
+                      <span className="font-semibold text-[#1a6b2f]">{fmt(pagamento.valorSinal)}</span>
+                    </div>
+                  )}
+                  {pagamento.tipo === "parcelado" ? (
+                    <div className="flex justify-between font-bold text-gray-800">
+                      <span>{pagamento.parcelas}× de</span>
+                      <span className="text-[#C94500] text-sm">{fmt(valorParcela)}</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between font-bold text-gray-800">
+                      <span>Total à vista</span>
+                      <span className="text-[#1a6b2f] text-sm">{fmt(valorRestante)}</span>
+                    </div>
+                  )}
+                  {pagamento.tipo === "parcelado" && (
+                    <p className="text-[10px] text-gray-400">Vencimento todo dia {pagamento.diaVencimento}</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Observações */}
@@ -853,6 +1081,9 @@ function PropostaDetalhe({
   const [gerandoPdfProposta, setGerandoPdfProposta] = useState(false);
   const [statusAtual, setStatusAtual] = useState<StatusProposta>(proposta.status);
   const [excluindo, setExcluindo] = useState(false);
+
+  // Sincroniza se o pai atualizar o objeto proposta (ex: ao navegar entre propostas)
+  useEffect(() => { setStatusAtual(proposta.status); }, [proposta.status]);
 
   const c = proposta.conteudo;
   const tipoLabel = proposta.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento";
