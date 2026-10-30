@@ -82,7 +82,7 @@ const SISTEMAS_EXTERNOS = [
     descricao: "Laudos e vistorias técnicas",
     url: "https://www.appsheet.com/start/755184c3-0072-4536-9f99-420a62a919c5",
     cor: "bg-purple-50 border-purple-200 text-purple-700",
-    icone: CalendarDays,
+    icone: CalendarIcon,
   },
 ];
 
@@ -1206,7 +1206,7 @@ function LogisticaPage() {
               <div className="py-16 text-center text-sm text-gray-400">Carregando agenda…</div>
             ) : ticketsFiltrados.length === 0 ? (
               <div className="flex flex-col items-center py-16 text-gray-400">
-                <CalendarDays className="mb-3 h-10 w-10 opacity-30" />
+                <CalendarIcon className="mb-3 h-10 w-10 opacity-30" />
                 <p className="text-sm">Nenhum ticket encontrado</p>
                 <p className="mt-1 text-xs text-gray-300">
                   Os tickets são cadastrados via AppSheet e sincronizados aqui
