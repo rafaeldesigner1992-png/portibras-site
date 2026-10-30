@@ -5,7 +5,7 @@ import {
   Building2, Plus, Search, Phone, Mail, MapPin, Users,
   ChevronRight, X, Check, Pencil, Trash2, AlertCircle,
   FileText, Wrench, ChevronDown, ChevronUp, History, Loader2,
-  ExternalLink,
+  ExternalLink, Upload, Download, CheckCircle2, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -551,6 +551,351 @@ function Row({ icon, label, value }: { icon: React.ReactNode; label: string; val
   );
 }
 
+// ── Importação CSV ─────────────────────────────────────────────────────────────
+
+interface ImportRow {
+  nome: string;
+  cnpj: string | null;
+  email: string | null;
+  telefone: string | null;
+  cep: string | null;
+  uf: string;
+  cidade: string;
+  endereco: string | null;
+  bairro: string | null;
+  sindico: string | null;
+  status: "ativo" | "inativo" | "prospect";
+}
+
+function parseCSVContaAzul(text: string): { rows: ImportRow[]; erros: string[] } {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { rows: [], erros: ["Arquivo vazio ou sem dados."] };
+
+  // Parse CSV respeitando aspas e ponto-e-vírgula como separador
+  function parseLine(line: string): string[] {
+    const cols: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (ch === ";" && !inQuotes) {
+        cols.push(cur.trim()); cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+
+  const header = parseLine(lines[0]).map(h => h.toLowerCase().trim());
+  const idx = (name: string) => header.findIndex(h => h.includes(name.toLowerCase()));
+
+  // Mapeamento de colunas do Conta Azul
+  const iNome        = idx("nome");
+  const iRazao       = idx("razão social");
+  const iCnpj        = idx("cnpj");
+  const iEmail       = idx("email principal");
+  const iTel         = idx("telefone principal");
+  const iCep         = idx("cep");
+  const iEstado      = idx("estado");
+  const iCidade      = idx("cidade");
+  const iEnd         = idx("endereço");
+  const iNum         = idx("número");
+  const iBairro      = idx("bairro");
+  const iContato     = idx("nome contato");
+  const iStatus      = idx("status");
+
+  const rows: ImportRow[] = [];
+  const erros: string[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseLine(lines[i]);
+    if (cols.every(c => !c)) continue; // linha vazia
+
+    const nome = (cols[iNome] || cols[iRazao] || "").replace(/^"|"$/g, "").trim();
+    if (!nome) { erros.push(`Linha ${i + 1}: nome vazio, ignorada.`); continue; }
+
+    const cnpjRaw = iCnpj >= 0 ? (cols[iCnpj] || "").trim() : "";
+    // Normaliza CNPJ: mantém só dígitos e reformata
+    const cnpjDigits = cnpjRaw.replace(/\D/g, "");
+    const cnpj = cnpjDigits.length === 14
+      ? cnpjDigits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+      : (cnpjRaw || null);
+
+    const enderecoParts = [
+      iEnd >= 0 ? (cols[iEnd] || "").trim() : "",
+      iNum >= 0 ? (cols[iNum] || "").trim() : "",
+    ].filter(Boolean);
+
+    const statusRaw = (iStatus >= 0 ? cols[iStatus] || "" : "").toLowerCase();
+    const status: "ativo" | "inativo" | "prospect" =
+      statusRaw === "inativado" || statusRaw === "inativo" ? "inativo" :
+      statusRaw === "prospect" ? "prospect" : "ativo";
+
+    rows.push({
+      nome,
+      cnpj,
+      email: iEmail >= 0 ? (cols[iEmail] || null) : null,
+      telefone: iTel >= 0 ? (cols[iTel] || null) : null,
+      cep: iCep >= 0 ? (cols[iCep] || null) : null,
+      uf: iEstado >= 0 ? (cols[iEstado] || "RJ") : "RJ",
+      cidade: iCidade >= 0 ? (cols[iCidade] || "Rio de Janeiro") : "Rio de Janeiro",
+      endereco: enderecoParts.join(", ") || null,
+      bairro: iBairro >= 0 ? (cols[iBairro] || null) : null,
+      sindico: iContato >= 0 ? (cols[iContato] || null) : null,
+      status,
+    });
+  }
+
+  return { rows, erros };
+}
+
+function ModalImportacao({ onFechar, onImportado }: { onFechar: () => void; onImportado: () => void }) {
+  const [etapa, setEtapa] = useState<"upload" | "preview" | "importando" | "concluido">("upload");
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [errosCSV, setErrosCSV] = useState<string[]>([]);
+  const [progresso, setProgresso] = useState(0);
+  const [importados, setImportados] = useState(0);
+  const [falhas, setFalhas] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function handleArquivo(file: File) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target?.result as string;
+      const { rows: r, erros } = parseCSVContaAzul(text);
+      setRows(r);
+      setErrosCSV(erros);
+      setEtapa("preview");
+    };
+    reader.readAsText(file, "UTF-8");
+  }
+
+  async function importar() {
+    setEtapa("importando");
+    setProgresso(0);
+    setFalhas([]);
+    let ok = 0;
+    const errs: string[] = [];
+    const BATCH = 50;
+
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const lote = rows.slice(i, i + BATCH).map(r => ({
+        nome: r.nome,
+        cnpj: r.cnpj,
+        email: r.email,
+        telefone: r.telefone,
+        cep: r.cep,
+        uf: r.uf,
+        cidade: r.cidade,
+        endereco: r.endereco,
+        bairro: r.bairro,
+        sindico: r.sindico,
+        status: r.status,
+        whatsapp: null,
+        email_financeiro: null,
+        telefone_financeiro: null,
+        tipo_edificio: null,
+        qtd_andares: null,
+        qtd_portas_cf: null,
+        data_ultima_vistoria: null,
+        observacoes: null,
+      }));
+
+      const { error } = await supabase.from("clientes").insert(lote);
+      if (error) {
+        // Tenta inserir um a um para identificar o problemático
+        for (const row of lote) {
+          const { error: e2 } = await supabase.from("clientes").insert(row);
+          if (e2) errs.push(`"${row.nome}": ${e2.message}`);
+          else ok++;
+        }
+      } else {
+        ok += lote.length;
+      }
+      setProgresso(Math.min(i + BATCH, rows.length));
+      setImportados(ok);
+    }
+
+    setFalhas(errs);
+    setEtapa("concluido");
+    onImportado();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Upload className="h-5 w-5 text-[#1a6b2f]" />
+            <h2 className="text-base font-semibold text-gray-900">Importar Clientes (CSV)</h2>
+          </div>
+          <button onClick={onFechar} className="rounded-lg p-1.5 hover:bg-gray-100">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* ETAPA: Upload */}
+          {etapa === "upload" && (
+            <div className="flex flex-col items-center gap-6">
+              <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 p-10 text-center w-full"
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleArquivo(f); }}>
+                <Upload className="mx-auto h-10 w-10 text-gray-300 mb-3" />
+                <p className="text-sm font-medium text-gray-700">Arraste o arquivo CSV ou clique para selecionar</p>
+                <p className="text-xs text-gray-400 mt-1">Formato exportado do Conta Azul (separador ponto-e-vírgula)</p>
+                <button
+                  onClick={() => inputRef.current?.click()}
+                  className="mt-4 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-medium text-white hover:bg-[#155a27]">
+                  Selecionar arquivo
+                </button>
+                <input ref={inputRef} type="file" accept=".csv,.txt" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleArquivo(f); }} />
+              </div>
+
+              <div className="w-full rounded-xl border border-amber-100 bg-amber-50 p-4">
+                <p className="text-xs font-semibold text-amber-800 mb-2">Colunas esperadas do Conta Azul:</p>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  Nome, Razão Social, CNPJ, Email principal, Telefone principal, CEP, Estado, Cidade, Endereço, Número, Bairro, Nome Contato, Status
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ETAPA: Preview */}
+          {etapa === "preview" && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3 rounded-xl border border-green-100 bg-green-50 p-4">
+                <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-green-800">{rows.length} cliente{rows.length !== 1 ? "s" : ""} identificado{rows.length !== 1 ? "s" : ""}</p>
+                  {errosCSV.length > 0 && <p className="text-xs text-green-700 mt-0.5">{errosCSV.length} linha{errosCSV.length !== 1 ? "s" : ""} ignorada{errosCSV.length !== 1 ? "s" : ""}</p>}
+                </div>
+              </div>
+
+              {errosCSV.length > 0 && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold text-amber-800 mb-1">Linhas ignoradas:</p>
+                  {errosCSV.slice(0, 5).map((e, i) => <p key={i} className="text-xs text-amber-700">{e}</p>)}
+                  {errosCSV.length > 5 && <p className="text-xs text-amber-600">… e mais {errosCSV.length - 5}</p>}
+                </div>
+              )}
+
+              {/* Tabela preview */}
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {["Nome", "CNPJ", "Cidade/UF", "Email", "Status"].map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.slice(0, 20).map((r, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium text-gray-800 max-w-[180px] truncate">{r.nome}</td>
+                        <td className="px-3 py-2 text-gray-500">{r.cnpj || "—"}</td>
+                        <td className="px-3 py-2 text-gray-500">{[r.cidade, r.uf].filter(Boolean).join(" - ")}</td>
+                        <td className="px-3 py-2 text-gray-500 max-w-[160px] truncate">{r.email || "—"}</td>
+                        <td className="px-3 py-2">
+                          <span className={cn("rounded-full px-2 py-0.5 text-xs",
+                            r.status === "ativo" ? "bg-green-50 text-green-700" :
+                            r.status === "inativo" ? "bg-gray-100 text-gray-500" :
+                            "bg-blue-50 text-blue-700")}>
+                            {r.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {rows.length > 20 && (
+                  <div className="px-3 py-2 text-center text-xs text-gray-400 border-t border-gray-100">
+                    … e mais {rows.length - 20} cliente{rows.length - 20 !== 1 ? "s" : ""}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ETAPA: Importando */}
+          {etapa === "importando" && (
+            <div className="flex flex-col items-center gap-6 py-8">
+              <Loader2 className="h-10 w-10 animate-spin text-[#1a6b2f]" />
+              <div className="text-center">
+                <p className="text-sm font-semibold text-gray-800">Importando clientes...</p>
+                <p className="text-xs text-gray-500 mt-1">{progresso} de {rows.length} processados</p>
+              </div>
+              <div className="w-full max-w-sm rounded-full bg-gray-100 h-2">
+                <div className="h-2 rounded-full bg-[#1a6b2f] transition-all"
+                  style={{ width: `${rows.length ? (progresso / rows.length) * 100 : 0}%` }} />
+              </div>
+            </div>
+          )}
+
+          {/* ETAPA: Concluído */}
+          {etapa === "concluido" && (
+            <div className="flex flex-col items-center gap-4 py-6">
+              <CheckCircle2 className="h-12 w-12 text-green-500" />
+              <div className="text-center">
+                <p className="text-base font-semibold text-gray-900">Importação concluída!</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  <span className="text-green-700 font-medium">{importados}</span> cliente{importados !== 1 ? "s" : ""} importado{importados !== 1 ? "s" : ""}
+                  {falhas.length > 0 && <span className="text-red-600"> · {falhas.length} com erro</span>}
+                </p>
+              </div>
+              {falhas.length > 0 && (
+                <div className="w-full rounded-xl border border-red-100 bg-red-50 p-3">
+                  <p className="text-xs font-semibold text-red-800 mb-1 flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Erros:
+                  </p>
+                  {falhas.slice(0, 8).map((e, i) => <p key={i} className="text-xs text-red-700">{e}</p>)}
+                  {falhas.length > 8 && <p className="text-xs text-red-500">… e mais {falhas.length - 8}</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          {etapa === "upload" && (
+            <button onClick={onFechar} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Cancelar
+            </button>
+          )}
+          {etapa === "preview" && (
+            <>
+              <button onClick={() => setEtapa("upload")} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Voltar
+              </button>
+              <button
+                onClick={importar}
+                disabled={rows.length === 0}
+                className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155a27] disabled:opacity-50">
+                <Upload className="h-4 w-4" />
+                Importar {rows.length} cliente{rows.length !== 1 ? "s" : ""}
+              </button>
+            </>
+          )}
+          {etapa === "concluido" && (
+            <button onClick={onFechar} className="rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155a27]">
+              Fechar
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Página principal ───────────────────────────────────────────────────────────
 
 function ClientesPage() {
@@ -565,6 +910,7 @@ function ClientesPage() {
 
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [modalImportacao, setModalImportacao] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -652,13 +998,22 @@ function ClientesPage() {
             <h1 className="text-lg font-bold text-gray-900">Banco de Clientes</h1>
             <p className="text-xs text-gray-500">{clientes.length} cliente{clientes.length !== 1 ? "s" : ""} cadastrado{clientes.length !== 1 ? "s" : ""}</p>
           </div>
-          <button
-            onClick={abrirNovo}
-            className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155a27] transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Novo Cliente
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setModalImportacao(true)}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Upload className="h-4 w-4 text-gray-500" />
+              Importar CSV
+            </button>
+            <button
+              onClick={abrirNovo}
+              className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155a27] transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Novo Cliente
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -764,6 +1119,14 @@ function ClientesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal importação CSV */}
+      {modalImportacao && (
+        <ModalImportacao
+          onFechar={() => setModalImportacao(false)}
+          onImportado={() => { carregar(); }}
+        />
       )}
     </div>
   );
