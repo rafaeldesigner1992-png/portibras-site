@@ -32,6 +32,7 @@ interface Suprimento {
   categoria: string;
   unidade: string;
   custo_unitario: number;
+  tempo_instalacao_min: number;  // minutos por unidade para instalação
   link_compra: string;
   atualizado_em: string;
 }
@@ -147,7 +148,7 @@ function LogisticaPage() {
 
   function abrirSup(s?: Suprimento) {
     if (s) { setSelSup(s); setFormSup({ ...s }); }
-    else { setSelSup(null); setFormSup({ nome: "", codigo: "", categoria: "", unidade: "un", custo_unitario: 0, link_compra: "" }); }
+    else { setSelSup(null); setFormSup({ nome: "", codigo: "", categoria: "", unidade: "un", custo_unitario: 0, tempo_instalacao_min: 0, link_compra: "" }); }
     setModalSup(true);
   }
 
@@ -361,6 +362,7 @@ function LogisticaPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Suprimento</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Categoria</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Custo Unit.</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Tempo Inst.</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden sm:table-cell">Últ. Atualização</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden lg:table-cell">Link</th>
                     <th className="px-5 py-3" />
@@ -382,6 +384,19 @@ function LogisticaPage() {
                             {s.custo_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                           </span>
                           <span className="ml-1 text-xs text-gray-400">/{s.unidade}</span>
+                        </td>
+                        <td className="px-5 py-4 hidden md:table-cell">
+                          {s.tempo_instalacao_min > 0 ? (
+                            <span className="flex items-center gap-1 text-xs text-gray-600 font-medium">
+                              <Clock className="h-3 w-3 text-gray-400" />
+                              {s.tempo_instalacao_min < 60
+                                ? `${s.tempo_instalacao_min}min`
+                                : `${Math.floor(s.tempo_instalacao_min / 60)}h${s.tempo_instalacao_min % 60 > 0 ? `${s.tempo_instalacao_min % 60}min` : ""}`}
+                              <span className="text-gray-400">/{s.unidade}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
                         </td>
                         <td className="px-5 py-4 hidden sm:table-cell">
                           {s.atualizado_em ? (
@@ -677,6 +692,25 @@ function LogisticaPage() {
                     {["un", "cx", "pc", "m", "kg", "l", "rolo", "par", "jg"].map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Tempo de instalação (minutos/unidade)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} step={1} value={formSup.tempo_instalacao_min ?? 0}
+                    onChange={e => setFormSup({ ...formSup, tempo_instalacao_min: Number(e.target.value) })}
+                    className="w-32 rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                  <span className="text-sm text-gray-400">min/{formSup.unidade || "un"}</span>
+                  {(formSup.tempo_instalacao_min ?? 0) > 0 && (
+                    <span className="text-xs text-[#1a6b2f] font-medium">
+                      ≈ {(formSup.tempo_instalacao_min ?? 0) < 60
+                        ? `${formSup.tempo_instalacao_min}min`
+                        : `${Math.floor((formSup.tempo_instalacao_min ?? 0) / 60)}h${(formSup.tempo_instalacao_min ?? 0) % 60 > 0 ? `${(formSup.tempo_instalacao_min ?? 0) % 60}min` : ""}`}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-400">Usado para estimar dias de roteiro no orçamento</p>
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Link de compra</label>

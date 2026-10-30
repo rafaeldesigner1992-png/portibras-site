@@ -35,6 +35,13 @@ function FinanceiroPage() {
   const [aliquotaSalva, setAliquotaSalva] = useState(false);
   const [configId, setConfigId] = useState<string | null>(null);
 
+  // Configurações de margem e mão de obra
+  const [margemMinInput, setMargemMinInput] = useState<string>("25");
+  const [margemIdealInput, setMargemIdealInput] = useState<string>("45");
+  const [custoEquipeInput, setCustoEquipeInput] = useState<string>("0");
+  const [salvandoMargem, setSalvandoMargem] = useState(false);
+  const [margemSalva, setMargemSalva] = useState(false);
+
   useEffect(() => { carregar(); carregarConfig(); }, []);
 
   async function carregar() {
@@ -51,14 +58,34 @@ function FinanceiroPage() {
     const { data } = await supabase
       .from("configuracoes")
       .select("*")
-      .eq("chave", "imposto_padrao_pct")
-      .single();
+      .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "custo_diario_equipe"]);
     if (data) {
-      const val = Number(data.valor);
-      setAliquota(val);
-      setAliquotaInput(String(val));
-      setConfigId(data.id);
+      for (const row of data) {
+        if (row.chave === "imposto_padrao_pct") {
+          setAliquota(Number(row.valor));
+          setAliquotaInput(String(Number(row.valor)));
+          setConfigId(row.id);
+        }
+        if (row.chave === "margem_minima_pct") setMargemMinInput(String(Number(row.valor)));
+        if (row.chave === "margem_ideal_pct") setMargemIdealInput(String(Number(row.valor)));
+        if (row.chave === "custo_diario_equipe") setCustoEquipeInput(String(Number(row.valor)));
+      }
     }
+  }
+
+  async function salvarMargem() {
+    setSalvandoMargem(true);
+    const configs = [
+      { chave: "margem_minima_pct", valor: margemMinInput, descricao: "Margem de lucro mínima aceitável nos orçamentos (%)" },
+      { chave: "margem_ideal_pct",  valor: margemIdealInput, descricao: "Margem de lucro ideal nos orçamentos (%)" },
+      { chave: "custo_diario_equipe", valor: custoEquipeInput, descricao: "Custo diário da equipe técnica em campo (R$)" },
+    ];
+    for (const cfg of configs) {
+      await supabase.from("configuracoes").upsert({ ...cfg, atualizado_em: new Date().toISOString() }, { onConflict: "chave" });
+    }
+    setSalvandoMargem(false);
+    setMargemSalva(true);
+    setTimeout(() => setMargemSalva(false), 2500);
   }
 
   async function salvarAliquota() {
@@ -129,17 +156,20 @@ function FinanceiroPage() {
         ))}
       </div>
 
-      {/* Configuração fiscal */}
+      {/* Configurações fiscais e de margem */}
       <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-5">
           <Settings2 className="h-4 w-4 text-[#1a6b2f]" />
-          <h2 className="text-sm font-semibold text-gray-800">Configurações Fiscais</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Configurações de Orçamento</h2>
           <span className="text-xs text-gray-400">— aplicadas automaticamente em todos os orçamentos</span>
         </div>
-        <div className="flex items-end gap-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
-              Alíquota padrão de Impostos / Encargos (%)
+
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          {/* Alíquota */}
+          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Fiscal</p>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Alíquota de Impostos / Encargos (%)
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -147,7 +177,7 @@ function FinanceiroPage() {
                 value={aliquotaInput}
                 onChange={e => setAliquotaInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && salvarAliquota()}
-                className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20"
+                className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]"
               />
               <button
                 onClick={salvarAliquota}
@@ -163,8 +193,52 @@ function FinanceiroPage() {
               </button>
             </div>
             <p className="mt-1.5 text-xs text-gray-400">
-              Valor atual: <span className="font-semibold text-gray-600">{aliquota}%</span> — padrão ao criar novos orçamentos
+              Atual: <span className="font-semibold text-gray-600">{aliquota}%</span>
             </p>
+          </div>
+
+          {/* Margem e custo equipe */}
+          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Margem e Mão de Obra</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Margem mínima (%) <span className="text-red-500 font-bold">·</span> <span className="text-xs text-red-500">alerta vermelho</span>
+                </label>
+                <input type="number" min={0} max={100} step={0.5}
+                  value={margemMinInput} onChange={e => setMargemMinInput(e.target.value)}
+                  className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Margem ideal (%) <span className="text-green-600 font-bold">·</span> <span className="text-xs text-green-600">verde acima disso</span>
+                </label>
+                <input type="number" min={0} max={100} step={0.5}
+                  value={margemIdealInput} onChange={e => setMargemIdealInput(e.target.value)}
+                  className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Custo diário da equipe (R$)
+                </label>
+                <input type="number" min={0} step={10}
+                  value={custoEquipeInput} onChange={e => setCustoEquipeInput(e.target.value)}
+                  className="w-36 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]" />
+                <p className="mt-1 text-xs text-gray-400">Usado para calcular custo da mão de obra nos orçamentos</p>
+              </div>
+            </div>
+            <button
+              onClick={salvarMargem}
+              disabled={salvandoMargem}
+              className={cn(
+                "mt-3 flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors",
+                margemSalva ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
+                salvandoMargem && "opacity-60 cursor-not-allowed"
+              )}
+            >
+              {salvandoMargem ? <Loader2 className="h-4 w-4 animate-spin" /> : margemSalva ? <Check className="h-4 w-4" /> : null}
+              {margemSalva ? "Salvo!" : "Salvar"}
+            </button>
           </div>
         </div>
       </div>

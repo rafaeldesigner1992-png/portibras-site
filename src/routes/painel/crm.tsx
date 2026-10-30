@@ -5,7 +5,7 @@ import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
   Loader2, Send, Pencil, Trash2, MapPin, Navigation,
-  Calculator, ShoppingCart, Save, Check, AlertCircle
+  Calculator, ShoppingCart, Save, Check, AlertCircle, Clock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +45,7 @@ interface Suprimento {
   codigo: string;
   unidade: string;
   custo_unitario: number;
+  tempo_instalacao_min: number;
 }
 
 interface ItemOrcamento {
@@ -105,19 +106,34 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [orcamentoExistente, setOrcamentoExistente] = useState<Orcamento | null>(null);
   const [busca, setBusca] = useState("");
 
+  // Configs globais de margem e custo equipe (carregadas do banco)
+  const [margemMin, setMargemMin] = useState(25);
+  const [margemIdeal, setMargemIdeal] = useState(45);
+  const [custoEquipeDia, setCustoEquipeDia] = useState(0);
+
   // ID único para cada ocorrência do item no orçamento (permite múltiplas variações)
   const [proximoId, setProximoId] = useState(1);
+
+  // Minutos produtivos por dia de campo
+  const MIN_DIA = 360;
 
   useEffect(() => {
     async function init() {
       setCarregando(true);
-      const [{ data: sups }, { data: orc }, { data: cfg }] = await Promise.all([
-        supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario").order("nome"),
+      const [{ data: sups }, { data: orc }, { data: cfgs }] = await Promise.all([
+        supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario, tempo_instalacao_min").order("nome"),
         supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
-        supabase.from("configuracoes").select("valor").eq("chave", "imposto_padrao_pct").single(),
+        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "custo_diario_equipe"]),
       ]);
       if (sups) setSuprimentos(sups as Suprimento[]);
-      if (cfg) setImpostoPct(Number(cfg.valor) || 10);
+      if (cfgs) {
+        for (const row of cfgs) {
+          if (row.chave === "imposto_padrao_pct") setImpostoPct(Number(row.valor) || 10);
+          if (row.chave === "margem_minima_pct") setMargemMin(Number(row.valor) || 25);
+          if (row.chave === "margem_ideal_pct") setMargemIdeal(Number(row.valor) || 45);
+          if (row.chave === "custo_diario_equipe") setCustoEquipeDia(Number(row.valor) || 0);
+        }
+      }
       if (orc && orc.length > 0) {
         const o = orc[0] as Orcamento;
         setOrcamentoExistente(o);
@@ -130,7 +146,8 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
         setItens(itensCarregados);
         setProximoId(itensCarregados.length + 1);
         setMargemPct(o.margem_pct ?? 30);
-        setImpostoPct(o.imposto_pct ?? (cfg ? Number(cfg.valor) : 10));
+        const impCfg = cfgs?.find(r => r.chave === "imposto_padrao_pct");
+        setImpostoPct(o.imposto_pct ?? (impCfg ? Number(impCfg.valor) : 10));
         setObsOrc(o.observacoes || "");
       }
       setCarregando(false);
@@ -203,12 +220,25 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     ));
   }
 
-  // Cálculos
-  const custoTotal = itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0);
+  // Cálculos de tempo e mão de obra
+  const totalMinInstalacao = itens.reduce((acc, i) => {
+    const sup = suprimentos.find(s => s.id === i.suprimento_id);
+    return acc + (sup?.tempo_instalacao_min ?? 0) * i.quantidade;
+  }, 0);
+  const diasCampo = totalMinInstalacao > 0 ? Math.ceil(totalMinInstalacao / MIN_DIA) : 0;
+  const custoMO = diasCampo * custoEquipeDia;
+
+  // Cálculos financeiros (MO entra na base de custo)
+  const custoMateriais = itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0);
+  const custoTotal = custoMateriais + custoMO;
   const valorMargem = custoTotal * (margemPct / 100);
   const subtotalComMargem = custoTotal + valorMargem;
   const valorImposto = subtotalComMargem * (impostoPct / 100);
   const precoFinal = subtotalComMargem + valorImposto;
+
+  // Margem real sobre preço de venda (para o semáforo)
+  // margem_real = (precoFinal - custoTotal - valorImposto) / precoFinal * 100
+  const margemRealPct = precoFinal > 0 ? ((precoFinal - custoTotal - valorImposto) / precoFinal) * 100 : 0;
 
   async function salvarOrcamento() {
     setSalvando(true);
@@ -383,11 +413,36 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               </div>
             </div>
 
+            {/* Tempo de instalação */}
+            {totalMinInstalacao > 0 && (
+              <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-2.5 flex items-start gap-2 text-xs">
+                <Clock className="h-3.5 w-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <span className="font-semibold text-blue-700">
+                    {totalMinInstalacao < 60
+                      ? `${totalMinInstalacao} min`
+                      : `${Math.floor(totalMinInstalacao / 60)}h${totalMinInstalacao % 60 > 0 ? `${totalMinInstalacao % 60}min` : ""}`}
+                    {" "}de instalação estimada
+                  </span>
+                  <span className="text-blue-500 ml-1">
+                    = {diasCampo} {diasCampo === 1 ? "dia" : "dias"} de roteiro
+                    {custoEquipeDia > 0 && ` · MO: ${fmt(custoMO)}`}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Breakdown */}
             <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-1.5 text-xs">
               <div className="flex justify-between text-gray-500">
-                <span>Custo de compra</span><span className="font-semibold text-gray-700">{fmt(custoTotal)}</span>
+                <span>Materiais</span><span className="font-semibold text-gray-700">{fmt(custoMateriais)}</span>
               </div>
+              {custoMO > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Mão de obra ({diasCampo}d × {fmt(custoEquipeDia)})</span>
+                  <span className="font-semibold text-blue-600">+ {fmt(custoMO)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-gray-500">
                 <span>Margem ({margemPct}%)</span><span className="font-semibold text-green-600">+ {fmt(valorMargem)}</span>
               </div>
@@ -397,6 +452,32 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               <div className="flex justify-between border-t border-gray-100 pt-1.5 text-sm font-bold text-gray-900">
                 <span>Preço de venda sugerido</span><span className="text-[#1a6b2f] text-base">{fmt(precoFinal)}</span>
               </div>
+
+              {/* Semáforo de margem */}
+              {itens.length > 0 && (() => {
+                const abaixoMin = margemRealPct < margemMin;
+                const abaixoIdeal = margemRealPct < margemIdeal;
+                const cor = abaixoMin
+                  ? "bg-red-50 border-red-200 text-red-700"
+                  : abaixoIdeal
+                  ? "bg-amber-50 border-amber-200 text-amber-700"
+                  : "bg-green-50 border-green-200 text-green-700";
+                const emoji = abaixoMin ? "🔴" : abaixoIdeal ? "🟡" : "🟢";
+                const msg = abaixoMin
+                  ? `Margem abaixo do mínimo (${margemMin}%)`
+                  : abaixoIdeal
+                  ? `Margem aceitável — ideal é ${margemIdeal}%`
+                  : `Margem excelente!`;
+                return (
+                  <div className={cn("mt-1 flex items-center justify-between rounded-lg border px-2.5 py-1.5", cor)}>
+                    <span className="flex items-center gap-1.5 font-semibold text-xs">
+                      <span>{emoji}</span>
+                      <span>{msg}</span>
+                    </span>
+                    <span className="font-bold text-sm">{margemRealPct.toFixed(1)}%</span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Observações */}
