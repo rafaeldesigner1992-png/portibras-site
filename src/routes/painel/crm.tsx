@@ -153,6 +153,15 @@ async function salvarPropostaDb(
     console.error("Supabase crm_propostas INSERT error:", JSON.stringify(error));
     throw new Error(`Erro ao salvar proposta: ${error.message} (code: ${error.code})`);
   }
+
+  // Auto-registrar entrada no Histórico
+  const tipoLabel = tipo === "manutencao" ? "Manutenção 12×" : "Orçamento";
+  await supabase.from("crm_conversas").insert({
+    lead_id: leadId,
+    texto: `📄 Proposta gerada: ${nomeArquivo} (${tipoLabel})`,
+    autor: "Sistema",
+  });
+
   return data as PropostaSalva;
 }
 
@@ -842,9 +851,12 @@ function PropostaDetalhe({
   const [gerandoContrato, setGerandoContrato] = useState(false);
   const [alterandoStatus, setAlterandoStatus] = useState(false);
   const [gerandoPdfProposta, setGerandoPdfProposta] = useState(false);
+  const [statusAtual, setStatusAtual] = useState<StatusProposta>(proposta.status);
+  const [excluindo, setExcluindo] = useState(false);
 
   const c = proposta.conteudo;
   const tipoLabel = proposta.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento";
+  const isAdmin = true; // Acesso de administrador — ajuste conforme autenticação futura
 
   async function alterarStatus(novoStatus: StatusProposta) {
     setAlterandoStatus(true);
@@ -852,8 +864,19 @@ function PropostaDetalhe({
       .from("crm_propostas")
       .update({ status: novoStatus })
       .eq("id", proposta.id);
-    if (!error) onStatusAtualizado(novoStatus);
+    if (!error) {
+      setStatusAtual(novoStatus);
+      onStatusAtualizado(novoStatus);
+    }
     setAlterandoStatus(false);
+  }
+
+  async function excluirProposta() {
+    if (!confirm(`Excluir "${proposta.nome_arquivo}"? Esta ação não pode ser desfeita.`)) return;
+    setExcluindo(true);
+    await supabase.storage.from("propostas").remove([proposta.storage_path]);
+    await supabase.from("crm_propostas").delete().eq("id", proposta.id);
+    onVoltar();
   }
 
   async function gerarPdfProposta() {
@@ -1100,8 +1123,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
       <li>f) Desativação, remoção ou adulteração do sistema de mola ou dispositivo de fechamento automático;</li>
       <li>g) Aplicação de pintura, revestimento ou adesivos sem autorização técnica prévia;</li>
       <li>h) Danos causados por vandalismo, acidentes, incêndio ou força maior;</li>
-      <li>i) Substituição de peças por componentes não homologados;</li>
-      <li>j) Inadimplência no período em que o dano ocorreu.</li>
+      <li>i) Substituição de peças por componentes não homologados.</li>
     </ul>
   </div>
 </div>
@@ -1163,20 +1185,6 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
       <div class="ct-assinatura-label">Contratada</div>
     </div>
   </div>
-  <div class="ct-testemunhas">
-    <div>
-      <div class="ct-testemunha-espaco"></div>
-      <div class="ct-testemunha-linha"></div>
-      <div class="ct-testemunha-label">Testemunha 1</div>
-      <div class="ct-testemunha-sub">Nome completo / CPF</div>
-    </div>
-    <div>
-      <div class="ct-testemunha-espaco"></div>
-      <div class="ct-testemunha-linha"></div>
-      <div class="ct-testemunha-label">Testemunha 2</div>
-      <div class="ct-testemunha-sub">Nome completo / CPF</div>
-    </div>
-  </div>
 </div>
 
 <div class="ct-rodape">
@@ -1220,10 +1228,21 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
           Voltar
         </button>
         <div className="h-4 w-px bg-gray-200" />
-        <div>
+        <div className="flex-1">
           <p className="text-sm font-semibold text-gray-900">{proposta.nome_arquivo}</p>
           <p className="text-xs text-gray-400">{tipoLabel}</p>
         </div>
+        {isAdmin && (
+          <button
+            onClick={excluirProposta}
+            disabled={excluindo}
+            className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+            title="Excluir proposta (somente administradores)"
+          >
+            {excluindo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Excluir
+          </button>
+        )}
       </div>
 
       {/* Info + Status */}
@@ -1245,10 +1264,10 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
               <button
                 key={s}
                 onClick={() => alterarStatus(s)}
-                disabled={alterandoStatus || proposta.status === s}
+                disabled={alterandoStatus || statusAtual === s}
                 className={cn(
                   "px-3 py-1 rounded-full text-xs font-medium border transition-all",
-                  proposta.status === s
+                  statusAtual === s
                     ? STATUS_CORES[s] + " ring-1 ring-offset-1 ring-current"
                     : "bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600"
                 )}
