@@ -1,0 +1,659 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
+import {
+  Building2, Plus, Search, Phone, Mail, MapPin, Users,
+  ChevronRight, X, Check, Pencil, Trash2, AlertCircle,
+  FileText, Wrench, ChevronDown, ChevronUp, History,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export const Route = createFileRoute("/painel/clientes")({
+  component: ClientesPage,
+});
+
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+
+interface Cliente {
+  id: string;
+  nome: string;
+  cnpj: string | null;
+  endereco: string | null;
+  bairro: string | null;
+  cidade: string;
+  uf: string;
+  cep: string | null;
+  sindico: string | null;
+  telefone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  email_financeiro: string | null;
+  telefone_financeiro: string | null;
+  tipo_edificio: string | null;
+  qtd_andares: number | null;
+  qtd_portas_cf: number | null;
+  status: "ativo" | "inativo" | "prospect";
+  data_ultima_vistoria: string | null;
+  observacoes: string | null;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+interface PropostaResumida {
+  id: string;
+  titulo: string;
+  status: string;
+  tipo_orcamento: string | null;
+  valor_total: number | null;
+  criado_em: string;
+  enviado_logistica: boolean;
+}
+
+interface AtendimentoResumido {
+  id: string;
+  titulo: string;
+  classificacao: string;
+  status: string;
+  data_agendada: string | null;
+  responsaveis: string[];
+}
+
+const STATUS_CLIENTE: Record<string, { label: string; cor: string }> = {
+  ativo:    { label: "Ativo",    cor: "bg-green-50 text-green-700 border-green-200" },
+  prospect: { label: "Prospect", cor: "bg-blue-50 text-blue-700 border-blue-200" },
+  inativo:  { label: "Inativo",  cor: "bg-gray-100 text-gray-500 border-gray-200" },
+};
+
+const STATUS_PROPOSTA: Record<string, string> = {
+  criado:        "bg-gray-100 text-gray-500",
+  enviado:       "bg-blue-50 text-blue-700",
+  fechado:       "bg-green-50 text-green-700",
+  descontinuado: "bg-red-50 text-red-600",
+};
+
+const STATUS_ATEND: Record<string, string> = {
+  "Programado":    "bg-blue-50 text-blue-700",
+  "Em andamento":  "bg-yellow-50 text-yellow-700",
+  "Concluído":     "bg-green-50 text-green-700",
+  "Cancelado":     "bg-red-50 text-red-600",
+};
+
+const TIPO_EDIFICIO = [
+  "Residencial","Comercial","Hotel","Shopping","Hospital","Industrial","Escola","Condomínio Misto","Outro"
+];
+
+// ── Formulário de cliente ──────────────────────────────────────────────────────
+
+const EMPTY_FORM = {
+  nome: "", cnpj: "", endereco: "", bairro: "", cidade: "Rio de Janeiro", uf: "RJ",
+  cep: "", sindico: "", telefone: "", whatsapp: "", email: "",
+  email_financeiro: "", telefone_financeiro: "", tipo_edificio: "",
+  qtd_andares: "", qtd_portas_cf: "", status: "ativo" as const, data_ultima_vistoria: "", observacoes: "",
+};
+
+type FormData = typeof EMPTY_FORM;
+
+function FormCliente({
+  inicial, onSalvar, onCancelar, salvando,
+}: {
+  inicial?: Partial<FormData>;
+  onSalvar: (d: FormData) => void;
+  onCancelar: () => void;
+  salvando: boolean;
+}) {
+  const [form, setForm] = useState<FormData>({ ...EMPTY_FORM, ...inicial });
+  const set = (k: keyof FormData, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <div className="space-y-5">
+      {/* Dados principais */}
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Dados do Condomínio / Cliente</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="label-field">Nome / Razão Social *</label>
+            <input className="input-field" value={form.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex: Condomínio Edifício Alpha" />
+          </div>
+          <div>
+            <label className="label-field">CNPJ</label>
+            <input className="input-field" value={form.cnpj} onChange={e => set("cnpj", e.target.value)} placeholder="00.000.000/0001-00" />
+          </div>
+          <div>
+            <label className="label-field">Tipo de Edificação</label>
+            <select className="input-field" value={form.tipo_edificio} onChange={e => set("tipo_edificio", e.target.value)}>
+              <option value="">Selecione...</option>
+              {TIPO_EDIFICIO.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-field">Andares</label>
+            <input className="input-field" type="number" value={form.qtd_andares} onChange={e => set("qtd_andares", e.target.value)} placeholder="0" />
+          </div>
+          <div>
+            <label className="label-field">Portas Corta-Fogo</label>
+            <input className="input-field" type="number" value={form.qtd_portas_cf} onChange={e => set("qtd_portas_cf", e.target.value)} placeholder="0" />
+          </div>
+        </div>
+      </div>
+
+      {/* Endereço */}
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Endereço</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="label-field">Logradouro</label>
+            <input className="input-field" value={form.endereco} onChange={e => set("endereco", e.target.value)} placeholder="Rua, Av., número" />
+          </div>
+          <div>
+            <label className="label-field">Bairro</label>
+            <input className="input-field" value={form.bairro} onChange={e => set("bairro", e.target.value)} placeholder="Bairro" />
+          </div>
+          <div>
+            <label className="label-field">CEP</label>
+            <input className="input-field" value={form.cep} onChange={e => set("cep", e.target.value)} placeholder="00000-000" />
+          </div>
+          <div>
+            <label className="label-field">Cidade</label>
+            <input className="input-field" value={form.cidade} onChange={e => set("cidade", e.target.value)} />
+          </div>
+          <div>
+            <label className="label-field">UF</label>
+            <input className="input-field" value={form.uf} onChange={e => set("uf", e.target.value)} maxLength={2} />
+          </div>
+        </div>
+      </div>
+
+      {/* Contatos */}
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Contato Principal</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="label-field">Síndico / Responsável</label>
+            <input className="input-field" value={form.sindico} onChange={e => set("sindico", e.target.value)} placeholder="Nome do síndico" />
+          </div>
+          <div>
+            <label className="label-field">Telefone</label>
+            <input className="input-field" value={form.telefone} onChange={e => set("telefone", e.target.value)} placeholder="(21) 9 9999-9999" />
+          </div>
+          <div>
+            <label className="label-field">WhatsApp</label>
+            <input className="input-field" value={form.whatsapp} onChange={e => set("whatsapp", e.target.value)} placeholder="(21) 9 9999-9999" />
+          </div>
+          <div className="col-span-2">
+            <label className="label-field">E-mail</label>
+            <input className="input-field" type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="email@condominio.com.br" />
+          </div>
+        </div>
+      </div>
+
+      {/* Contato financeiro */}
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Contato Financeiro</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label-field">Telefone Financeiro</label>
+            <input className="input-field" value={form.telefone_financeiro} onChange={e => set("telefone_financeiro", e.target.value)} placeholder="(21) 9 9999-9999" />
+          </div>
+          <div>
+            <label className="label-field">E-mail Financeiro</label>
+            <input className="input-field" type="email" value={form.email_financeiro} onChange={e => set("email_financeiro", e.target.value)} placeholder="financeiro@..." />
+          </div>
+        </div>
+      </div>
+
+      {/* Status e última vistoria */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label-field">Status</label>
+          <select className="input-field" value={form.status} onChange={e => set("status", e.target.value as "ativo"|"inativo"|"prospect")}>
+            <option value="ativo">Ativo</option>
+            <option value="prospect">Prospect</option>
+            <option value="inativo">Inativo</option>
+          </select>
+        </div>
+        <div>
+          <label className="label-field">Última Vistoria</label>
+          <input className="input-field" type="date" value={form.data_ultima_vistoria} onChange={e => set("data_ultima_vistoria", e.target.value)} />
+        </div>
+      </div>
+
+      <div>
+        <label className="label-field">Observações</label>
+        <textarea className="input-field min-h-[72px] resize-none" value={form.observacoes} onChange={e => set("observacoes", e.target.value)} placeholder="Notas internas sobre o cliente..." />
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => onSalvar(form)}
+          disabled={salvando || !form.nome.trim()}
+          className="flex-1 rounded-lg bg-[#1a6b2f] py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#155a27] transition-colors"
+        >
+          {salvando ? "Salvando..." : "Salvar Cliente"}
+        </button>
+        <button onClick={onCancelar} className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Card de Cliente (linha na lista) ──────────────────────────────────────────
+
+function ClienteRow({ cliente, onEdit, onDelete, onClick }: {
+  cliente: Cliente;
+  onEdit: () => void;
+  onDelete: () => void;
+  onClick: () => void;
+}) {
+  const st = STATUS_CLIENTE[cliente.status];
+  return (
+    <div
+      onClick={onClick}
+      className="flex cursor-pointer items-center gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm hover:border-[#1a6b2f]/30 hover:shadow-md transition-all"
+    >
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#1a6b2f]/10 text-[#1a6b2f]">
+        <Building2 className="h-5 w-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="truncate font-semibold text-gray-900">{cliente.nome}</p>
+        <p className="truncate text-xs text-gray-500">
+          {[cliente.bairro, cliente.cidade].filter(Boolean).join(" · ")}
+          {cliente.tipo_edificio && ` · ${cliente.tipo_edificio}`}
+        </p>
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-2">
+        {cliente.sindico && (
+          <span className="hidden text-xs text-gray-400 sm:block"><Users className="inline h-3 w-3 mr-1" />{cliente.sindico}</span>
+        )}
+        <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium", st.cor)}>{st.label}</span>
+        <button onClick={e => { e.stopPropagation(); onEdit(); }} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={e => { e.stopPropagation(); onDelete(); }} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <ChevronRight className="h-4 w-4 text-gray-300" />
+      </div>
+    </div>
+  );
+}
+
+// ── Painel lateral (detalhe do cliente) ───────────────────────────────────────
+
+function PainelDetalhe({ cliente, onClose, onEdit }: {
+  cliente: Cliente;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const [propostas, setPropostas] = useState<PropostaResumida[]>([]);
+  const [atendimentos, setAtendimentos] = useState<AtendimentoResumido[]>([]);
+  const [aba, setAba] = useState<"dados"|"crm"|"atendimentos">("dados");
+  const st = STATUS_CLIENTE[cliente.status];
+
+  useEffect(() => {
+    supabase.from("crm_propostas").select("id,titulo,status,tipo_orcamento,valor_total,criado_em,enviado_logistica")
+      .eq("cliente_id", cliente.id).order("criado_em", { ascending: false })
+      .then(({ data }) => setPropostas(data || []));
+
+    supabase.from("atendimentos").select("id,titulo,classificacao,status,data_agendada,responsaveis")
+      .eq("cliente_id", cliente.id).order("data_agendada", { ascending: false })
+      .then(({ data }) => setAtendimentos(data || []));
+  }, [cliente.id]);
+
+  const enderecoCompleto = [cliente.endereco, cliente.bairro, `${cliente.cidade}/${cliente.uf}`].filter(Boolean).join(", ");
+
+  return (
+    <div className="flex h-full flex-col bg-white border-l border-gray-100 shadow-xl" style={{ width: 400, minWidth: 400 }}>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className={cn("rounded-full border px-2 py-0.5 text-xs font-medium", st.cor)}>{st.label}</span>
+            {cliente.tipo_edificio && <span className="text-xs text-gray-400">{cliente.tipo_edificio}</span>}
+          </div>
+          <h2 className="text-base font-bold text-gray-900 leading-tight">{cliente.nome}</h2>
+          {enderecoCompleto && <p className="mt-1 text-xs text-gray-500"><MapPin className="inline h-3 w-3 mr-1" />{enderecoCompleto}</p>}
+        </div>
+        <div className="flex gap-1 flex-shrink-0">
+          <button onClick={onEdit} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"><Pencil className="h-4 w-4" /></button>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"><X className="h-4 w-4" /></button>
+        </div>
+      </div>
+
+      {/* Abas */}
+      <div className="flex border-b border-gray-100">
+        {([["dados","Dados",FileText],["crm","CRM",ChevronRight],["atendimentos","Atendimentos",Wrench]] as const).map(([id, label, Icon]) => (
+          <button key={id} onClick={() => setAba(id)}
+            className={cn("flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors",
+              aba === id ? "border-b-2 border-[#1a6b2f] text-[#1a6b2f]" : "text-gray-500 hover:text-gray-700"
+            )}>
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+            {id === "crm" && propostas.length > 0 && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700">{propostas.length}</span>}
+            {id === "atendimentos" && atendimentos.length > 0 && <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">{atendimentos.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Conteúdo */}
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        {aba === "dados" && (
+          <div className="space-y-4">
+            {/* Contato */}
+            {(cliente.sindico || cliente.telefone || cliente.whatsapp || cliente.email) && (
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Contato Principal</p>
+                <div className="space-y-1.5">
+                  {cliente.sindico && <Row icon={<Users className="h-3.5 w-3.5" />} label="Síndico" value={cliente.sindico} />}
+                  {cliente.telefone && <Row icon={<Phone className="h-3.5 w-3.5" />} label="Telefone" value={cliente.telefone} />}
+                  {cliente.whatsapp && <Row icon={<Phone className="h-3.5 w-3.5" />} label="WhatsApp" value={cliente.whatsapp} />}
+                  {cliente.email && <Row icon={<Mail className="h-3.5 w-3.5" />} label="E-mail" value={cliente.email} />}
+                </div>
+              </section>
+            )}
+            {(cliente.email_financeiro || cliente.telefone_financeiro) && (
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Financeiro</p>
+                <div className="space-y-1.5">
+                  {cliente.telefone_financeiro && <Row icon={<Phone className="h-3.5 w-3.5" />} label="Tel. Financeiro" value={cliente.telefone_financeiro} />}
+                  {cliente.email_financeiro && <Row icon={<Mail className="h-3.5 w-3.5" />} label="E-mail Financeiro" value={cliente.email_financeiro} />}
+                </div>
+              </section>
+            )}
+            {/* Técnico */}
+            {(cliente.qtd_andares || cliente.qtd_portas_cf || cliente.data_ultima_vistoria) && (
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Dados Técnicos</p>
+                <div className="space-y-1.5">
+                  {cliente.qtd_andares && <Row icon={<Building2 className="h-3.5 w-3.5" />} label="Andares" value={String(cliente.qtd_andares)} />}
+                  {cliente.qtd_portas_cf && <Row icon={<Wrench className="h-3.5 w-3.5" />} label="Portas CF" value={String(cliente.qtd_portas_cf)} />}
+                  {cliente.data_ultima_vistoria && <Row icon={<History className="h-3.5 w-3.5" />} label="Última Vistoria" value={new Date(cliente.data_ultima_vistoria).toLocaleDateString("pt-BR")} />}
+                </div>
+              </section>
+            )}
+            {cliente.cnpj && (
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Fiscal</p>
+                <Row icon={<FileText className="h-3.5 w-3.5" />} label="CNPJ" value={cliente.cnpj} />
+              </section>
+            )}
+            {cliente.observacoes && (
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Observações</p>
+                <p className="rounded-lg bg-gray-50 px-3 py-2.5 text-sm text-gray-600">{cliente.observacoes}</p>
+              </section>
+            )}
+          </div>
+        )}
+
+        {aba === "crm" && (
+          <div className="space-y-2">
+            {propostas.length === 0 && <p className="py-8 text-center text-sm text-gray-400">Nenhuma proposta vinculada</p>}
+            {propostas.map(p => (
+              <div key={p.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="flex-1 text-sm font-medium text-gray-800">{p.titulo}</p>
+                  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_PROPOSTA[p.status] || "bg-gray-100 text-gray-500")}>{p.status}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+                  {p.tipo_orcamento && <span>{p.tipo_orcamento}</span>}
+                  {p.valor_total && <span className="font-medium text-gray-700">R$ {p.valor_total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>}
+                  {p.enviado_logistica && <span className="text-[#1a6b2f] font-medium">✓ Na logística</span>}
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">{new Date(p.criado_em).toLocaleDateString("pt-BR")}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {aba === "atendimentos" && (
+          <div className="space-y-2">
+            {atendimentos.length === 0 && <p className="py-8 text-center text-sm text-gray-400">Nenhum atendimento registrado</p>}
+            {atendimentos.map(a => (
+              <div key={a.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="flex-1 text-sm font-medium text-gray-800">{a.titulo}</p>
+                  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_ATEND[a.status] || "bg-gray-100 text-gray-500")}>{a.status}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+                  <span className="rounded-full bg-gray-200 px-2 py-0.5">{a.classificacao}</span>
+                  {a.data_agendada && <span>{new Date(a.data_agendada + "T00:00:00").toLocaleDateString("pt-BR")}</span>}
+                  {a.responsaveis?.length > 0 && <span>{a.responsaveis.join(", ")}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-gray-400">{icon}</span>
+      <span className="w-28 shrink-0 text-xs text-gray-400">{label}</span>
+      <span className="min-w-0 truncate text-gray-700">{value}</span>
+    </div>
+  );
+}
+
+// ── Página principal ───────────────────────────────────────────────────────────
+
+function ClientesPage() {
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<string>("todos");
+
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editando, setEditando] = useState<Cliente | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("*")
+      .order("nome");
+    if (error) setErro(error.message);
+    else setClientes(data || []);
+    setCarregando(false);
+  }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const salvar = async (form: FormData) => {
+    if (!form.nome.trim()) return;
+    setSalvando(true);
+    setErro(null);
+    const payload = {
+      nome: form.nome.trim(),
+      cnpj: form.cnpj || null,
+      endereco: form.endereco || null,
+      bairro: form.bairro || null,
+      cidade: form.cidade || "Rio de Janeiro",
+      uf: form.uf || "RJ",
+      cep: form.cep || null,
+      sindico: form.sindico || null,
+      telefone: form.telefone || null,
+      whatsapp: form.whatsapp || null,
+      email: form.email || null,
+      email_financeiro: form.email_financeiro || null,
+      telefone_financeiro: form.telefone_financeiro || null,
+      tipo_edificio: form.tipo_edificio || null,
+      qtd_andares: form.qtd_andares ? parseInt(form.qtd_andares) : null,
+      qtd_portas_cf: form.qtd_portas_cf ? parseInt(form.qtd_portas_cf) : null,
+      status: form.status,
+      data_ultima_vistoria: form.data_ultima_vistoria || null,
+      observacoes: form.observacoes || null,
+    };
+
+    let error;
+    if (editando) {
+      ({ error } = await supabase.from("clientes").update(payload).eq("id", editando.id));
+    } else {
+      ({ error } = await supabase.from("clientes").insert(payload));
+    }
+
+    if (error) {
+      setErro(error.message);
+    } else {
+      setModalAberto(false);
+      setEditando(null);
+      await carregar();
+    }
+    setSalvando(false);
+  };
+
+  const excluir = async (id: string) => {
+    if (!confirm("Excluir este cliente? Propostas e atendimentos vinculados não serão excluídos.")) return;
+    const { error } = await supabase.from("clientes").delete().eq("id", id);
+    if (error) setErro(error.message);
+    else {
+      if (clienteSelecionado?.id === id) setClienteSelecionado(null);
+      await carregar();
+    }
+  };
+
+  const filtrados = clientes.filter(c => {
+    const ok = filtroStatus === "todos" || c.status === filtroStatus;
+    const buscarEm = [c.nome, c.bairro, c.cidade, c.sindico, c.cnpj].join(" ").toLowerCase();
+    return ok && buscarEm.includes(busca.toLowerCase());
+  });
+
+  const abrirNovo = () => { setEditando(null); setModalAberto(true); };
+  const abrirEditar = (c: Cliente) => { setEditando(c); setModalAberto(true); };
+  const fecharModal = () => { setModalAberto(false); setEditando(null); };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      {/* Lista */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-4">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">Banco de Clientes</h1>
+            <p className="text-xs text-gray-500">{clientes.length} cliente{clientes.length !== 1 ? "s" : ""} cadastrado{clientes.length !== 1 ? "s" : ""}</p>
+          </div>
+          <button
+            onClick={abrirNovo}
+            className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155a27] transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Cliente
+          </button>
+        </div>
+
+        {/* Filtros */}
+        <div className="flex items-center gap-3 border-b border-gray-100 bg-white px-6 py-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-[#1a6b2f] focus:bg-white focus:outline-none"
+              placeholder="Buscar cliente, bairro, síndico..."
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+            />
+          </div>
+          {(["todos","ativo","prospect","inativo"] as const).map(s => (
+            <button key={s} onClick={() => setFiltroStatus(s)}
+              className={cn("rounded-full px-3 py-1.5 text-xs font-medium transition-colors capitalize",
+                filtroStatus === s ? "bg-[#1a6b2f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              )}>
+              {s === "todos" ? "Todos" : STATUS_CLIENTE[s]?.label || s}
+            </button>
+          ))}
+        </div>
+
+        {/* Erro */}
+        {erro && (
+          <div className="mx-6 mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{erro}</span>
+            <button onClick={() => setErro(null)} className="ml-auto"><X className="h-4 w-4" /></button>
+          </div>
+        )}
+
+        {/* Lista */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {carregando ? (
+            <div className="flex items-center justify-center py-16 text-sm text-gray-400">Carregando...</div>
+          ) : filtrados.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <Building2 className="h-12 w-12 mb-3 opacity-30" />
+              <p className="text-sm font-medium">Nenhum cliente encontrado</p>
+              <p className="text-xs mt-1">Clique em "Novo Cliente" para cadastrar</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filtrados.map(c => (
+                <ClienteRow
+                  key={c.id}
+                  cliente={c}
+                  onEdit={() => abrirEditar(c)}
+                  onDelete={() => excluir(c.id)}
+                  onClick={() => setClienteSelecionado(clienteSelecionado?.id === c.id ? null : c)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Painel detalhe */}
+      {clienteSelecionado && (
+        <PainelDetalhe
+          cliente={clienteSelecionado}
+          onClose={() => setClienteSelecionado(null)}
+          onEdit={() => abrirEditar(clienteSelecionado)}
+        />
+      )}
+
+      {/* Modal novo/editar */}
+      {modalAberto && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <h2 className="font-bold text-gray-900">{editando ? "Editar Cliente" : "Novo Cliente"}</h2>
+              <button onClick={fecharModal} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="px-6 py-5">
+              <FormCliente
+                inicial={editando ? {
+                  nome: editando.nome,
+                  cnpj: editando.cnpj || "",
+                  endereco: editando.endereco || "",
+                  bairro: editando.bairro || "",
+                  cidade: editando.cidade,
+                  uf: editando.uf,
+                  cep: editando.cep || "",
+                  sindico: editando.sindico || "",
+                  telefone: editando.telefone || "",
+                  whatsapp: editando.whatsapp || "",
+                  email: editando.email || "",
+                  email_financeiro: editando.email_financeiro || "",
+                  telefone_financeiro: editando.telefone_financeiro || "",
+                  tipo_edificio: editando.tipo_edificio || "",
+                  qtd_andares: editando.qtd_andares ? String(editando.qtd_andares) : "",
+                  qtd_portas_cf: editando.qtd_portas_cf ? String(editando.qtd_portas_cf) : "",
+                  status: editando.status,
+                  data_ultima_vistoria: editando.data_ultima_vistoria || "",
+                  observacoes: editando.observacoes || "",
+                } : undefined}
+                onSalvar={salvar}
+                onCancelar={fecharModal}
+                salvando={salvando}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

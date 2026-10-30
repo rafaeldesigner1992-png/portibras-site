@@ -176,3 +176,14 @@
   .shadow-elegant { box-shadow: var(--shadow-elegant); }
   .text-balance { text-wrap: balance; }
 }
+
+@layer components {
+  /* Form helpers usados em modais/páginas internas */
+  .label-field {
+    @apply mb-1 block text-xs font-medium text-gray-600;
+  }
+  .input-field {
+    @apply w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400
+      focus:border-[#1a6b2f] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#1a6b2f]/20 transition-colors;
+  }
+}
