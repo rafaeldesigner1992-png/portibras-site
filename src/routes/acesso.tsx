@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/acesso")({
@@ -15,10 +15,11 @@ function AcessoPage() {
   const [carregando, setCarregando] = useState(false);
 
   // Se já logado, redireciona
-  if (usuario) {
-    navigate({ to: "/painel" });
-    return null;
-  }
+  useEffect(() => {
+    if (usuario) {
+      navigate({ to: "/painel" });
+    }
+  }, [usuario, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

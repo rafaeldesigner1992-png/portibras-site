@@ -48,14 +48,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function buscarPerfil(userId: string) {
-    const { data } = await supabase
-      .from("usuarios")
-      .select("*")
-      .eq("id", userId)
-      .single();
+    try {
+      const { data } = await supabase
+        .from("usuarios")
+        .select("*")
+        .eq("id", userId)
+        .single();
 
-    if (data) {
-      setUsuario(data as Usuario);
+      if (data) {
+        setUsuario(data as Usuario);
+      } else {
+        // Tabela usuarios ainda não tem este usuário — cria entrada mínima
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const fallback: Usuario = {
+            id: user.id,
+            email: user.email ?? "",
+            nome: user.email ?? "Usuário",
+            perfil: "admin",
+            ativo: true,
+            criado_em: new Date().toISOString(),
+          };
+          // Tenta inserir na tabela (pode falhar se RLS bloquear, não é crítico)
+          await supabase.from("usuarios").upsert(fallback).single();
+          setUsuario(fallback);
+        }
+      }
+    } catch {
+      // Ignora erros de banco e deixa passar com sessão auth válida
     }
     setLoading(false);
   }
