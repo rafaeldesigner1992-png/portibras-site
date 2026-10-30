@@ -5,7 +5,8 @@ import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
   Loader2, Send, Pencil, Trash2, MapPin, Navigation,
-  Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download, Eye
+  Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download, Eye,
+  ChevronDown, Package, ArrowLeft
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -80,13 +81,26 @@ interface Orcamento {
   criado_em?: string;
 }
 
+type StatusProposta = "criado" | "enviado" | "fechado" | "descontinuado";
+
+interface ConteudoProposta {
+  portas: number;
+  parcela: number;
+  custoCorretivo: number;
+  frequencia: number;
+  numProposta: string;
+}
+
 interface PropostaSalva {
   id: string;
   lead_id: string;
   tipo: "orcamento" | "manutencao";
   nome_arquivo: string;
   storage_path: string;
+  status: StatusProposta;
+  conteudo: ConteudoProposta | null;
   criado_em: string;
+  atualizado_em: string;
 }
 
 // Carrega pdfmake do CDN (singleton)
@@ -107,7 +121,29 @@ async function carregarPdfMake() {
   });
 }
 
-// Salva o PDF no Supabase Storage e registra metadados na tabela
+// Salva metadados da proposta no Supabase (sem upload de PDF)
+async function salvarPropostaDb(
+  leadId: string,
+  tipo: "orcamento" | "manutencao",
+  nomeArquivo: string,
+  conteudo: ConteudoProposta,
+): Promise<PropostaSalva> {
+  const storagePath = `${leadId}/${tipo}/${Date.now()}_${nomeArquivo}`;
+
+  const { data, error } = await supabase.from("crm_propostas").insert({
+    lead_id: leadId,
+    tipo,
+    nome_arquivo: nomeArquivo,
+    storage_path: storagePath,
+    status: "criado",
+    conteudo,
+  }).select().single();
+
+  if (error) throw new Error(`Erro ao salvar proposta: ${error.message}`);
+  return data as PropostaSalva;
+}
+
+// Salva o PDF no Supabase Storage e registra metadados na tabela (orçamento)
 async function salvarPropostaStorage(
   leadId: string,
   tipo: "orcamento" | "manutencao",
@@ -121,7 +157,6 @@ async function salvarPropostaStorage(
     };
   };
 
-  // Gera o PDF como Blob
   const blob = await new Promise<Blob>((resolve) => pm.createPdf(docDef).getBlob(resolve));
 
   const storagePath = `${leadId}/${tipo}/${Date.now()}_${nomeArquivo}`;
@@ -136,6 +171,8 @@ async function salvarPropostaStorage(
     tipo,
     nome_arquivo: nomeArquivo,
     storage_path: storagePath,
+    status: "criado",
+    conteudo: null,
   });
 }
 
@@ -761,7 +798,410 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   );
 }
 
-// ─── Item de Proposta Salva ────────────────────────────────────────────────────
+// ─── Badges de Status ─────────────────────────────────────────────────────────
+const STATUS_LABELS: Record<StatusProposta, string> = {
+  criado: "Criado",
+  enviado: "Enviado",
+  fechado: "Fechado",
+  descontinuado: "Descontinuado",
+};
+const STATUS_CORES: Record<StatusProposta, string> = {
+  criado: "bg-blue-50 text-blue-700 border-blue-200",
+  enviado: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  fechado: "bg-green-50 text-green-700 border-green-200",
+  descontinuado: "bg-gray-100 text-gray-500 border-gray-200",
+};
+
+// ─── Detalhe de uma Proposta ──────────────────────────────────────────────────
+function PropostaDetalhe({
+  proposta,
+  lead,
+  onVoltar,
+  onStatusAtualizado,
+}: {
+  proposta: PropostaSalva;
+  lead: Lead;
+  onVoltar: () => void;
+  onStatusAtualizado: (novoStatus: StatusProposta) => void;
+}) {
+  const [dataInicio, setDataInicio] = useState("");
+  const [diaVencimento, setDiaVencimento] = useState(10);
+  const [gerandoContrato, setGerandoContrato] = useState(false);
+  const [alterandoStatus, setAlterandoStatus] = useState(false);
+  const [gerandoPdfProposta, setGerandoPdfProposta] = useState(false);
+
+  const c = proposta.conteudo;
+  const tipoLabel = proposta.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento";
+
+  async function alterarStatus(novoStatus: StatusProposta) {
+    setAlterandoStatus(true);
+    const { error } = await supabase
+      .from("crm_propostas")
+      .update({ status: novoStatus })
+      .eq("id", proposta.id);
+    if (!error) onStatusAtualizado(novoStatus);
+    setAlterandoStatus(false);
+  }
+
+  async function gerarPdfProposta() {
+    if (!c) return alert("Proposta sem dados de conteúdo.");
+    setGerandoPdfProposta(true);
+    try {
+      await carregarPdfMake();
+      const pm = (window as Record<string, unknown>).pdfMake as {
+        createPdf: (def: unknown) => { download: (name: string) => void };
+      };
+      const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const verde = "#1a6b2f", laranja = "#C94500", cinza = "#6b7280";
+      const corrAnual = c.custoCorretivo * c.frequencia;
+      const porPorta = c.parcela / c.portas;
+      const porDia = c.parcela / 30;
+      const economia = corrAnual / 12 - c.parcela;
+      const economiaAnual = economia * 12;
+      const data = new Date().toLocaleDateString("pt-BR");
+
+      const docDef = {
+        pageSize: "A4",
+        pageMargins: [36, 28, 36, 28],
+        defaultStyle: { font: "Roboto", fontSize: 9, color: "#1f2937" },
+        content: [
+          {
+            columns: [
+              { stack: [
+                { text: "PORTIBRAS", fontSize: 18, bold: true, color: verde, characterSpacing: 2 },
+                { text: "Soluções em Portas Corta-Fogo · NBR 11.742", fontSize: 7, color: cinza, margin: [0, 2, 0, 0] },
+              ]},
+              { stack: [
+                { text: `Para: ${lead.empresa || lead.nome || "—"}`, fontSize: 8.5, bold: true, alignment: "right" },
+                { text: `Proposta nº ${c.numProposta}`, fontSize: 7.5, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
+                { text: `Data: ${data}`, fontSize: 7.5, color: cinza, alignment: "right", margin: [0, 1, 0, 0] },
+              ]},
+            ],
+            margin: [0, 0, 0, 10],
+          },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1.5, lineColor: verde }], margin: [0, 0, 0, 10] },
+          { text: "MANUTENÇÃO PREVENTIVA DE PORTAS CORTA-FOGO", fontSize: 10, bold: true, color: laranja, characterSpacing: 0.5, alignment: "center", margin: [0, 0, 0, 4] },
+          { text: `Plano Anual Parcelado em 12× — ${c.portas} porta${c.portas > 1 ? "s" : ""}`, fontSize: 8, color: cinza, alignment: "center", margin: [0, 0, 0, 10] },
+          {
+            table: { widths: ["*"], body: [[{
+              stack: [
+                { text: "12 PARCELAS MENSAIS DE", fontSize: 7, bold: true, color: laranja, characterSpacing: 0.8, alignment: "center" },
+                { text: fmtBRL(c.parcela), fontSize: 26, bold: true, color: laranja, alignment: "center" },
+                { text: `${c.portas} portas · ${fmtBRL(porPorta)}/porta/mês · ${fmtBRL(porDia)}/dia total`, fontSize: 7.5, color: cinza, alignment: "center", margin: [0, 3, 0, 0] },
+              ],
+              border: [true, true, true, true], borderColor: [laranja, laranja, laranja, laranja], margin: [16, 10, 16, 10],
+            }]]},
+            margin: [0, 0, 0, 10],
+          },
+          ...(economia > 0 ? [{
+            columns: [
+              { stack: [
+                { text: "ECONOMIA ESTIMADA/MÊS", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
+                { text: fmtBRL(economia), fontSize: 17, bold: true, color: verde, margin: [0, 2, 0, 0] },
+              ], margin: [10, 7, 10, 7] },
+              { stack: [
+                { text: "ECONOMIA ESTIMADA/ANO", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
+                { text: fmtBRL(economiaAnual), fontSize: 17, bold: true, color: verde, margin: [0, 2, 0, 0] },
+              ], margin: [10, 7, 10, 7] },
+            ],
+            margin: [0, 0, 0, 10],
+          }] : []),
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 6] },
+          { stack: [
+            { text: "PORTIBRAS", fontSize: 8, bold: true, color: "#1f2937" },
+            { text: "(22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 7.5, color: cinza, margin: [0, 2, 0, 0] },
+          ]},
+        ],
+      };
+      pm.createPdf(docDef).download(`${c.numProposta}_proposta.pdf`);
+    } catch (err) {
+      console.error("Erro ao gerar PDF:", err);
+      alert("Não foi possível gerar o PDF.");
+    } finally {
+      setGerandoPdfProposta(false);
+    }
+  }
+
+  function abrirContrato() {
+    if (!c) return alert("Proposta sem dados de conteúdo.");
+    setGerandoContrato(true);
+    try {
+      // buildContratoHtml é definida dentro de OrcamentoManutencao
+      // Aqui precisamos reconstruir o HTML com os parâmetros da proposta
+      const contratante = lead.empresa || lead.nome || "—";
+      const cnpjContratante = lead.cnpj || "________________";
+      const enderecoContratante = lead.endereco_fiscal || "________________________________";
+      const responsavel = lead.nome || "—";
+      const numContrato = `CTR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+      const hoje = new Date();
+      const dataHoje = hoje.toLocaleDateString("pt-BR");
+      const inicioObj = dataInicio ? new Date(dataInicio + "T12:00:00") : hoje;
+      const dataInicioFmt = inicioObj.toLocaleDateString("pt-BR");
+      const dataFimObj = new Date(inicioObj);
+      dataFimObj.setFullYear(dataFimObj.getFullYear() + 1);
+      dataFimObj.setDate(dataFimObj.getDate() - 1);
+      const dataFim = dataFimObj.toLocaleDateString("pt-BR");
+      const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const valorTotal = c.parcela * 12;
+      const milhar = Math.floor(valorTotal / 1000);
+      const centena = valorTotal % 1000;
+      const valorExtenso = milhar > 0
+        ? `${milhar.toLocaleString("pt-BR")} mil e ${centena > 0 ? centena.toLocaleString("pt-BR") : "zero"} reais`
+        : `${valorTotal.toLocaleString("pt-BR")} reais`;
+      const diaExtenso = diaVencimento === 5 ? "cinco" : diaVencimento === 10 ? "dez" : diaVencimento === 15 ? "quinze" : diaVencimento === 20 ? "vinte" : "vinte e cinco";
+
+      const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contrato ${numContrato}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;font-size:11pt;line-height:1.55}@media print{body{font-size:9.5pt}@page{size:A4;margin:20mm 18mm 22mm 18mm}.no-print{display:none!important}}.ct-page{max-width:800px;margin:0 auto;padding:36px 48px 56px}.btn-print{display:block;margin:0 auto 28px;padding:10px 28px;background:#1a6b2f;color:#fff;border:none;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;font-weight:600;cursor:pointer}.ct-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}.ct-logo-nome{font-size:20pt;font-weight:900;letter-spacing:3px;color:#1a6b2f;font-family:Arial,sans-serif}.ct-logo-sub{font-size:7pt;color:#6b7280;text-transform:uppercase;margin-top:3px;font-family:Arial,sans-serif}.ct-logo-cnpj{font-size:7.5pt;color:#6b7280;margin-top:3px;font-family:Arial,sans-serif}.ct-header-right{text-align:right;font-family:Arial,sans-serif}.ct-titulo-doc{font-size:8pt;font-weight:700;color:#1a6b2f;text-transform:uppercase}.ct-num-doc{font-size:8.5pt;color:#374151;margin-top:3px}.ct-data-doc{font-size:7.5pt;color:#6b7280;margin-top:2px}.ct-divider-green{border:none;border-top:2px solid #1a6b2f;margin:10px 0 8px}.ct-subtitulo{text-align:center;font-size:8.5pt;font-weight:700;color:#374151;text-transform:uppercase;margin-bottom:6px;font-family:Arial,sans-serif}.ct-divider{border:none;border-top:1px solid #d1d5db;margin:6px 0}.ct-section-title{font-size:7.5pt;font-weight:700;color:#1a6b2f;text-transform:uppercase;margin:16px 0 10px;font-family:Arial,sans-serif;border-bottom:1px solid #d1fae5;padding-bottom:4px}.ct-partes{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:10px}.ct-parte-label{font-size:6.5pt;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:5px;font-family:Arial,sans-serif}.ct-parte-nome{font-size:10pt;font-weight:700;color:#1f2937;font-family:Arial,sans-serif}.ct-parte-info{font-size:8.5pt;color:#374151;line-height:1.7;margin-top:3px}.ct-clausula{margin-top:14px}.ct-clausula-titulo{font-size:8.5pt;font-weight:700;color:#1f2937;margin-bottom:5px;font-family:Arial,sans-serif;text-transform:uppercase}.ct-clausula-corpo{font-size:9.5pt;color:#374151;line-height:1.65;text-align:justify}.ct-clausula-corpo p{margin-top:6px}.ct-sig-section{margin-top:36px}.ct-sig-divider{border:none;border-top:1px solid #d1d5db;margin:28px 0 18px}.ct-local-data{font-size:9.5pt;color:#374151;margin-bottom:36px}.ct-assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-bottom:36px}.ct-assinatura-espaco{height:48px}.ct-assinatura-linha{border-top:1px solid #374151;padding-top:7px}.ct-assinatura-nome{font-size:9pt;color:#1f2937;font-weight:600}.ct-assinatura-cargo{font-size:8pt;color:#6b7280;margin-top:2px}.ct-assinatura-label{font-size:7pt;font-weight:700;color:#6b7280;text-transform:uppercase;font-family:Arial,sans-serif}.ct-testemunhas{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:8px}.ct-testemunha-espaco{height:36px}.ct-testemunha-linha{border-top:1px solid #9ca3af;padding-top:5px}.ct-testemunha-label{font-size:8pt;color:#6b7280;font-family:Arial,sans-serif}.ct-testemunha-sub{font-size:7.5pt;color:#9ca3af;font-family:Arial,sans-serif}.ct-rodape{margin-top:40px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:7pt;color:#9ca3af;font-family:Arial,sans-serif;display:flex;justify-content:space-between}</style></head><body><div class="ct-page"><button class="btn-print no-print" onclick="window.print()">⬇ Salvar como PDF / Imprimir</button><div class="ct-header"><div><div class="ct-logo-nome">PORTIBRAS</div><div class="ct-logo-sub">Soluções em Portas Corta-Fogo · NBR 11.742</div><div class="ct-logo-cnpj">CNPJ: 47.594.074/0001-10 · Rio de Janeiro – RJ</div></div><div class="ct-header-right"><div class="ct-titulo-doc">Contrato de Prestação de Serviços</div><div class="ct-num-doc">Nº ${numContrato}</div><div class="ct-data-doc">Emitido em: ${dataHoje}</div></div></div><hr class="ct-divider-green"><div class="ct-subtitulo">Manutenção Preventiva de Portas Corta-Fogo — Plano Anual 12×</div><hr class="ct-divider"><div class="ct-section-title">Identificação das Partes</div><div class="ct-partes"><div><div class="ct-parte-label">Contratante</div><div class="ct-parte-nome">${contratante}</div><div class="ct-parte-info">CNPJ: ${cnpjContratante}<br>Endereço: ${enderecoContratante}<br>Representante legal: ${responsavel}</div></div><div><div class="ct-parte-label">Contratada</div><div class="ct-parte-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div><div class="ct-parte-info">CNPJ: 47.594.074/0001-10<br>Rio de Janeiro – RJ<br>vendas@portibras.com.br · (22) 99104-8162</div></div></div><hr class="ct-divider"><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 1ª — Objeto do Contrato</div><div class="ct-clausula-corpo">A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de Portas Corta-Fogo nas instalações da CONTRATANTE, em conformidade com as normas técnicas ABNT NBR 11.742:2018 e NBR 11.785:1997.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 2ª — Escopo dos Serviços</div><div class="ct-clausula-corpo">Os Serviços compreendem, para cada uma das ${c.portas} (${c.portas}) portas corta-fogo:<p>(a) 2 roteiros completos de manutenção preventiva por ano;</p><p>(b) inspeção visual, ajuste de mola, lubrificação e regulagem;</p><p>(c) registro fotográfico e emissão de Laudo Técnico DTS;</p><p>(d) atendimento prioritário em emergências sem custo adicional.</p></div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 3ª — Prazo e Vigência</div><div class="ct-clausula-corpo">O contrato vigorará pelo prazo de 12 (doze) meses, com início em ${dataInicioFmt} e término em ${dataFim}, renovando-se automaticamente salvo manifestação escrita com 30 dias de antecedência.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 4ª — Valor e Forma de Pagamento</div><div class="ct-clausula-corpo">O valor global é de ${fmt(valorTotal)} (${valorExtenso}), parcelado em 12 parcelas de ${fmt(c.parcela)}, com vencimento no dia ${diaVencimento} (${diaExtenso}) de cada mês, mediante boleto bancário.<p>O atraso sujeitará multa de 2%, juros de 1% ao mês e correção pelo IPCA.</p></div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 5ª — Garantia</div><div class="ct-clausula-corpo">A CONTRATADA garante os serviços por 6 meses contados de cada visita técnica.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 6ª — Rescisão</div><div class="ct-clausula-corpo">Rescisão por qualquer parte com 30 dias de aviso prévio, ou imediatamente em caso de inadimplência superior a 30 dias.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 7ª — Foro</div><div class="ct-clausula-corpo">As partes elegem o Foro da Comarca da Capital do Estado do Rio de Janeiro – RJ.</div></div><div class="ct-sig-section"><div class="ct-sig-divider"></div><div class="ct-local-data">Rio de Janeiro, ${dataHoje}</div><div class="ct-assinaturas"><div><div class="ct-assinatura-espaco"></div><div class="ct-assinatura-linha"></div><div class="ct-assinatura-nome">${contratante}</div><div class="ct-assinatura-cargo">${responsavel} — Representante Legal</div><div class="ct-assinatura-label">Contratante</div></div><div><div class="ct-assinatura-espaco"></div><div class="ct-assinatura-linha"></div><div class="ct-assinatura-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div><div class="ct-assinatura-cargo">CNPJ: 47.594.074/0001-10</div><div class="ct-assinatura-label">Contratada</div></div></div><div class="ct-testemunhas"><div><div class="ct-testemunha-espaco"></div><div class="ct-testemunha-linha"></div><div class="ct-testemunha-label">Testemunha 1</div><div class="ct-testemunha-sub">Nome completo / CPF</div></div><div><div class="ct-testemunha-espaco"></div><div class="ct-testemunha-linha"></div><div class="ct-testemunha-label">Testemunha 2</div><div class="ct-testemunha-sub">Nome completo / CPF</div></div></div></div><div class="ct-rodape"><span>${contratante} · PORTIBRAS</span><span>Contrato ${numContrato} · ${dataHoje}</span></div></div></body></html>`;
+
+      const janela = window.open("", "_blank", "width=900,height=700");
+      if (!janela) return alert("Permita pop-ups para gerar o contrato.");
+      janela.document.write(html);
+      janela.document.close();
+      janela.focus();
+      setTimeout(() => janela.print(), 500);
+    } catch (err) {
+      console.error("Erro ao gerar contrato:", err);
+      alert("Não foi possível gerar o contrato.");
+    } finally {
+      setGerandoContrato(false);
+    }
+  }
+
+  const dataCriacao = new Date(proposta.criado_em).toLocaleString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  const dataAtualizacao = new Date(proposta.atualizado_em).toLocaleString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto px-6 py-5 space-y-5">
+      {/* Cabeçalho com voltar */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onVoltar}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-lg px-2 py-1.5 hover:bg-gray-50"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Voltar
+        </button>
+        <div className="h-4 w-px bg-gray-200" />
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{proposta.nome_arquivo}</p>
+          <p className="text-xs text-gray-400">{tipoLabel}</p>
+        </div>
+      </div>
+
+      {/* Info + Status */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-400">Criado em</p>
+            <p className="text-sm font-medium text-gray-700">{dataCriacao}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-400">Atualizado em</p>
+            <p className="text-sm font-medium text-gray-700">{dataAtualizacao}</p>
+          </div>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 mb-1.5">Status</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(["criado", "enviado", "fechado", "descontinuado"] as StatusProposta[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => alterarStatus(s)}
+                disabled={alterandoStatus || proposta.status === s}
+                className={cn(
+                  "px-3 py-1 rounded-full text-xs font-medium border transition-all",
+                  proposta.status === s
+                    ? STATUS_CORES[s] + " ring-1 ring-offset-1 ring-current"
+                    : "bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600"
+                )}
+              >
+                {STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Dados da proposta */}
+      {c && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Resumo da proposta</p>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-gray-400">Portas</p>
+              <p className="font-semibold text-gray-800">{c.portas}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Parcela mensal</p>
+              <p className="font-semibold text-[#C94500]">{c.parcela.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Total 12×</p>
+              <p className="font-semibold text-gray-800">{(c.parcela * 12).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Nº Proposta</p>
+              <p className="font-semibold text-gray-800">{c.numProposta}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gerar Contrato */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gerar contrato</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 whitespace-nowrap">Início</label>
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:border-[#1a6b2f] focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 whitespace-nowrap">Venc. dia</label>
+            <select
+              value={diaVencimento}
+              onChange={(e) => setDiaVencimento(Number(e.target.value))}
+              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:border-[#1a6b2f] focus:outline-none"
+            >
+              {[5, 10, 15, 20, 25].map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={gerarPdfProposta}
+            disabled={gerandoPdfProposta || !c}
+            className="flex items-center gap-1.5 rounded-lg border border-[#C94500] px-4 py-2 text-sm font-medium text-[#C94500] hover:bg-orange-50 transition-colors disabled:opacity-40"
+          >
+            {gerandoPdfProposta ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Baixar PDF
+          </button>
+          <button
+            onClick={abrirContrato}
+            disabled={gerandoContrato || !c}
+            className="flex items-center gap-1.5 rounded-lg border border-[#1a6b2f] px-4 py-2 text-sm font-medium text-[#1a6b2f] hover:bg-green-50 transition-colors disabled:opacity-40"
+          >
+            {gerandoContrato ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            Gerar Contrato
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Lista de Propostas ───────────────────────────────────────────────────────
+function PropostasTab({
+  propostas,
+  carregando,
+  lead,
+  onAtualizar,
+  onStatusAtualizado,
+}: {
+  propostas: PropostaSalva[];
+  carregando: boolean;
+  lead: Lead;
+  onAtualizar: () => void;
+  onStatusAtualizado: (id: string, novoStatus: StatusProposta) => void;
+}) {
+  const [propostaSelecionada, setPropostaSelecionada] = useState<PropostaSalva | null>(null);
+  const [statusLocal, setStatusLocal] = useState<Record<string, StatusProposta>>({});
+
+  function handleStatusAtualizado(id: string, novoStatus: StatusProposta) {
+    setStatusLocal(prev => ({ ...prev, [id]: novoStatus }));
+    onStatusAtualizado(id, novoStatus);
+    if (propostaSelecionada?.id === id) {
+      setPropostaSelecionada(prev => prev ? { ...prev, status: novoStatus } : null);
+    }
+  }
+
+  if (propostaSelecionada) {
+    const statusAtual = statusLocal[propostaSelecionada.id] ?? propostaSelecionada.status;
+    return (
+      <PropostaDetalhe
+        proposta={{ ...propostaSelecionada, status: statusAtual }}
+        lead={lead}
+        onVoltar={() => setPropostaSelecionada(null)}
+        onStatusAtualizado={(novoStatus) => handleStatusAtualizado(propostaSelecionada.id, novoStatus)}
+      />
+    );
+  }
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Propostas</p>
+          <p className="text-xs text-gray-400">Clique para abrir e gerenciar</p>
+        </div>
+        <button
+          onClick={onAtualizar}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 rounded-lg px-2 py-1.5 hover:bg-gray-50"
+        >
+          <Loader2 className={cn("h-3.5 w-3.5", carregando && "animate-spin")} />
+          Atualizar
+        </button>
+      </div>
+
+      {carregando ? (
+        <div className="flex items-center justify-center py-12 text-gray-300">
+          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+          <span className="text-sm">Carregando…</span>
+        </div>
+      ) : propostas.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-300">
+          <Package className="h-10 w-10 mb-3 opacity-30" />
+          <p className="text-sm font-medium text-gray-400">Nenhuma proposta gerada</p>
+          <p className="text-xs text-gray-300 mt-1 text-center max-w-xs">
+            Vá até a aba "Manutenção 12×" e clique em "Gerar Proposta" para criar uma.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {propostas.map(p => {
+            const statusAtual = (statusLocal[p.id] ?? p.status) as StatusProposta;
+            const dataCriacao = new Date(p.criado_em).toLocaleDateString("pt-BR");
+            const tipoLabel = p.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento";
+            return (
+              <button
+                key={p.id}
+                onClick={() => setPropostaSelecionada(p)}
+                className="w-full text-left rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:border-gray-300 hover:shadow transition-all"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{p.nome_arquivo}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{tipoLabel} · Criado em {dataCriacao}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium border", STATUS_CORES[statusAtual])}>
+                      {STATUS_LABELS[statusAtual]}
+                    </span>
+                    <ChevronRight className="h-4 w-4 text-gray-300" />
+                  </div>
+                </div>
+                {p.conteudo && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    {p.conteudo.portas} portas · {p.conteudo.parcela.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mês
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Item de Proposta Salva (legado — mantido para compatibilidade) ────────────────────────────────────────────────────
 function PropostaItem({ proposta }: { proposta: PropostaSalva }) {
   const [baixando, setBaixando] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
@@ -862,19 +1302,15 @@ function PropostaItem({ proposta }: { proposta: PropostaSalva }) {
 }
 
 // ─── Orçamento de Contrato de Manutenção 12x ─────────────────────────────────
-function OrcamentoManutencao({ lead }: { lead: Lead }) {
+function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onPropostaSalva?: () => void }) {
   const [portas, setPortas] = useState(20);
   const [parcela, setParcela] = useState(300);
   const [custoCorretivo, setCustoCorretivo] = useState(280);
   const [frequencia, setFrequencia] = useState(1.5);
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [copiado, setCopiado] = useState<"texto" | "zap" | null>(null);
-  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [gerandoProposta, setGerandoProposta] = useState(false);
   const [propostaSalva, setPropostaSalva] = useState(false);
-  const [gerandoContrato, setGerandoContrato] = useState(false);
-  const [contratoSalvo, setContratoSalvo] = useState(false);
-  const [diaVencimento, setDiaVencimento] = useState(10);
-  const [dataInicio, setDataInicio] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Número de proposta único por sessão
   const numProposta = useRef(`PB-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`);
@@ -904,9 +1340,250 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
     setTimeout(() => setCopiado(null), 2500);
   }
 
-  async function gerarPDF() {
-    setGerandoPdf(true);
+  async function gerarProposta() {
+    setGerandoProposta(true);
     setPropostaSalva(false);
+    try {
+      const nomeArquivo = `${numProposta.current}_${(lead.empresa || lead.nome || "PORTIBRAS").replace(/\s+/g, "_")}`;
+      const conteudo: ConteudoProposta = {
+        portas,
+        parcela,
+        custoCorretivo,
+        frequencia,
+        numProposta: numProposta.current,
+      };
+      await salvarPropostaDb(lead.id, "manutencao", nomeArquivo, conteudo);
+      setPropostaSalva(true);
+      setTimeout(() => setPropostaSalva(false), 4000);
+      // Notifica aba propostas para recarregar
+      onPropostaSalva?.();
+    } catch (err) {
+      console.error("Erro ao salvar proposta:", err);
+      alert("Não foi possível salvar a proposta. Tente novamente.");
+    } finally {
+      setGerandoProposta(false);
+    }
+  }
+
+  // Gera o HTML do contrato para abrir em nova janela
+  function buildContratoHtml(opts: {
+    dataInicio: string;
+    diaVencimento: number;
+    parcela: number;
+    portas: number;
+    contratante: string;
+    cnpjContratante: string;
+    enderecoContratante: string;
+    responsavel: string;
+  }) {
+    const { dataInicio, diaVencimento, parcela, portas, contratante, cnpjContratante, enderecoContratante, responsavel } = opts;
+    const numContrato = `CTR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+    const hoje = new Date();
+    const dataHoje = hoje.toLocaleDateString("pt-BR");
+    const inicioObj = dataInicio ? new Date(dataInicio + "T12:00:00") : hoje;
+    const dataInicioFmt = inicioObj.toLocaleDateString("pt-BR");
+    const dataFimObj = new Date(inicioObj);
+    dataFimObj.setFullYear(dataFimObj.getFullYear() + 1);
+    dataFimObj.setDate(dataFimObj.getDate() - 1);
+    const dataFim = dataFimObj.toLocaleDateString("pt-BR");
+    const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const valorTotal = parcela * 12;
+    const milhar = Math.floor(valorTotal / 1000);
+    const centena = valorTotal % 1000;
+    const valorExtenso = milhar > 0
+      ? `${milhar.toLocaleString("pt-BR")} mil e ${centena > 0 ? centena.toLocaleString("pt-BR") : "zero"} reais`
+      : `${valorTotal.toLocaleString("pt-BR")} reais`;
+    const diaExtenso = diaVencimento === 5 ? "cinco" : diaVencimento === 10 ? "dez" : diaVencimento === 15 ? "quinze" : diaVencimento === 20 ? "vinte" : "vinte e cinco";
+
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Contrato ${numContrato}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Times New Roman', Times, serif; background: #fff; color: #1f2937; font-size: 11pt; line-height: 1.55; }
+  @media print {
+    body { background: #fff; font-size: 9.5pt; }
+    @page { size: A4; margin: 20mm 18mm 22mm 18mm; }
+    .no-print { display: none !important; }
+  }
+  .ct-page { max-width: 800px; margin: 0 auto; padding: 36px 48px 56px; }
+  .btn-print { display: block; margin: 0 auto 28px; padding: 10px 28px; background: #1a6b2f; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-family: Arial, sans-serif; font-weight: 600; cursor: pointer; letter-spacing: 0.5px; }
+  .btn-print:hover { background: #155824; }
+  .ct-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .ct-logo-nome { font-size: 20pt; font-weight: 900; letter-spacing: 3px; color: #1a6b2f; font-family: Arial, sans-serif; }
+  .ct-logo-sub { font-size: 7pt; color: #6b7280; letter-spacing: 1px; text-transform: uppercase; margin-top: 3px; font-family: Arial, sans-serif; }
+  .ct-logo-cnpj { font-size: 7.5pt; color: #6b7280; margin-top: 3px; font-family: Arial, sans-serif; }
+  .ct-header-right { text-align: right; font-family: Arial, sans-serif; }
+  .ct-titulo-doc { font-size: 8pt; font-weight: 700; color: #1a6b2f; letter-spacing: 1.5px; text-transform: uppercase; }
+  .ct-num-doc { font-size: 8.5pt; color: #374151; margin-top: 3px; }
+  .ct-data-doc { font-size: 7.5pt; color: #6b7280; margin-top: 2px; }
+  .ct-divider-green { border: none; border-top: 2px solid #1a6b2f; margin: 10px 0 8px; }
+  .ct-subtitulo { text-align: center; font-size: 8.5pt; font-weight: 700; color: #374151; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 6px; font-family: Arial, sans-serif; }
+  .ct-divider { border: none; border-top: 1px solid #d1d5db; margin: 6px 0; }
+  .ct-section-title { font-size: 7.5pt; font-weight: 700; color: #1a6b2f; letter-spacing: 1.5px; text-transform: uppercase; margin: 16px 0 10px; font-family: Arial, sans-serif; border-bottom: 1px solid #d1fae5; padding-bottom: 4px; }
+  .ct-partes { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 10px; }
+  .ct-parte-label { font-size: 6.5pt; font-weight: 700; color: #6b7280; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 5px; font-family: Arial, sans-serif; }
+  .ct-parte-nome { font-size: 10pt; font-weight: 700; color: #1f2937; font-family: Arial, sans-serif; }
+  .ct-parte-info { font-size: 8.5pt; color: #374151; line-height: 1.7; margin-top: 3px; }
+  .ct-clausula { margin-top: 14px; }
+  .ct-clausula-titulo { font-size: 8.5pt; font-weight: 700; color: #1f2937; margin-bottom: 5px; font-family: Arial, sans-serif; text-transform: uppercase; letter-spacing: 0.3px; }
+  .ct-clausula-corpo { font-size: 9.5pt; color: #374151; line-height: 1.65; text-align: justify; }
+  .ct-clausula-corpo p { margin-top: 6px; }
+  .ct-sig-section { margin-top: 36px; }
+  .ct-sig-divider { border: none; border-top: 1px solid #d1d5db; margin: 28px 0 18px; }
+  .ct-local-data { font-size: 9.5pt; color: #374151; margin-bottom: 36px; }
+  .ct-assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-bottom: 36px; }
+  .ct-assinatura-espaco { height: 48px; }
+  .ct-assinatura-linha { border-top: 1px solid #374151; padding-top: 7px; }
+  .ct-assinatura-nome { font-size: 9pt; color: #1f2937; font-weight: 600; }
+  .ct-assinatura-cargo { font-size: 8pt; color: #6b7280; margin-top: 2px; }
+  .ct-assinatura-label { font-size: 7pt; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px; font-family: Arial, sans-serif; }
+  .ct-testemunhas { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 8px; }
+  .ct-testemunha-espaco { height: 36px; }
+  .ct-testemunha-linha { border-top: 1px solid #9ca3af; padding-top: 5px; }
+  .ct-testemunha-label { font-size: 8pt; color: #6b7280; font-family: Arial, sans-serif; }
+  .ct-testemunha-sub { font-size: 7.5pt; color: #9ca3af; font-family: Arial, sans-serif; }
+  .ct-rodape { margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 8px; font-size: 7pt; color: #9ca3af; font-family: Arial, sans-serif; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="ct-page">
+  <button class="btn-print no-print" onclick="window.print()">⬇ Salvar como PDF / Imprimir</button>
+  <div class="ct-header">
+    <div>
+      <div class="ct-logo-nome">PORTIBRAS</div>
+      <div class="ct-logo-sub">Soluções em Portas Corta-Fogo · NBR 11.742</div>
+      <div class="ct-logo-cnpj">CNPJ: 47.594.074/0001-10 &nbsp;·&nbsp; Rio de Janeiro – RJ</div>
+    </div>
+    <div class="ct-header-right">
+      <div class="ct-titulo-doc">Contrato de Prestação de Serviços</div>
+      <div class="ct-num-doc">Nº ${numContrato}</div>
+      <div class="ct-data-doc">Emitido em: ${dataHoje}</div>
+    </div>
+  </div>
+  <hr class="ct-divider-green">
+  <div class="ct-subtitulo">Manutenção Preventiva de Portas Corta-Fogo — Plano Anual 12×</div>
+  <hr class="ct-divider">
+  <div class="ct-section-title">Identificação das Partes</div>
+  <div class="ct-partes">
+    <div>
+      <div class="ct-parte-label">Contratante</div>
+      <div class="ct-parte-nome">${contratante}</div>
+      <div class="ct-parte-info">CNPJ: ${cnpjContratante}<br>Endereço: ${enderecoContratante}<br>Representante legal: ${responsavel}</div>
+    </div>
+    <div>
+      <div class="ct-parte-label">Contratada</div>
+      <div class="ct-parte-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div>
+      <div class="ct-parte-info">CNPJ: 47.594.074/0001-10<br>Rio de Janeiro – RJ<br>vendas@portibras.com.br · (22) 99104-8162</div>
+    </div>
+  </div>
+  <hr class="ct-divider">
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 1ª — Objeto do Contrato</div>
+    <div class="ct-clausula-corpo">A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de Portas Corta-Fogo nas instalações da CONTRATANTE, em conformidade com as normas técnicas ABNT NBR 11.742:2018 e NBR 11.785:1997, mediante execução do Plano Anual de Manutenção Preventiva descrito neste instrumento, doravante denominado simplesmente "os Serviços".</div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 2ª — Escopo dos Serviços</div>
+    <div class="ct-clausula-corpo">Os Serviços objeto deste contrato compreendem, para cada uma das ${portas} (${portas}) portas corta-fogo existentes nas instalações da CONTRATANTE:
+      <p>(a) realização de 2 (dois) roteiros completos de manutenção preventiva no decorrer de cada ano contratual, com intervalo mínimo de 5 (cinco) meses entre roteiros;</p>
+      <p>(b) inspeção visual, ajuste de mola de fechamento, lubrificação de dobradiças e regulagem de batentes e vedações intumescentes;</p>
+      <p>(c) registro fotográfico do estado da porta antes e após cada intervenção, arquivado digitalmente e disponibilizado à CONTRATANTE;</p>
+      <p>(d) emissão de Laudo Técnico DTS (Declaração de Trabalho de Serviço) ao término de cada roteiro preventivo, atestando a conformidade ou as pendências identificadas em face da NBR 11.742:2018;</p>
+      <p>(e) atendimento prioritário em chamados de manutenção corretiva emergencial durante toda a vigência do contrato, sem custo adicional de deslocamento.</p>
+    </div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 3ª — Prazo e Vigência</div>
+    <div class="ct-clausula-corpo">O presente contrato vigorará pelo prazo de 12 (doze) meses, com início em ${dataInicioFmt} e término em ${dataFim}, renovando-se automaticamente por períodos iguais e sucessivos caso nenhuma das partes manifeste, por escrito e com antecedência mínima de 30 (trinta) dias do vencimento, o interesse em não prorrogá-lo.</div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 4ª — Valor e Forma de Pagamento</div>
+    <div class="ct-clausula-corpo">O valor global dos Serviços é de ${fmt(valorTotal)} (${valorExtenso}), parcelado em 12 (doze) parcelas mensais e consecutivas de ${fmt(parcela)} cada, com vencimento no dia ${diaVencimento} (${diaExtenso}) de cada mês, mediante boleto bancário emitido pela CONTRATADA.
+      <p>O atraso no pagamento de qualquer parcela sujeitará a CONTRATANTE à incidência de multa moratória de 2% (dois por cento) sobre o valor em aberto, acrescida de juros de 1% (um por cento) ao mês e atualização monetária pelo IPCA, calculados pro rata die, sem prejuízo da possibilidade de suspensão dos Serviços após 30 (trinta) dias de inadimplência.</p>
+    </div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 5ª — Garantia dos Serviços</div>
+    <div class="ct-clausula-corpo">A CONTRATADA garante a qualidade dos serviços executados pelo prazo de 6 (seis) meses contados da data de cada visita técnica, abrangendo mão de obra e todos os ajustes realizados durante o roteiro. Peças e componentes eventualmente substituídos estão sujeitos à garantia do respectivo fabricante.</div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 6ª — Obrigações da Contratante</div>
+    <div class="ct-clausula-corpo">São obrigações da CONTRATANTE:
+      <p>(a) efetuar o pagamento das parcelas nas datas acordadas;</p>
+      <p>(b) garantir livre acesso dos técnicos às instalações nas datas agendadas;</p>
+      <p>(c) comunicar qualquer anomalia no prazo máximo de 48 (quarenta e oito) horas;</p>
+      <p>(d) abster-se de contratar terceiros para serviços nas portas objeto deste contrato sem anuência escrita da CONTRATADA.</p>
+    </div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 7ª — Obrigações da Contratada</div>
+    <div class="ct-clausula-corpo">São obrigações da CONTRATADA:
+      <p>(a) executar os Serviços com profissionais tecnicamente habilitados e com EPIs exigidos;</p>
+      <p>(b) cumprir os prazos agendados ou comunicar reagendamento com 24h de antecedência;</p>
+      <p>(c) emitir os Laudos DTS em até 5 dias úteis após cada roteiro preventivo;</p>
+      <p>(d) manter sigilo sobre informações técnicas das instalações da CONTRATANTE.</p>
+    </div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 8ª — Rescisão</div>
+    <div class="ct-clausula-corpo">O contrato poderá ser rescindido por qualquer das partes com aviso prévio de 30 (trinta) dias, ou imediatamente em caso de inadimplência superior a 30 dias ou descumprimento grave das obrigações. Na rescisão antecipada sem justa causa pela CONTRATANTE, são devidos os valores vencidos não pagos.</div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 9ª — Disposições Gerais</div>
+    <div class="ct-clausula-corpo">O presente contrato substitui quaisquer acordos anteriores entre as partes. Alterações somente produzem efeitos se formalizadas por escrito e assinadas por ambas as partes.</div>
+  </div>
+  <div class="ct-clausula">
+    <div class="ct-clausula-titulo">Cláusula 10ª — Foro</div>
+    <div class="ct-clausula-corpo">As partes elegem o Foro da Comarca da Capital do Estado do Rio de Janeiro – RJ como competente para dirimir quaisquer controvérsias oriundas deste contrato, com expressa renúncia a qualquer outro.</div>
+  </div>
+  <div class="ct-sig-section">
+    <div class="ct-sig-divider"></div>
+    <div class="ct-local-data">Rio de Janeiro, ${dataHoje}</div>
+    <div class="ct-assinaturas">
+      <div>
+        <div class="ct-assinatura-espaco"></div>
+        <div class="ct-assinatura-linha"></div>
+        <div class="ct-assinatura-nome">${contratante}</div>
+        <div class="ct-assinatura-cargo">${responsavel} — Representante Legal</div>
+        <div class="ct-assinatura-label">Contratante</div>
+      </div>
+      <div>
+        <div class="ct-assinatura-espaco"></div>
+        <div class="ct-assinatura-linha"></div>
+        <div class="ct-assinatura-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div>
+        <div class="ct-assinatura-cargo">CNPJ: 47.594.074/0001-10</div>
+        <div class="ct-assinatura-label">Contratada</div>
+      </div>
+    </div>
+    <hr class="ct-divider">
+    <div class="ct-testemunhas">
+      <div>
+        <div class="ct-testemunha-espaco"></div>
+        <div class="ct-testemunha-linha"></div>
+        <div class="ct-testemunha-label">Testemunha 1</div>
+        <div class="ct-testemunha-sub">Nome completo / CPF</div>
+      </div>
+      <div>
+        <div class="ct-testemunha-espaco"></div>
+        <div class="ct-testemunha-linha"></div>
+        <div class="ct-testemunha-label">Testemunha 2</div>
+        <div class="ct-testemunha-sub">Nome completo / CPF</div>
+      </div>
+    </div>
+  </div>
+  <div class="ct-rodape">
+    <span>${contratante} · PORTIBRAS</span>
+    <span>Contrato ${numContrato} · Emitido em ${dataHoje}</span>
+  </div>
+</div>
+</body>
+</html>`;
+  }
+
+  // Mantido para compatibilidade (aba orçamento) — gera PDF pdfmake
+  async function gerarPDF_legado() {
     try {
       await carregarPdfMake();
 
@@ -1102,293 +1779,10 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
       console.error("Erro ao gerar PDF:", err);
       alert("Não foi possível gerar o PDF. Tente novamente.");
     } finally {
-      setGerandoPdf(false);
+      // PDF legado: sem estado de loading dedicado
     }
   }
 
-  function gerarContrato() {
-    setGerandoContrato(true);
-    try {
-      const contratante = lead.empresa || lead.nome || "—";
-      const cnpjContratante = lead.cnpj || "________________";
-      const enderecoContratante = lead.endereco_fiscal || "________________________________";
-      const responsavel = lead.nome || "—";
-      const numContrato = `CTR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
-
-      const hoje = new Date();
-      const dataHoje = hoje.toLocaleDateString("pt-BR");
-      const inicioObj = dataInicio ? new Date(dataInicio + "T12:00:00") : hoje;
-      const dataInicioFmt = inicioObj.toLocaleDateString("pt-BR");
-      const dataFimObj = new Date(inicioObj);
-      dataFimObj.setFullYear(dataFimObj.getFullYear() + 1);
-      dataFimObj.setDate(dataFimObj.getDate() - 1);
-      const dataFim = dataFimObj.toLocaleDateString("pt-BR");
-
-      const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-      const valorTotal = parcela * 12;
-
-      // Extenso simples para valores inteiros
-      const milhar = Math.floor(valorTotal / 1000);
-      const centena = valorTotal % 1000;
-      const valorExtenso = milhar > 0
-        ? `${milhar.toLocaleString("pt-BR")} mil e ${centena > 0 ? centena.toLocaleString("pt-BR") : "zero"} reais`
-        : `${valorTotal.toLocaleString("pt-BR")} reais`;
-
-      const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Contrato ${numContrato}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Times New Roman', Times, serif; background: #fff; color: #1f2937; font-size: 11pt; line-height: 1.55; }
-  @media print {
-    body { background: #fff; font-size: 9.5pt; }
-    @page { size: A4; margin: 20mm 18mm 22mm 18mm; }
-    .no-print { display: none !important; }
-  }
-
-  .ct-page { max-width: 800px; margin: 0 auto; padding: 36px 48px 56px; }
-
-  /* Botão de impressão — some no print */
-  .btn-print { display: block; margin: 0 auto 28px; padding: 10px 28px; background: #1a6b2f; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-family: Arial, sans-serif; font-weight: 600; cursor: pointer; letter-spacing: 0.5px; }
-  .btn-print:hover { background: #155824; }
-
-  /* Cabeçalho */
-  .ct-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-  .ct-logo-nome { font-size: 20pt; font-weight: 900; letter-spacing: 3px; color: #1a6b2f; font-family: Arial, sans-serif; }
-  .ct-logo-sub { font-size: 7pt; color: #6b7280; letter-spacing: 1px; text-transform: uppercase; margin-top: 3px; font-family: Arial, sans-serif; }
-  .ct-logo-cnpj { font-size: 7.5pt; color: #6b7280; margin-top: 3px; font-family: Arial, sans-serif; }
-  .ct-header-right { text-align: right; font-family: Arial, sans-serif; }
-  .ct-titulo-doc { font-size: 8pt; font-weight: 700; color: #1a6b2f; letter-spacing: 1.5px; text-transform: uppercase; }
-  .ct-num-doc { font-size: 8.5pt; color: #374151; margin-top: 3px; }
-  .ct-data-doc { font-size: 7.5pt; color: #6b7280; margin-top: 2px; }
-
-  .ct-divider-green { border: none; border-top: 2px solid #1a6b2f; margin: 10px 0 8px; }
-  .ct-subtitulo { text-align: center; font-size: 8.5pt; font-weight: 700; color: #374151; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 6px; font-family: Arial, sans-serif; }
-  .ct-divider { border: none; border-top: 1px solid #d1d5db; margin: 6px 0; }
-
-  /* Partes */
-  .ct-section-title { font-size: 7.5pt; font-weight: 700; color: #1a6b2f; letter-spacing: 1.5px; text-transform: uppercase; margin: 16px 0 10px; font-family: Arial, sans-serif; border-bottom: 1px solid #d1fae5; padding-bottom: 4px; }
-  .ct-partes { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 10px; }
-  .ct-parte-label { font-size: 6.5pt; font-weight: 700; color: #6b7280; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 5px; font-family: Arial, sans-serif; }
-  .ct-parte-nome { font-size: 10pt; font-weight: 700; color: #1f2937; font-family: Arial, sans-serif; }
-  .ct-parte-info { font-size: 8.5pt; color: #374151; line-height: 1.7; margin-top: 3px; }
-
-  /* Cláusulas */
-  .ct-clausula { margin-top: 14px; }
-  .ct-clausula-titulo { font-size: 8.5pt; font-weight: 700; color: #1f2937; margin-bottom: 5px; font-family: Arial, sans-serif; text-transform: uppercase; letter-spacing: 0.3px; }
-  .ct-clausula-corpo { font-size: 9.5pt; color: #374151; line-height: 1.65; text-align: justify; }
-  .ct-clausula-corpo p { margin-top: 6px; }
-
-  /* Assinaturas */
-  .ct-sig-section { margin-top: 36px; }
-  .ct-sig-divider { border: none; border-top: 1px solid #d1d5db; margin: 28px 0 18px; }
-  .ct-local-data { font-size: 9.5pt; color: #374151; margin-bottom: 36px; }
-  .ct-assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-bottom: 36px; }
-  .ct-assinatura-espaco { height: 48px; }
-  .ct-assinatura-linha { border-top: 1px solid #374151; padding-top: 7px; }
-  .ct-assinatura-nome { font-size: 9pt; color: #1f2937; font-weight: 600; }
-  .ct-assinatura-cargo { font-size: 8pt; color: #6b7280; margin-top: 2px; }
-  .ct-assinatura-label { font-size: 7pt; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px; font-family: Arial, sans-serif; }
-  .ct-testemunhas { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 8px; }
-  .ct-testemunha-espaco { height: 36px; }
-  .ct-testemunha-linha { border-top: 1px solid #9ca3af; padding-top: 5px; }
-  .ct-testemunha-label { font-size: 8pt; color: #6b7280; font-family: Arial, sans-serif; }
-  .ct-testemunha-sub { font-size: 7.5pt; color: #9ca3af; font-family: Arial, sans-serif; }
-
-  .ct-rodape { margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 8px; font-size: 7pt; color: #9ca3af; font-family: Arial, sans-serif; display: flex; justify-content: space-between; }
-</style>
-</head>
-<body>
-<div class="ct-page">
-
-  <button class="btn-print no-print" onclick="window.print()">⬇ Salvar como PDF / Imprimir</button>
-
-  <div class="ct-header">
-    <div>
-      <div class="ct-logo-nome">PORTIBRAS</div>
-      <div class="ct-logo-sub">Soluções em Portas Corta-Fogo · NBR 11.742</div>
-      <div class="ct-logo-cnpj">CNPJ: 47.594.074/0001-10 &nbsp;·&nbsp; Rio de Janeiro – RJ</div>
-    </div>
-    <div class="ct-header-right">
-      <div class="ct-titulo-doc">Contrato de Prestação de Serviços</div>
-      <div class="ct-num-doc">Nº ${numContrato}</div>
-      <div class="ct-data-doc">Emitido em: ${dataHoje}</div>
-    </div>
-  </div>
-
-  <hr class="ct-divider-green">
-  <div class="ct-subtitulo">Manutenção Preventiva de Portas Corta-Fogo — Plano Anual 12×</div>
-  <hr class="ct-divider">
-
-  <div class="ct-section-title">Identificação das Partes</div>
-  <div class="ct-partes">
-    <div>
-      <div class="ct-parte-label">Contratante</div>
-      <div class="ct-parte-nome">${contratante}</div>
-      <div class="ct-parte-info">
-        CNPJ: ${cnpjContratante}<br>
-        Endereço: ${enderecoContratante}<br>
-        Representante legal: ${responsavel}
-      </div>
-    </div>
-    <div>
-      <div class="ct-parte-label">Contratada</div>
-      <div class="ct-parte-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div>
-      <div class="ct-parte-info">
-        CNPJ: 47.594.074/0001-10<br>
-        Rio de Janeiro – RJ<br>
-        vendas@portibras.com.br · (22) 99104-8162
-      </div>
-    </div>
-  </div>
-
-  <hr class="ct-divider">
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 1ª — Objeto do Contrato</div>
-    <div class="ct-clausula-corpo">A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de Portas Corta-Fogo nas instalações da CONTRATANTE, em conformidade com as normas técnicas ABNT NBR 11.742:2018 e NBR 11.785:1997, mediante execução do Plano Anual de Manutenção Preventiva descrito neste instrumento, doravante denominado simplesmente "os Serviços".</div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 2ª — Escopo dos Serviços</div>
-    <div class="ct-clausula-corpo">Os Serviços objeto deste contrato compreendem, para cada uma das ${portas} (${portas}) portas corta-fogo existentes nas instalações da CONTRATANTE:
-      <p>(a) realização de 2 (dois) roteiros completos de manutenção preventiva no decorrer de cada ano contratual, com intervalo mínimo de 5 (cinco) meses entre roteiros;</p>
-      <p>(b) inspeção visual, ajuste de mola de fechamento, lubrificação de dobradiças e regulagem de batentes e vedações intumescentes;</p>
-      <p>(c) registro fotográfico do estado da porta antes e após cada intervenção, arquivado digitalmente e disponibilizado à CONTRATANTE;</p>
-      <p>(d) emissão de Laudo Técnico DTS (Declaração de Trabalho de Serviço) ao término de cada roteiro preventivo, atestando a conformidade ou as pendências identificadas em face da NBR 11.742:2018;</p>
-      <p>(e) atendimento prioritário em chamados de manutenção corretiva emergencial durante toda a vigência do contrato, sem custo adicional de deslocamento.</p>
-    </div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 3ª — Prazo e Vigência</div>
-    <div class="ct-clausula-corpo">O presente contrato vigorará pelo prazo de 12 (doze) meses, com início em ${dataInicioFmt} e término em ${dataFim}, renovando-se automaticamente por períodos iguais e sucessivos caso nenhuma das partes manifeste, por escrito e com antecedência mínima de 30 (trinta) dias do vencimento, o interesse em não prorrogá-lo.</div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 4ª — Valor e Forma de Pagamento</div>
-    <div class="ct-clausula-corpo">O valor global dos Serviços é de ${fmt(valorTotal)} (${valorExtenso}), parcelado em 12 (doze) parcelas mensais e consecutivas de ${fmt(parcela)} cada, com vencimento no dia ${diaVencimento} (${diaVencimento === 5 ? "cinco" : diaVencimento === 10 ? "dez" : diaVencimento === 15 ? "quinze" : diaVencimento === 20 ? "vinte" : "vinte e cinco"}) de cada mês, mediante boleto bancário emitido pela CONTRATADA.
-      <p>O atraso no pagamento de qualquer parcela sujeitará a CONTRATANTE à incidência de multa moratória de 2% (dois por cento) sobre o valor em aberto, acrescida de juros de 1% (um por cento) ao mês e atualização monetária pelo IPCA, calculados pro rata die, sem prejuízo da possibilidade de suspensão dos Serviços após 30 (trinta) dias de inadimplência.</p>
-    </div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 5ª — Garantia dos Serviços</div>
-    <div class="ct-clausula-corpo">A CONTRATADA garante a qualidade dos serviços executados pelo prazo de 6 (seis) meses contados da data de cada visita técnica, abrangendo mão de obra e todos os ajustes realizados durante o roteiro. Peças e componentes eventualmente substituídos estão sujeitos à garantia do respectivo fabricante. A presente garantia não alcançará os danos decorrentes de uso inadequado, vandalismos, sinistros, modificações estruturais ou intervenções realizadas por terceiros não autorizados pela CONTRATADA.</div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 6ª — Obrigações da Contratante</div>
-    <div class="ct-clausula-corpo">São obrigações da CONTRATANTE:
-      <p>(a) efetuar o pagamento das parcelas nas datas acordadas, sob pena das sanções previstas na Cláusula 4ª;</p>
-      <p>(b) garantir livre acesso dos técnicos da CONTRATADA às instalações nas datas previamente agendadas para manutenção, providenciando a liberação de eventuais controles de acesso internos;</p>
-      <p>(c) comunicar à CONTRATADA qualquer anomalia, falha ou mau funcionamento das portas corta-fogo no prazo máximo de 48 (quarenta e oito) horas após a constatação;</p>
-      <p>(d) abster-se de contratar terceiros para executar serviços nas portas objeto deste contrato, salvo mediante prévia anuência escrita da CONTRATADA.</p>
-    </div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 7ª — Obrigações da Contratada</div>
-    <div class="ct-clausula-corpo">São obrigações da CONTRATADA:
-      <p>(a) executar os Serviços com profissionais tecnicamente habilitados, devidamente identificados e munidos dos equipamentos de proteção individual exigidos;</p>
-      <p>(b) cumprir rigorosamente os prazos agendados ou comunicar eventual necessidade de reagendamento com antecedência mínima de 24 (vinte e quatro) horas;</p>
-      <p>(c) emitir os Laudos Técnicos DTS no prazo de até 5 (cinco) dias úteis após a conclusão de cada roteiro preventivo;</p>
-      <p>(d) manter absoluto sigilo sobre quaisquer informações técnicas ou operacionais das instalações da CONTRATANTE a que tiver acesso em decorrência deste contrato;</p>
-      <p>(e) responder pelos danos materiais ou pessoais causados diretamente por seus profissionais às instalações ou ao patrimônio da CONTRATANTE.</p>
-    </div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 8ª — Rescisão</div>
-    <div class="ct-clausula-corpo">O presente contrato poderá ser rescindido:
-      <p>(a) por qualquer das partes, amigavelmente, mediante aviso prévio escrito de 30 (trinta) dias;</p>
-      <p>(b) de pleno direito pela CONTRATADA, em caso de inadimplência da CONTRATANTE superior a 30 (trinta) dias corridos, independentemente de interpelação judicial ou extrajudicial;</p>
-      <p>(c) por qualquer das partes, imediatamente, em caso de descumprimento grave ou reiterado das obrigações previstas neste instrumento, após notificação escrita e prazo de 5 (cinco) dias para regularização.</p>
-      <p>Na hipótese de rescisão antecipada por iniciativa da CONTRATANTE sem justa causa comprovada, serão devidos os valores das parcelas vencidas e não pagas, não assistindo à CONTRATANTE direito à restituição de parcelas já quitadas.</p>
-    </div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 9ª — Disposições Gerais</div>
-    <div class="ct-clausula-corpo">O presente contrato substitui e revoga quaisquer propostas, entendimentos ou acordos anteriores entre as partes referentes ao mesmo objeto. Quaisquer alterações ou aditamentos somente produzirão efeitos se formalizados por escrito e assinados por representantes legais de ambas as partes. A CONTRATADA poderá ceder os direitos e obrigações decorrentes deste contrato a empresa pertencente ao mesmo grupo econômico, mediante comunicação à CONTRATANTE com antecedência de 15 (quinze) dias.</div>
-  </div>
-
-  <div class="ct-clausula">
-    <div class="ct-clausula-titulo">Cláusula 10ª — Foro</div>
-    <div class="ct-clausula-corpo">As partes elegem, de comum acordo, o Foro da Comarca da Capital do Estado do Rio de Janeiro – RJ como competente para dirimir quaisquer controvérsias, dúvidas ou litígios oriundos do presente contrato ou a ele relacionados, com expressa renúncia a qualquer outro, por mais privilegiado que seja.</div>
-  </div>
-
-  <div class="ct-sig-section">
-    <div class="ct-sig-divider"></div>
-    <div class="ct-local-data">Rio de Janeiro, ${dataHoje}</div>
-
-    <div class="ct-assinaturas">
-      <div>
-        <div class="ct-assinatura-espaco"></div>
-        <div class="ct-assinatura-linha"></div>
-        <div class="ct-assinatura-nome">${contratante}</div>
-        <div class="ct-assinatura-cargo">${responsavel} — Representante Legal</div>
-        <div class="ct-assinatura-label">Contratante</div>
-      </div>
-      <div>
-        <div class="ct-assinatura-espaco"></div>
-        <div class="ct-assinatura-linha"></div>
-        <div class="ct-assinatura-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div>
-        <div class="ct-assinatura-cargo">CNPJ: 47.594.074/0001-10</div>
-        <div class="ct-assinatura-label">Contratada</div>
-      </div>
-    </div>
-
-    <hr class="ct-divider">
-
-    <div class="ct-testemunhas">
-      <div>
-        <div class="ct-testemunha-espaco"></div>
-        <div class="ct-testemunha-linha"></div>
-        <div class="ct-testemunha-label">Testemunha 1</div>
-        <div class="ct-testemunha-sub">Nome completo / CPF</div>
-      </div>
-      <div>
-        <div class="ct-testemunha-espaco"></div>
-        <div class="ct-testemunha-linha"></div>
-        <div class="ct-testemunha-label">Testemunha 2</div>
-        <div class="ct-testemunha-sub">Nome completo / CPF</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="ct-rodape">
-    <span>${contratante} · PORTIBRAS</span>
-    <span>Contrato ${numContrato} · Emitido em ${dataHoje}</span>
-  </div>
-
-</div>
-</body>
-</html>`;
-
-      const janela = window.open("", "_blank", "width=900,height=700");
-      if (!janela) {
-        alert("Permita pop-ups para este site para gerar o contrato.");
-        return;
-      }
-      janela.document.write(html);
-      janela.document.close();
-      janela.focus();
-      setTimeout(() => {
-        janela.print();
-      }, 500);
-
-      setContratoSalvo(true);
-      setTimeout(() => setContratoSalvo(false), 4000);
-    } catch (err) {
-      console.error("Erro ao gerar contrato:", err);
-      alert("Não foi possível gerar o contrato. Tente novamente.");
-    } finally {
-      setGerandoContrato(false);
-    }
-  }
 
   function buildTexto(whatsapp: boolean) {
     const hr = whatsapp ? "━━━━━━━━━━━━━━━━━━━━━━━━" : "────────────────────────────────";
@@ -1476,52 +1870,15 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
             {copiado === "zap" ? "Copiado!" : "Formato WhatsApp"}
           </button>
           <button
-            onClick={gerarPDF}
-            disabled={gerandoPdf}
+            onClick={gerarProposta}
+            disabled={gerandoProposta}
             className={cn(
               "flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
               propostaSalva ? "border-green-300 bg-green-50 text-green-700" : "border-[#C94500] text-[#C94500] hover:bg-orange-50"
             )}
           >
-            {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : propostaSalva ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
-            {gerandoPdf ? "Gerando PDF…" : propostaSalva ? "Salvo!" : "Baixar PDF"}
-          </button>
-
-          {/* Separador */}
-          <div className="h-7 w-px bg-gray-200 mx-1" />
-
-          {/* Controles de contrato */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-gray-500 whitespace-nowrap">Início</label>
-            <input
-              type="date"
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:border-[#1a6b2f] focus:outline-none"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-gray-500 whitespace-nowrap">Venc. dia</label>
-            <select
-              value={diaVencimento}
-              onChange={(e) => setDiaVencimento(Number(e.target.value))}
-              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:border-[#1a6b2f] focus:outline-none"
-            >
-              {[5, 10, 15, 20, 25].map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={gerarContrato}
-            disabled={gerandoContrato}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50",
-              contratoSalvo ? "border-green-300 bg-green-50 text-green-700" : "border-[#1a6b2f] text-[#1a6b2f] hover:bg-green-50"
-            )}
-          >
-            {gerandoContrato ? <Loader2 className="h-4 w-4 animate-spin" /> : contratoSalvo ? <Check className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-            {gerandoContrato ? "Abrindo…" : contratoSalvo ? "Contrato aberto!" : "Gerar Contrato"}
+            {gerandoProposta ? <Loader2 className="h-4 w-4 animate-spin" /> : propostaSalva ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {gerandoProposta ? "Salvando…" : propostaSalva ? "Proposta salva!" : "Gerar Proposta"}
           </button>
         </div>
       </div>
@@ -2241,46 +2598,24 @@ function CrmPage() {
 
               {abaCard === "manutencao" && (
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  <OrcamentoManutencao lead={cardAberto} />
+                  <OrcamentoManutencao
+                    lead={cardAberto}
+                    onPropostaSalva={() => carregarPropostas(cardAberto.id)}
+                  />
                 </div>
               )}
 
               {abaCard === "propostas" && (
-                <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Propostas geradas</p>
-                      <p className="text-xs text-gray-400">PDFs gerados e salvos automaticamente ao baixar</p>
-                    </div>
-                    <button
-                      onClick={() => carregarPropostas(cardAberto.id)}
-                      className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 rounded-lg px-2 py-1.5 hover:bg-gray-50"
-                    >
-                      <Loader2 className={cn("h-3.5 w-3.5", carregandoPropostas && "animate-spin")} />
-                      Atualizar
-                    </button>
-                  </div>
-
-                  {carregandoPropostas ? (
-                    <div className="flex items-center justify-center py-12 text-gray-300">
-                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                      <span className="text-sm">Carregando…</span>
-                    </div>
-                  ) : propostas.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-gray-300">
-                      <FileText className="h-10 w-10 mb-3 opacity-30" />
-                      <p className="text-sm font-medium text-gray-400">Nenhuma proposta gerada</p>
-                      <p className="text-xs text-gray-300 mt-1 text-center max-w-xs">
-                        Vá até a aba "Orçamento" ou "Manutenção 12×" e clique em "Baixar PDF" — o arquivo é salvo aqui automaticamente.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {propostas.map(p => (
-                        <PropostaItem key={p.id} proposta={p} />
-                      ))}
-                    </div>
-                  )}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <PropostasTab
+                    propostas={propostas}
+                    carregando={carregandoPropostas}
+                    lead={cardAberto}
+                    onAtualizar={() => carregarPropostas(cardAberto.id)}
+                    onStatusAtualizado={(id, novoStatus) => {
+                      setPropostas(prev => prev.map(p => p.id === id ? { ...p, status: novoStatus } : p));
+                    }}
+                  />
                 </div>
               )}
             </div>
