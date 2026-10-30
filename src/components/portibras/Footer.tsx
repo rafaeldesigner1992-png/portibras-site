@@ -1,4 +1,5 @@
-import { MapPin, Phone, Mail } from "lucide-react";
+import { MapPin, Phone, Mail, Lock } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import logo from "@/assets/portibras-logo.png";
 
 export function Footer() {
@@ -38,6 +39,13 @@ export function Footer() {
         <div className="mx-auto max-w-7xl px-6 py-5 text-xs text-white/50 flex flex-col sm:flex-row justify-between gap-2">
           <span>© {new Date().getFullYear()} PORTIBRAS. Todos os direitos reservados.</span>
           <span>Segurança que se vê. Conformidade que se comprova.</span>
+          <Link
+            to="/acesso"
+            className="flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors"
+          >
+            <Lock className="h-3 w-3" />
+            Área de Membros
+          </Link>
         </div>
       </div>
     </footer>
