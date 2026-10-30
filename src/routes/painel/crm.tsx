@@ -139,7 +139,10 @@ async function salvarPropostaDb(
     conteudo,
   }).select().single();
 
-  if (error) throw new Error(`Erro ao salvar proposta: ${error.message}`);
+  if (error) {
+    console.error("Supabase crm_propostas INSERT error:", JSON.stringify(error));
+    throw new Error(`Erro ao salvar proposta: ${error.message} (code: ${error.code})`);
+  }
   return data as PropostaSalva;
 }
 
@@ -1581,8 +1584,9 @@ function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onProposta
       // Notifica aba propostas para recarregar
       onPropostaSalva?.();
     } catch (err) {
-      console.error("Erro ao salvar proposta:", err);
-      alert("Não foi possível salvar a proposta. Tente novamente.");
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Erro ao salvar proposta:", msg);
+      alert(`Não foi possível salvar a proposta.\n\nDetalhe: ${msg}`);
     } finally {
       setGerandoProposta(false);
     }
