@@ -198,7 +198,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Catálogo de suprimentos */}
-        <div className="w-[200px] flex-shrink-0 border-r border-gray-100 flex flex-col">
+        <div className="w-[260px] flex-shrink-0 border-r border-gray-100 flex flex-col">
           <div className="px-3 pt-3 pb-2">
             <input type="text" placeholder="Buscar…" value={busca} onChange={e => setBusca(e.target.value)}
               className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs outline-none focus:border-[#1a6b2f]" />
@@ -437,7 +437,7 @@ function CrmPage() {
   return (
     <div className="flex h-full">
       {/* Painel principal */}
-      <div className={cn("flex flex-col flex-1 min-w-0 p-6 overflow-auto", cardAberto && "hidden md:flex")}>
+      <div className="flex flex-col flex-1 min-w-0 p-6 overflow-auto">
         <div className="mb-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">CRM Comercial</h1>
@@ -597,121 +597,171 @@ function CrmPage() {
         )}
       </div>
 
-      {/* CARD DETALHADO */}
+      {/* CARD DETALHADO — Modal fullscreen */}
       {cardAberto && (
-        <div className="flex flex-col w-full md:w-[460px] border-l border-gray-200 bg-white">
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
           {/* Header */}
-          <div className="flex items-start justify-between p-5 border-b border-gray-100">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-base font-bold text-gray-900 truncate">{cardAberto.nome}</h2>
-              {cardAberto.empresa && <p className="text-sm text-gray-500">{cardAberto.empresa}</p>}
-              {cardAberto.cnpj && <p className="text-xs text-gray-400 font-mono">{formatCNPJ(cardAberto.cnpj)}</p>}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
+            <div className="flex items-center gap-4 min-w-0">
+              <button onClick={() => setCardAberto(null)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 flex-shrink-0" title="Fechar">
+                <X className="h-5 w-5" />
+              </button>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-gray-900 truncate">{cardAberto.nome}</h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {cardAberto.empresa && <span className="text-sm text-gray-500">{cardAberto.empresa}</span>}
+                  {cardAberto.cnpj && <span className="text-xs text-gray-400 font-mono">{formatCNPJ(cardAberto.cnpj)}</span>}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-1 ml-3 flex-shrink-0">
-              <button onClick={() => abrirModal(cardAberto)} className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100"><Pencil className="h-4 w-4" /></button>
-              <button onClick={() => setCardAberto(null)} className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Etapas rápidas */}
+              <div className="hidden md:flex items-center gap-1.5">
+                {ETAPA_ORDER.map(e => (
+                  <button key={e} onClick={() => mudarEtapa(cardAberto, e)}
+                    className={cn("rounded-full px-2.5 py-1 text-xs font-medium border transition-all", cardAberto.etapa === e ? cn(ETAPAS[e].bg, ETAPAS[e].cor, ETAPAS[e].border, "ring-2 ring-offset-1", ETAPAS[e].border) : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100")}>
+                    {ETAPAS[e].label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => abrirModal(cardAberto)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                <Pencil className="h-4 w-4" /> Editar
+              </button>
             </div>
           </div>
 
-          {/* Etapa rápida */}
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+          {/* Etapas em mobile */}
+          <div className="md:hidden px-4 py-2 border-b border-gray-100 flex items-center gap-1.5 flex-wrap bg-white flex-shrink-0">
             {ETAPA_ORDER.map(e => (
               <button key={e} onClick={() => mudarEtapa(cardAberto, e)}
-                className={cn("rounded-full px-2.5 py-1 text-xs font-medium border transition-all", cardAberto.etapa === e ? cn(ETAPAS[e].bg, ETAPAS[e].cor, ETAPAS[e].border, "ring-2 ring-offset-1", ETAPAS[e].border) : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100")}>
+                className={cn("rounded-full px-2.5 py-1 text-xs font-medium border transition-all", cardAberto.etapa === e ? cn(ETAPAS[e].bg, ETAPAS[e].cor, ETAPAS[e].border) : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100")}>
                 {ETAPAS[e].label}
               </button>
             ))}
           </div>
 
-          {/* Dados resumidos */}
-          <div className="px-5 py-3 border-b border-gray-100 grid grid-cols-2 gap-2 text-sm">
-            {cardAberto.telefone && <div className="flex items-center gap-2 text-gray-600"><Phone className="h-4 w-4 text-gray-300 flex-shrink-0" /><span className="truncate">{cardAberto.telefone}</span></div>}
-            {cardAberto.email && <div className="flex items-center gap-2 text-gray-600"><Mail className="h-4 w-4 text-gray-300 flex-shrink-0" /><span className="truncate">{cardAberto.email}</span></div>}
-            {cardAberto.valor_estimado && (
-              <div className="flex items-center gap-2 text-gray-600"><FileText className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                <span className="font-semibold text-[#1a6b2f]">{cardAberto.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-              </div>
-            )}
-            {cardAberto.prazo && (
-              <div className={cn("flex items-center gap-2", cardAberto.prazo < hoje ? "text-red-500" : "text-gray-600")}>
-                <Calendar className="h-4 w-4 flex-shrink-0 text-gray-300" />
-                {new Date(cardAberto.prazo + "T00:00:00").toLocaleDateString("pt-BR")}
-              </div>
-            )}
-          </div>
+          {/* Corpo: layout 2 colunas em desktop */}
+          <div className="flex flex-1 min-h-0 overflow-hidden">
 
-          {(cardAberto.endereco_fiscal || cardAberto.endereco_atendimento) && (
-            <div className="px-5 py-3 border-b border-gray-100 space-y-2">
-              {cardAberto.endereco_fiscal && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Endereço Fiscal</p>
-                  <p className="flex items-start gap-1.5 text-sm text-gray-600"><MapPin className="h-3.5 w-3.5 text-gray-300 mt-0.5 flex-shrink-0" />{cardAberto.endereco_fiscal}</p>
-                </div>
-              )}
-              {cardAberto.endereco_atendimento && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Endereço de Atendimento</p>
-                  <p className="flex items-start gap-1.5 text-sm text-gray-600"><Navigation className="h-3.5 w-3.5 text-[#1a6b2f] mt-0.5 flex-shrink-0" />{cardAberto.endereco_atendimento}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {cardAberto.observacoes && (
-            <div className="px-5 py-3 border-b border-gray-100">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Observações</p>
-              <p className="text-sm text-gray-600 whitespace-pre-wrap">{cardAberto.observacoes}</p>
-            </div>
-          )}
-
-          {/* Abas Histórico / Orçamento */}
-          <div className="flex border-b border-gray-100">
-            <button onClick={() => setAbaCard("historico")}
-              className={cn("flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors",
-                abaCard === "historico" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-600")}>
-              <MessageSquare className="h-3.5 w-3.5" /> Histórico
-            </button>
-            <button onClick={() => setAbaCard("orcamento")}
-              className={cn("flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors",
-                abaCard === "orcamento" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-600")}>
-              <Calculator className="h-3.5 w-3.5" /> Orçamento
-            </button>
-          </div>
-
-          {/* Conteúdo da aba */}
-          {abaCard === "historico" && (
-            <div className="flex flex-col flex-1 min-h-0">
-              <div ref={conversaRef} className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
-                {conversas.length === 0 ? (
-                  <p className="text-center text-xs text-gray-300 py-4">Nenhuma conversa registrada</p>
-                ) : conversas.map(c => (
-                  <div key={c.id} className="rounded-xl bg-gray-50 px-3.5 py-2.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-gray-700">{c.autor}</span>
-                      <span className="text-xs text-gray-400">{new Date(c.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-                    </div>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.texto}</p>
+            {/* Coluna esquerda — info do lead */}
+            <div className="w-72 flex-shrink-0 border-r border-gray-100 overflow-y-auto bg-gray-50/40">
+              {/* Dados de contato */}
+              <div className="px-5 py-4 border-b border-gray-100 space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Contato</p>
+                {cardAberto.telefone && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Phone className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                    <span>{cardAberto.telefone}</span>
                   </div>
-                ))}
+                )}
+                {cardAberto.email && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Mail className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                    <span className="break-all">{cardAberto.email}</span>
+                  </div>
+                )}
+                {cardAberto.valor_estimado && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <FileText className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                    <span className="font-semibold text-[#1a6b2f]">
+                      {cardAberto.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                  </div>
+                )}
+                {cardAberto.prazo && (
+                  <div className={cn("flex items-center gap-2 text-sm", cardAberto.prazo < hoje ? "text-red-500" : "text-gray-600")}>
+                    <Calendar className="h-4 w-4 flex-shrink-0 text-gray-300" />
+                    <span>{cardAberto.prazo < hoje && "⚠ "}{new Date(cardAberto.prazo + "T00:00:00").toLocaleDateString("pt-BR")}</span>
+                  </div>
+                )}
               </div>
-              <div className="p-4 border-t border-gray-100 flex gap-2">
-                <textarea rows={2} value={novaMsg} onChange={e => setNovaMsg(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensagem(); }}}
-                  placeholder="Registrar interação…"
-                  className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
-                <button onClick={enviarMensagem} disabled={enviando || !novaMsg.trim()}
-                  className="flex items-center justify-center rounded-lg bg-[#1a6b2f] px-3 text-white hover:bg-[#155824] disabled:opacity-40">
-                  {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+
+              {/* Endereços */}
+              {(cardAberto.endereco_fiscal || cardAberto.endereco_atendimento) && (
+                <div className="px-5 py-4 border-b border-gray-100 space-y-3">
+                  {cardAberto.endereco_fiscal && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Endereço Fiscal</p>
+                      <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                        <MapPin className="h-3.5 w-3.5 text-gray-300 mt-0.5 flex-shrink-0" />{cardAberto.endereco_fiscal}
+                      </p>
+                    </div>
+                  )}
+                  {cardAberto.endereco_atendimento && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Endereço de Atendimento</p>
+                      <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                        <Navigation className="h-3.5 w-3.5 text-[#1a6b2f] mt-0.5 flex-shrink-0" />{cardAberto.endereco_atendimento}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Observações */}
+              {cardAberto.observacoes && (
+                <div className="px-5 py-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Observações</p>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{cardAberto.observacoes}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Coluna direita — abas */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
+              {/* Abas */}
+              <div className="flex border-b border-gray-100 bg-white flex-shrink-0">
+                <button onClick={() => setAbaCard("historico")}
+                  className={cn("flex items-center gap-1.5 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                    abaCard === "historico" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-600")}>
+                  <MessageSquare className="h-4 w-4" /> Histórico
+                </button>
+                <button onClick={() => setAbaCard("orcamento")}
+                  className={cn("flex items-center gap-1.5 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                    abaCard === "orcamento" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-600")}>
+                  <Calculator className="h-4 w-4" /> Orçamento
                 </button>
               </div>
-            </div>
-          )}
 
-          {abaCard === "orcamento" && (
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} />
+              {/* Conteúdo da aba */}
+              {abaCard === "historico" && (
+                <div className="flex flex-col flex-1 min-h-0">
+                  <div ref={conversaRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
+                    {conversas.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-gray-300">
+                        <MessageSquare className="h-8 w-8 mb-2 opacity-40" />
+                        <p className="text-sm">Nenhuma conversa registrada</p>
+                      </div>
+                    ) : conversas.map(c => (
+                      <div key={c.id} className="rounded-xl bg-gray-50 px-4 py-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-gray-700">{c.autor}</span>
+                          <span className="text-xs text-gray-400">{new Date(c.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.texto}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-5 border-t border-gray-100 flex gap-3">
+                    <textarea rows={2} value={novaMsg} onChange={e => setNovaMsg(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensagem(); }}}
+                      placeholder="Registrar interação…"
+                      className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+                    <button onClick={enviarMensagem} disabled={enviando || !novaMsg.trim()}
+                      className="flex items-center justify-center rounded-lg bg-[#1a6b2f] px-4 text-white hover:bg-[#155824] disabled:opacity-40">
+                      {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {abaCard === "orcamento" && (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} />
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
