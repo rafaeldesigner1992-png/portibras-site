@@ -918,44 +918,44 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
 
       const docDef = {
         pageSize: "A4",
-        pageMargins: [48, 48, 48, 48],
-        defaultStyle: { font: "Roboto", fontSize: 10, color: "#1f2937" },
+        pageMargins: [36, 28, 36, 28],
+        defaultStyle: { font: "Roboto", fontSize: 9, color: "#1f2937" },
         content: [
           // Cabeçalho — logo + dados lead
           {
             columns: [
               {
                 stack: [
-                  { text: "PORTIBRAS", fontSize: 26, bold: true, color: "#1f2937", characterSpacing: 1 },
-                  { text: "SOLUÇÕES EM PORTAS CORTA-FOGO · NBR 11.742", fontSize: 7, color: cinza, characterSpacing: 0.5, margin: [0, 2, 0, 0] },
+                  { text: "PORTIBRAS", fontSize: 20, bold: true, color: "#1f2937", characterSpacing: 1 },
+                  { text: "SOLUÇÕES EM PORTAS CORTA-FOGO · NBR 11.742", fontSize: 6.5, color: cinza, characterSpacing: 0.5, margin: [0, 2, 0, 0] },
                 ],
               },
               {
                 stack: [
-                  { text: `Para: ${lead.empresa || lead.nome || "—"}`, fontSize: 9, bold: true, alignment: "right", color: "#1f2937" },
-                  { text: `Responsável: ${lead.nome || "—"}`, fontSize: 9, color: "#1f2937", alignment: "right" },
-                  { text: `Data: ${data}`, fontSize: 9, color: "#1f2937", alignment: "right" },
-                  { text: `Proposta nº ${numProposta.current}`, fontSize: 9, bold: true, color: laranja, alignment: "right", margin: [0, 2, 0, 0] },
+                  { text: `Para: ${lead.empresa || lead.nome || "—"}`, fontSize: 8, bold: true, alignment: "right", color: "#1f2937" },
+                  { text: `Responsável: ${lead.nome || "—"}`, fontSize: 8, color: "#1f2937", alignment: "right" },
+                  { text: `Data: ${data}`, fontSize: 8, color: "#1f2937", alignment: "right" },
+                  { text: `Proposta nº ${numProposta.current}`, fontSize: 8, bold: true, color: laranja, alignment: "right", margin: [0, 2, 0, 0] },
                 ],
               },
             ],
           },
-          { canvas: [{ type: "line", x1: 0, y1: 6, x2: 499, y2: 6, lineWidth: 1.5, lineColor: "#e5e7eb" }], margin: [0, 8, 0, 14] },
+          { canvas: [{ type: "line", x1: 0, y1: 4, x2: 523, y2: 4, lineWidth: 1.5, lineColor: "#e5e7eb" }], margin: [0, 6, 0, 10] },
 
           // A SITUAÇÃO ATUAL
-          { text: "A SITUAÇÃO ATUAL", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 6] },
+          { text: "A SITUAÇÃO ATUAL", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 4] },
           {
             text: "Portas corta-fogo são equipamentos críticos de segurança, exigidos pela NBR 11.742:2018 e fiscalizados pelo Corpo de Bombeiros. Sem manutenção preventiva, elas degradam silenciosamente — e podem falhar quando mais importam.",
-            fontSize: 9, color: "#374151", lineHeight: 1.5, margin: [0, 0, 0, 8],
+            fontSize: 8.5, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 5],
           },
           {
             text: "Manutenção corretiva parece econômica, mas soma rápido: custo de visita emergencial, peças fora de programa e porta inoperante. Sem laudo DTS atualizado, o condomínio fica exposto a multas e responsabilidade civil.",
-            fontSize: 9, color: "#374151", lineHeight: 1.5, margin: [0, 0, 0, 14],
+            fontSize: 8.5, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 10],
           },
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 14] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
 
           // NOSSA PROPOSTA
-          { text: "NOSSA PROPOSTA", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 6] },
+          { text: "NOSSA PROPOSTA", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 4] },
           {
             text: [
               { text: "Plano de Manutenção Preventiva Parcelado em 12× ", bold: true },
@@ -963,12 +963,12 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
               { text: "2 roteiros completos de manutenção por ano", bold: true },
               { text: " (a cada 6 meses), com laudo técnico DTS incluído em cada visita." },
             ],
-            fontSize: 9, color: "#374151", lineHeight: 1.5, margin: [0, 0, 0, 14],
+            fontSize: 8.5, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 10],
           },
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 14] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
 
           // O QUE ESTÁ INCLUÍDO
-          { text: "O QUE ESTÁ INCLUÍDO", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 6] },
+          { text: "O QUE ESTÁ INCLUÍDO", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 4] },
           {
             ul: [
               `2 roteiros completos de manutenção/ano (a cada 6 meses) nas ${portas} portas`,
@@ -978,7 +978,7 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
               "Atendimento prioritário em emergências — incluído no plano",
               "Conformidade plena com a NBR 11.742:2018",
             ],
-            fontSize: 9, color: "#374151", lineHeight: 1.6, margin: [0, 0, 0, 16],
+            fontSize: 8.5, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 10],
           },
 
           // Box 12 PARCELAS
@@ -988,21 +988,21 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
               body: [[
                 {
                   stack: [
-                    { text: "12 PARCELAS MENSAIS DE", fontSize: 8, bold: true, color: laranja, alignment: "center", characterSpacing: 1, margin: [0, 0, 0, 4] },
-                    { text: fmtBRL(parcela), fontSize: 32, bold: true, color: laranja, alignment: "center" },
-                    { text: `${portas} portas · ${fmtBRL(porPorta)}/porta/mês · ${fmtBRL(porDia)}/dia total`, fontSize: 8, color: cinza, alignment: "center", margin: [0, 4, 0, 0] },
+                    { text: "12 PARCELAS MENSAIS DE", fontSize: 7.5, bold: true, color: laranja, alignment: "center", characterSpacing: 1, margin: [0, 0, 0, 3] },
+                    { text: fmtBRL(parcela), fontSize: 26, bold: true, color: laranja, alignment: "center" },
+                    { text: `${portas} portas · ${fmtBRL(porPorta)}/porta/mês · ${fmtBRL(porDia)}/dia total`, fontSize: 7.5, color: cinza, alignment: "center", margin: [0, 3, 0, 0] },
                   ],
                   border: [true, true, true, true],
                   borderColor: [laranja, laranja, laranja, laranja],
-                  margin: [16, 14, 16, 14],
+                  margin: [16, 10, 16, 10],
                 },
               ]],
             },
-            margin: [0, 0, 0, 16],
+            margin: [0, 0, 0, 10],
           },
 
           // COMPARATIVO
-          { text: "COMPARATIVO", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 6] },
+          { text: "COMPARATIVO", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 4] },
           {
             table: {
               widths: ["*", "auto", "auto"],
@@ -1010,71 +1010,72 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
               body: [
                 [
                   { text: "", border: [false, false, false, true] },
-                  { text: "Sem Plano", bold: true, color: cinza, fontSize: 8, alignment: "right", border: [false, false, false, true] },
-                  { text: "Com PORTIBRAS", bold: true, color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, true] },
+                  { text: "Sem Plano", bold: true, color: cinza, fontSize: 7.5, alignment: "right", border: [false, false, false, true] },
+                  { text: "Com PORTIBRAS", bold: true, color: laranja, fontSize: 7.5, alignment: "right", border: [false, false, false, true] },
                 ],
                 [
-                  { text: "Custo mensal", fontSize: 9, border: [false, false, false, false] },
-                  { text: "R$ 0*", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
-                  { text: fmtBRL(parcela), color: laranja, bold: true, fontSize: 9, alignment: "right", border: [false, false, false, false] },
+                  { text: "Custo mensal", fontSize: 8.5, border: [false, false, false, false] },
+                  { text: "R$ 0*", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
+                  { text: fmtBRL(parcela), color: laranja, bold: true, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
                 ],
                 [
-                  { text: "Visita emergencial", fontSize: 9, border: [false, false, false, false] },
-                  { text: `${fmtBRL(custoCorretivo)}+`, color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
-                  { text: "Incluída", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
+                  { text: "Visita emergencial", fontSize: 8.5, border: [false, false, false, false] },
+                  { text: `${fmtBRL(custoCorretivo)}+`, color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
+                  { text: "Incluída", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
                 ],
                 [
-                  { text: "Laudo técnico DTS", fontSize: 9, border: [false, false, false, false] },
-                  { text: "Separado", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
-                  { text: "Incluído", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
+                  { text: "Laudo técnico DTS", fontSize: 8.5, border: [false, false, false, false] },
+                  { text: "Separado", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
+                  { text: "Incluído", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
                 ],
                 [
-                  { text: "Conformidade NBR", fontSize: 9, border: [false, false, false, false] },
-                  { text: "Risco", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
-                  { text: "Garantida", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
+                  { text: "Conformidade NBR", fontSize: 8.5, border: [false, false, false, false] },
+                  { text: "Risco", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
+                  { text: "Garantida", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
                 ],
                 [
-                  { text: "Previsibilidade", fontSize: 9, border: [false, false, false, false] },
-                  { text: "Não", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
-                  { text: "Sim", color: laranja, fontSize: 9, alignment: "right", border: [false, false, false, false] },
+                  { text: "Previsibilidade", fontSize: 8.5, border: [false, false, false, false] },
+                  { text: "Não", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
+                  { text: "Sim", color: laranja, fontSize: 8.5, alignment: "right", border: [false, false, false, false] },
                 ],
               ],
             },
             layout: { hLineColor: "#e5e7eb", vLineColor: "#ffffff", hLineWidth: () => 0.5 },
-            margin: [0, 0, 0, 4],
+            margin: [0, 0, 0, 3],
           },
-          { text: `* Até a primeira emergência — custo estimado de ${fmtBRL(corrAnual)}/ano sem plano`, fontSize: 7, color: cinza, margin: [0, 2, 0, 14] },
+          { text: `* Até a primeira emergência — custo estimado de ${fmtBRL(corrAnual)}/ano sem plano`, fontSize: 6.5, color: cinza, margin: [0, 2, 0, 10] },
 
           // Bloco economia
           ...(economia > 0 ? [{
             columns: [
               {
                 stack: [
-                  { text: "ECONOMIA ESTIMADA/MÊS", fontSize: 7, bold: true, color: verde, characterSpacing: 0.5 },
-                  { text: fmtBRL(economia), fontSize: 20, bold: true, color: verde, margin: [0, 2, 0, 0] },
+                  { text: "ECONOMIA ESTIMADA/MÊS", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
+                  { text: fmtBRL(economia), fontSize: 17, bold: true, color: verde, margin: [0, 2, 0, 0] },
                 ],
-                margin: [12, 10, 12, 10],
+                margin: [10, 7, 10, 7],
               },
               {
                 stack: [
-                  { text: "ECONOMIA ESTIMADA/ANO", fontSize: 7, bold: true, color: verde, characterSpacing: 0.5 },
-                  { text: fmtBRL(economiaAnual), fontSize: 20, bold: true, color: verde, margin: [0, 2, 0, 0] },
+                  { text: "ECONOMIA ESTIMADA/ANO", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
+                  { text: fmtBRL(economiaAnual), fontSize: 17, bold: true, color: verde, margin: [0, 2, 0, 0] },
                 ],
-                margin: [12, 10, 12, 10],
+                margin: [10, 7, 10, 7],
               },
             ],
-            margin: [0, 0, 0, 16],
+            margin: [0, 0, 0, 10],
           }] : []),
 
           // PRÓXIMO PASSO
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 12] },
-          { text: "PRÓXIMO PASSO", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 6] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 8] },
+          { text: "PRÓXIMO PASSO", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 4] },
           {
             text: "Entre em contato e receba uma proposta detalhada sem compromisso. Nossa equipe apresenta o plano completo, confirma os valores e responde todas as dúvidas — por telefone, WhatsApp ou e-mail.",
-            fontSize: 9, color: "#374151", lineHeight: 1.5, margin: [0, 0, 0, 20],
+            fontSize: 8.5, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 10],
           },
 
           // Rodapé
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 6] },
           {
             stack: [
               { text: "PORTIBRAS", fontSize: 8, bold: true, color: "#1f2937" },
