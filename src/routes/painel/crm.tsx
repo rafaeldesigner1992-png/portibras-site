@@ -3137,19 +3137,14 @@ function CrmPage() {
             const totalOrc = leads_etapa.filter(l => l.tipo_negocio === "orcamento").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
             const totalMan = leads_etapa.filter(l => l.tipo_negocio === "manutencao").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
             const totalGeral = leads_etapa.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
-            const temSeparacao = totalOrc > 0 && totalMan > 0;
+            const fmtC = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
             return (
               <button key={e} onClick={() => setFiltroEtapa(filtroEtapa === e ? "todas" : e)}
                 className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-opacity", ETAPAS[e].bg, ETAPAS[e].cor, filtroEtapa !== "todas" && filtroEtapa !== e && "opacity-40")}>
                 {ETAPAS[e].label} <span className="font-bold">({leads_etapa.length})</span>
-                {temSeparacao ? (
-                  <span className="opacity-80">
-                    · ORC {totalOrc.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    {" · "}MAN {totalMan.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                ) : totalGeral > 0 ? (
-                  <span className="opacity-80">· {totalGeral.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                ) : null}
+                {totalGeral > 0 && <span className="opacity-80">· {fmtC(totalGeral)}</span>}
+                {totalOrc > 0 && <span className="opacity-60">· ORC {fmtC(totalOrc)}</span>}
+                {totalMan > 0 && <span className="opacity-60">· 12× {fmtC(totalMan)}</span>}
               </button>
             );
           })}
@@ -3232,7 +3227,7 @@ function CrmPage() {
               const totalOrcK = cards.filter(l => l.tipo_negocio === "orcamento").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
               const totalManK = cards.filter(l => l.tipo_negocio === "manutencao").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
               const totalGeralK = cards.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
-              const temSepK = totalOrcK > 0 && totalManK > 0;
+              const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
               return (
                 <div key={etapa} className="flex-shrink-0 w-64">
                   <div className={cn("mb-3 rounded-lg px-3 py-2", cfg.bg)}>
@@ -3240,18 +3235,25 @@ function CrmPage() {
                       <span className={cn("text-xs font-semibold uppercase tracking-wide", cfg.cor)}>{cfg.label}</span>
                       <span className={cn("text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center", cfg.cor, "bg-white/60")}>{cards.length}</span>
                     </div>
-                    {temSepK ? (
+                    {totalGeralK > 0 && (
                       <div className="space-y-0.5">
-                        <p className={cn("text-xs font-semibold", cfg.cor)}>
-                          <span className="opacity-60">ORC </span>{totalOrcK.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </p>
-                        <p className={cn("text-xs font-semibold", cfg.cor)}>
-                          <span className="opacity-60">12× </span>{totalManK.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </p>
+                        <p className={cn("text-xs font-bold", cfg.cor)}>{fmt(totalGeralK)}</p>
+                        {(totalOrcK > 0 || totalManK > 0) && (
+                          <div className="flex gap-2 flex-wrap">
+                            {totalOrcK > 0 && (
+                              <span className={cn("text-[10px] font-semibold", cfg.cor)}>
+                                <span className="opacity-50">ORC </span>{fmt(totalOrcK)}
+                              </span>
+                            )}
+                            {totalManK > 0 && (
+                              <span className={cn("text-[10px] font-semibold", cfg.cor)}>
+                                <span className="opacity-50">12× </span>{fmt(totalManK)}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ) : totalGeralK > 0 ? (
-                      <p className={cn("text-xs font-bold", cfg.cor)}>{totalGeralK.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                    ) : null}
+                    )}
                   </div>
                   <div className="flex flex-col gap-2">
                     {cards.map(lead => {
