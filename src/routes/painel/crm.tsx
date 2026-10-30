@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
-  Loader2, Send, Pencil, Trash2
+  Loader2, Send, Pencil, Trash2, MapPin, Navigation
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +25,8 @@ interface Lead {
   valor_estimado: number | null;
   observacoes: string;
   prazo: string | null;
+  endereco_fiscal: string;
+  endereco_atendimento: string;
   criado_em: string;
 }
 
@@ -108,7 +110,7 @@ function CrmPage() {
       setForm({ ...lead });
     } else {
       setSelecionado(null);
-      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, observacoes: "", prazo: null });
+      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "" });
     }
     setErroCNPJ("");
     setModal(true);
@@ -123,11 +125,23 @@ function CrmPage() {
       const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
       if (!res.ok) throw new Error("não encontrado");
       const d = await res.json();
+      // Monta endereço fiscal completo
+      const partes = [
+        d.logradouro && d.numero ? `${d.logradouro}, ${d.numero}` : d.logradouro,
+        d.complemento,
+        d.bairro,
+        d.municipio && d.uf ? `${d.municipio} - ${d.uf}` : d.municipio,
+        d.cep ? d.cep.replace(/^(\d{5})(\d{3})$/, "$1-$2") : null,
+      ].filter(Boolean);
+      const enderecoFiscal = partes.join(", ");
       setForm(f => ({
         ...f,
         empresa: d.razao_social || f.empresa,
         email: d.email || f.email,
-        telefone: d.ddd_telefone_1 ? d.ddd_telefone_1.replace(/\D/g, "").replace(/(\d{2})(\d{4,5})(\d{4})/, "($1) $2-$3") : f.telefone,
+        telefone: d.ddd_telefone_1
+          ? d.ddd_telefone_1.replace(/\D/g, "").replace(/(\d{2})(\d{4,5})(\d{4})/, "($1) $2-$3")
+          : f.telefone,
+        endereco_fiscal: enderecoFiscal || f.endereco_fiscal,
       }));
     } catch {
       setErroCNPJ("CNPJ não encontrado na Receita Federal.");
@@ -413,6 +427,29 @@ function CrmPage() {
             )}
           </div>
 
+          {(cardAberto.endereco_fiscal || cardAberto.endereco_atendimento) && (
+            <div className="px-5 py-3 border-b border-gray-100 space-y-2">
+              {cardAberto.endereco_fiscal && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Endereço Fiscal</p>
+                  <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                    <MapPin className="h-3.5 w-3.5 text-gray-300 mt-0.5 flex-shrink-0" />
+                    {cardAberto.endereco_fiscal}
+                  </p>
+                </div>
+              )}
+              {cardAberto.endereco_atendimento && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Endereço de Atendimento</p>
+                  <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                    <Navigation className="h-3.5 w-3.5 text-[#1a6b2f] mt-0.5 flex-shrink-0" />
+                    {cardAberto.endereco_atendimento}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {cardAberto.observacoes && (
             <div className="px-5 py-3 border-b border-gray-100">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Observações</p>
@@ -523,6 +560,27 @@ function CrmPage() {
                 <input type="number" value={form.valor_estimado ?? ""}
                   onChange={e => setForm({ ...form, valor_estimado: e.target.value ? Number(e.target.value) : null })}
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-gray-400" /> Endereço Fiscal</span>
+                  <span className="text-xs font-normal text-gray-400 ml-5">Preenchido automaticamente pelo CNPJ</span>
+                </label>
+                <input type="text" value={form.endereco_fiscal ?? ""}
+                  onChange={e => setForm({ ...form, endereco_fiscal: e.target.value })}
+                  placeholder="Rua, Nº, Bairro, Cidade - UF, CEP"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  <span className="flex items-center gap-1.5"><Navigation className="h-3.5 w-3.5 text-[#1a6b2f]" /> Endereço de Atendimento / Entrega</span>
+                </label>
+                <input type="text" value={form.endereco_atendimento ?? ""}
+                  onChange={e => setForm({ ...form, endereco_atendimento: e.target.value })}
+                  placeholder="Local onde será feito o serviço ou entrega"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
               </div>
 
               <div>
