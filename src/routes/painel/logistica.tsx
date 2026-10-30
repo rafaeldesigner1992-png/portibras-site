@@ -215,7 +215,6 @@ function LogisticaPage() {
     if (aba === "atendimentos") carregarAtendimentos();
     if (aba === "compras") { carregarAtendimentos(); carregarMateriais(); }
     if (aba === "estoque") carregarEstoque();
-    if (aba === "suprimentos" || aba === "equipe") { carregarSuprimentos(); carregarProfissionais(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aba]);
 
@@ -321,8 +320,6 @@ function LogisticaPage() {
     await supabase.from("atendimentos_materiais").delete().eq("id", id);
     await carregarMateriais();
   }
-
-  useEffect(() => { carregarEstoque(); }, []);
 
   async function carregarEstoque() {
     setCarregandoEstoque(true);
