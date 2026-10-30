@@ -364,7 +364,9 @@ function PainelDetalhe({ cliente, onClose, onEdit }: {
     setCriandoLead(true);
     try {
       const endereco = [cliente.endereco, cliente.bairro, cliente.cidade && cliente.uf ? `${cliente.cidade} - ${cliente.uf}` : cliente.cidade, cliente.cep].filter(Boolean).join(", ");
-      await supabase.from("crm_leads").insert({
+
+      // Primeiro insert sem cliente_id (caso a coluna ainda não exista no banco)
+      const { data: novoLead, error } = await supabase.from("crm_leads").insert({
         nome: cliente.sindico || cliente.nome,
         empresa: cliente.nome,
         cnpj: cliente.cnpj?.replace(/\D/g, "") || "",
@@ -374,11 +376,22 @@ function PainelDetalhe({ cliente, onClose, onEdit }: {
         endereco_fiscal: endereco,
         endereco_atendimento: endereco,
         observacoes: "",
-        cliente_id: cliente.id,
-      });
+      }).select("id").single();
+
+      if (error) {
+        alert(`Erro ao criar card: ${error.message}`);
+        return;
+      }
+
+      // Tenta vincular cliente_id se a coluna existir
+      if (novoLead?.id) {
+        await supabase.from("crm_leads").update({ cliente_id: cliente.id }).eq("id", novoLead.id);
+      }
+
       navigate({ to: "/painel/crm" });
     } catch (e) {
       console.error("Erro ao criar lead:", e);
+      alert("Erro inesperado ao criar card.");
     } finally {
       setCriandoLead(false);
     }

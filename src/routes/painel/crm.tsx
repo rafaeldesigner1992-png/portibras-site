@@ -3025,13 +3025,28 @@ function CrmPage() {
 
   async function salvar() {
     if (!form.nome?.trim()) return;
+    const clienteId = form.cliente_id || null;
     const payload = {
-      ...form,
+      nome: form.nome,
+      empresa: form.empresa,
       cnpj: form.cnpj?.replace(/\D/g, "") || "",
-      cliente_id: form.cliente_id || null,
+      telefone: form.telefone,
+      email: form.email,
+      etapa: form.etapa,
+      valor_estimado: form.valor_estimado,
+      observacoes: form.observacoes,
+      prazo: form.prazo,
+      endereco_fiscal: form.endereco_fiscal,
+      endereco_atendimento: form.endereco_atendimento,
     };
-    if (selecionado) await supabase.from("crm_leads").update(payload).eq("id", selecionado.id);
-    else await supabase.from("crm_leads").insert(payload);
+    if (selecionado) {
+      await supabase.from("crm_leads").update({ ...payload, cliente_id: clienteId }).eq("id", selecionado.id);
+    } else {
+      const { data: novo } = await supabase.from("crm_leads").insert(payload).select("id").single();
+      if (novo?.id && clienteId) {
+        await supabase.from("crm_leads").update({ cliente_id: clienteId }).eq("id", novo.id);
+      }
+    }
     setModal(false);
     carregar();
   }
