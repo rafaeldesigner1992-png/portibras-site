@@ -551,6 +551,322 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   );
 }
 
+// ─── Orçamento de Contrato de Manutenção 12x ─────────────────────────────────
+function OrcamentoManutencao({ lead }: { lead: Lead }) {
+  const [portas, setPortas] = useState(20);
+  const [parcela, setParcela] = useState(300);
+  const [custoCorretivo, setCustoCorretivo] = useState(280);
+  const [frequencia, setFrequencia] = useState(1.5);
+  const [mostrarConfig, setMostrarConfig] = useState(false);
+  const [copiado, setCopiado] = useState<"texto" | "zap" | null>(null);
+
+  // Cálculos
+  const corrAnual = portas * custoCorretivo * frequencia;
+  const corrMensal = corrAnual / 12;
+  const economia = corrMensal - parcela;
+  const economiaAnual = economia * 12;
+  const porPorta = portas > 0 ? parcela / portas : 0;
+  const porDia = porPorta / 30;
+
+  const margemSemaforo =
+    economia > 0 ? "verde" : economia > -parcela * 0.2 ? "amarelo" : "vermelho";
+
+  function fmtBRL(v: number) {
+    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+
+  function copiar(texto: string, tipo: "texto" | "zap") {
+    navigator.clipboard.writeText(texto).catch(() => {
+      const ta = document.createElement("textarea");
+      ta.value = texto;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    });
+    setCopiado(tipo);
+    setTimeout(() => setCopiado(null), 2500);
+  }
+
+  function buildTexto(whatsapp: boolean) {
+    const hr = whatsapp ? "━━━━━━━━━━━━━━━━━━━━━━━━" : "────────────────────────────────";
+    const b = (s: string) => whatsapp ? `*${s}*` : s;
+    const i = (s: string) => whatsapp ? `_${s}_` : s;
+    const lines = [
+      b("🔥 PORTIBRAS – PROPOSTA DE MANUTENÇÃO"),
+      i("Portas Corta-Fogo | NBR 11.742:2018"),
+      hr,
+      `Para: ${b(lead.empresa || lead.nome)}`,
+      `Responsável: ${b(lead.nome)}`,
+      lead.endereco_fiscal ? `Endereço: ${lead.endereco_fiscal}` : "",
+      `Data: ${new Date().toLocaleDateString("pt-BR")}`,
+      hr,
+      "",
+      b("⚠️ A SITUAÇÃO ATUAL"),
+      "",
+      "Portas corta-fogo sem manutenção regular representam risco de segurança, não conformidade com a NBR 11.742:2018 e exposição a autuações do Corpo de Bombeiros. Manutenção corretiva acumula: custo de visita emergencial, peças e porta inoperante.",
+      "",
+      b("✅ NOSSA PROPOSTA"),
+      "",
+      `Plano de Manutenção Preventiva em ${b("12 parcelas mensais")} — 2 roteiros completos/ano (a cada 6 meses) para ${b(String(portas) + " portas")}, com laudo técnico incluído.`,
+      "",
+      b("O que está incluído:"),
+      `✓ 2 roteiros completos de manutenção/ano — ${portas} portas`,
+      "✓ Ajustes de mola, lubrificação e regulagem de batentes",
+      "✓ Laudo técnico DTS em cada roteiro (NBR 11.742:2018)",
+      "✓ Registro fotográfico antes e depois",
+      "✓ Atendimento prioritário em emergências — INCLUÍDO",
+      "",
+      hr,
+      b("💰 INVESTIMENTO"),
+      "",
+      b(`12 parcelas mensais de ${fmtBRL(parcela)}`),
+      `(${portas} portas × ${fmtBRL(porPorta)}/porta/mês — ${fmtBRL(porDia)}/dia total)`,
+      "",
+      b("📊 ECONOMIA ESTIMADA vs. CORRETIVA"),
+      "",
+      `• Custo corretivo estimado: ${fmtBRL(corrMensal)}/mês (${fmtBRL(corrAnual)}/ano)`,
+      `• Com Plano PORTIBRAS: ${fmtBRL(parcela)}/mês`,
+      economia > 0 ? `• ${b("Economia: " + fmtBRL(economia) + "/mês — " + fmtBRL(economiaAnual) + "/ano")}` : "",
+      "",
+      hr,
+      b("📞 PRÓXIMO PASSO"),
+      "",
+      "Entre em contato para proposta detalhada sem compromisso.",
+      "",
+      "📞 (22) 99104-8162",
+      "✉ vendas@portibras.com.br",
+      "",
+      "PORTIBRAS — Soluções em Portas Corta-Fogo",
+    ].filter(Boolean).join("\n");
+    return lines;
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto px-6 py-5 space-y-5">
+      {/* Calculadora */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <p className="text-sm font-semibold text-gray-900 mb-0.5">Simulador de Manutenção 12×</p>
+        <p className="text-xs text-gray-400 mb-4">Defina o número de portas e a parcela mensal para calcular a proposta</p>
+
+        {/* Portas */}
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-600 mb-2">Número de portas</label>
+          <div className="flex items-center gap-3">
+            <span className="text-4xl font-bold text-[#1a6b2f] w-16 tabular-nums">{portas}</span>
+            <div className="flex-1">
+              <input
+                type="range" min={1} max={200} value={portas}
+                onChange={e => setPortas(Number(e.target.value))}
+                className="w-full accent-[#1a6b2f]"
+              />
+              <input
+                type="number" min={1} max={999} value={portas}
+                onChange={e => setPortas(Math.max(1, Number(e.target.value)))}
+                className="mt-1 w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Parcela */}
+        <div className="rounded-lg border-2 border-[#1a6b2f] bg-green-50/60 p-4 mb-4">
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#1a6b2f] mb-2">Parcela mensal desejada</label>
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold text-[#1a6b2f]">R$</span>
+            <input
+              type="number" min={1} step={10} value={parcela}
+              onChange={e => setParcela(Math.max(1, Number(e.target.value)))}
+              className="w-36 rounded-lg border-2 border-[#1a6b2f] bg-white px-3 py-2 text-2xl font-bold text-[#1a6b2f] text-center outline-none focus:ring-2 focus:ring-[#1a6b2f]/30"
+            />
+            <span className="text-xs text-gray-400">= <strong className="text-gray-700">{fmtBRL(porPorta)}</strong>/porta</span>
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="rounded-lg bg-green-50 border border-green-100 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#1a6b2f] mb-1">Parcela mensal</p>
+            <p className="text-lg font-bold text-[#1a6b2f]">{fmtBRL(parcela)}</p>
+            <p className="text-[10px] text-gray-400">12× mensais</p>
+          </div>
+          <div className={cn("rounded-lg border p-3", economia > 0 ? "bg-green-50 border-green-100" : "bg-red-50 border-red-100")}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Economia/mês</p>
+            <p className={cn("text-lg font-bold", economia > 0 ? "text-green-600" : "text-red-500")}>
+              {economia > 0 ? fmtBRL(economia) : "—"}
+            </p>
+            <p className="text-[10px] text-gray-400">vs. corretiva</p>
+          </div>
+          <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Economia/ano</p>
+            <p className="text-lg font-bold text-gray-700">{economiaAnual > 0 ? fmtBRL(economiaAnual) : "—"}</p>
+            <p className="text-[10px] text-gray-400">período total</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-400 mb-3">
+          Custo diário: <strong className="text-gray-700">{fmtBRL(porDia)}/porta/dia</strong>
+        </p>
+
+        {/* Config corretiva */}
+        <button
+          onClick={() => setMostrarConfig(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 mb-3"
+        >
+          <Calculator className="h-3.5 w-3.5" />
+          Ajustar parâmetros da corretiva
+          <ChevronRight className={cn("h-3 w-3 transition-transform", mostrarConfig && "rotate-90")} />
+        </button>
+        {mostrarConfig && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-3 space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Parâmetros de referência</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-700">Custo médio por chamado (R$)</p>
+                <p className="text-[10px] text-gray-400">Valor médio de uma visita corretiva avulsa</p>
+              </div>
+              <input
+                type="number" min={1} value={custoCorretivo}
+                onChange={e => setCustoCorretivo(Math.max(1, Number(e.target.value)))}
+                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-semibold text-right outline-none focus:border-[#1a6b2f]"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-700">Chamados/porta/ano</p>
+                <p className="text-[10px] text-gray-400">Sem manutenção preventiva</p>
+              </div>
+              <input
+                type="number" min={0.1} max={10} step={0.1} value={frequencia}
+                onChange={e => setFrequencia(Math.max(0.1, Number(e.target.value)))}
+                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-semibold text-right outline-none focus:border-[#1a6b2f]"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Aviso NBR */}
+        <div className="rounded-lg bg-amber-50 border-l-4 border-amber-400 p-3 flex gap-2">
+          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-gray-700 leading-relaxed">
+            Sem laudo DTS documentado, o condomínio está em <strong className="text-amber-700">não conformidade com a NBR 11.742:2018</strong> — sujeito a autuação pelo Corpo de Bombeiros. O plano preventivo inclui laudo técnico DTS em cada roteiro.
+          </p>
+        </div>
+      </div>
+
+      {/* Prévia da proposta */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3">Prévia da proposta</p>
+
+        {/* Header */}
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <p className="text-base font-bold tracking-widest">PORTI<span className="text-[#C94500]">BRAS</span></p>
+            <p className="text-[9px] text-gray-400 tracking-wide">PORTAS CORTA-FOGO · NBR 11.742</p>
+          </div>
+          <div className="text-right text-[10px] text-gray-500 leading-relaxed">
+            <div>Para: <strong className="text-gray-800">{lead.empresa || lead.nome || "—"}</strong></div>
+            <div>Responsável: <strong className="text-gray-800">{lead.nome || "—"}</strong></div>
+            <div>Data: <strong className="text-gray-800">{new Date().toLocaleDateString("pt-BR")}</strong></div>
+          </div>
+        </div>
+        <div className="h-0.5 bg-[#C94500] rounded mb-3" />
+
+        <p className="text-[9px] font-bold uppercase tracking-widest text-[#C94500] mb-1">Nossa Proposta</p>
+        <p className="text-xs text-gray-700 mb-3 leading-relaxed">
+          <strong>Plano de Manutenção Preventiva em 12 parcelas mensais</strong> — 2 roteiros completos de manutenção/ano (a cada 6 meses) para{" "}
+          <strong>{portas} portas</strong>, com laudo técnico incluído em cada visita.
+        </p>
+
+        {/* Investimento */}
+        <div className="rounded-lg bg-[#FFF2EC] border-2 border-[#C94500] p-3 text-center mb-3">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-[#C94500] mb-0.5">Investimento — 12 parcelas mensais de</p>
+          <p className="text-2xl font-bold text-[#C94500]">{fmtBRL(parcela)}</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">{portas} portas · {fmtBRL(porPorta)}/porta/mês · {fmtBRL(porPorta / 30)}/porta/dia</p>
+        </div>
+
+        {/* Tabela comparativa */}
+        <div className="overflow-x-auto mb-3">
+          <table className="w-full text-[10.5px] border-collapse">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="text-left px-2 py-1.5 text-gray-500 font-semibold" />
+                <th className="text-left px-2 py-1.5 text-gray-500 font-semibold">Sem Plano</th>
+                <th className="text-left px-2 py-1.5 text-gray-500 font-semibold text-[#1a6b2f]">Com PORTIBRAS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["Custo mensal", "R$ 0*", fmtBRL(parcela)],
+                ["Visita emergencial", fmtBRL(custoCorretivo) + "+", "Incluída ✓"],
+                ["Laudo técnico DTS", "Separado ✗", "Incluído ✓"],
+                ["Conformidade NBR", "Risco ✗", "Garantida ✓"],
+              ].map(([row, sem, com]) => (
+                <tr key={row} className="border-t border-gray-100">
+                  <td className="px-2 py-1.5 text-gray-600">{row}</td>
+                  <td className="px-2 py-1.5 text-red-500">{sem}</td>
+                  <td className="px-2 py-1.5 text-[#1a6b2f] font-semibold">{com}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-[9px] text-gray-400 mt-1">* Até a primeira emergência — custo estimado de {fmtBRL(corrAnual)}/ano sem plano</p>
+        </div>
+
+        {/* Economia */}
+        {economia > 0 && (
+          <div className="rounded-lg bg-green-50 border border-green-100 p-3 flex justify-around mb-3">
+            <div className="text-center">
+              <p className="text-[9px] font-medium text-green-700 mb-0.5">Economia/mês</p>
+              <p className="text-base font-bold text-green-700">{fmtBRL(economia)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[9px] font-medium text-green-700 mb-0.5">Economia/ano</p>
+              <p className="text-base font-bold text-green-700">{fmtBRL(economiaAnual)}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="h-px bg-gray-100 mb-3" />
+        <div className="flex justify-between items-end">
+          <div className="text-[10px] text-gray-500 leading-relaxed">
+            <strong>PORTIBRAS</strong><br />
+            📞 (22) 99104-8162<br />
+            ✉ vendas@portibras.com.br
+          </div>
+          <div className="rounded-md bg-[#C94500] text-white px-3 py-1.5 text-[10px] font-bold">
+            Solicitar Orçamento
+          </div>
+        </div>
+      </div>
+
+      {/* Botões de exportação */}
+      <div className="flex gap-2 flex-wrap pb-2">
+        <button
+          onClick={() => copiar(buildTexto(false), "texto")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-colors",
+            copiado === "texto" ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]"
+          )}
+        >
+          {copiado === "texto" ? <Check className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+          {copiado === "texto" ? "Copiado!" : "Copiar Proposta"}
+        </button>
+        <button
+          onClick={() => copiar(buildTexto(true), "zap")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors",
+            copiado === "zap" ? "border-green-300 bg-green-50 text-green-700" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+          )}
+        >
+          {copiado === "zap" ? <Check className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
+          {copiado === "zap" ? "Copiado!" : "Formato WhatsApp"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 function CrmPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -567,7 +883,7 @@ function CrmPage() {
   const [erroCNPJ, setErroCNPJ] = useState("");
 
   const [cardAberto, setCardAberto] = useState<Lead | null>(null);
-  const [abaCard, setAbaCard] = useState<"historico" | "orcamento">("historico");
+  const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao">("historico");
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [novaMsg, setNovaMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -958,6 +1274,11 @@ function CrmPage() {
                     abaCard === "orcamento" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-600")}>
                   <Calculator className="h-4 w-4" /> Orçamento
                 </button>
+                <button onClick={() => setAbaCard("manutencao")}
+                  className={cn("flex items-center gap-1.5 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                    abaCard === "manutencao" ? "border-[#C94500] text-[#C94500]" : "border-transparent text-gray-400 hover:text-gray-600")}>
+                  <FileText className="h-4 w-4" /> Manutenção 12×
+                </button>
               </div>
 
               {/* Conteúdo da aba */}
@@ -995,6 +1316,12 @@ function CrmPage() {
               {abaCard === "orcamento" && (
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} />
+                </div>
+              )}
+
+              {abaCard === "manutencao" && (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <OrcamentoManutencao lead={cardAberto} />
                 </div>
               )}
             </div>
