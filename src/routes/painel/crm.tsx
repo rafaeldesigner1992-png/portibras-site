@@ -46,6 +46,15 @@ interface Suprimento {
   unidade: string;
   custo_unitario: number;
   tempo_instalacao_min: number;
+  profissionais_ids: string[];
+}
+
+interface Profissional {
+  id: string;
+  nome: string;
+  especialidade: string;
+  custo_diario: number;
+  ativo: boolean;
 }
 
 interface ItemOrcamento {
@@ -106,10 +115,12 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [orcamentoExistente, setOrcamentoExistente] = useState<Orcamento | null>(null);
   const [busca, setBusca] = useState("");
 
-  // Configs globais de margem e custo equipe (carregadas do banco)
+  // Configs globais de margem (carregadas do banco)
   const [margemMin, setMargemMin] = useState(25);
   const [margemIdeal, setMargemIdeal] = useState(45);
-  const [custoEquipeDia, setCustoEquipeDia] = useState(0);
+
+  // Profissionais terceirizados (custo por profissional × diasCampo)
+  const [profissionais, setProfissionais] = useState<Profissional[]>([]);
 
   // ID único para cada ocorrência do item no orçamento (permite múltiplas variações)
   const [proximoId, setProximoId] = useState(1);
@@ -120,18 +131,19 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   useEffect(() => {
     async function init() {
       setCarregando(true);
-      const [{ data: sups }, { data: orc }, { data: cfgs }] = await Promise.all([
-        supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario, tempo_instalacao_min").order("nome"),
+      const [{ data: sups }, { data: orc }, { data: cfgs }, { data: profs }] = await Promise.all([
+        supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario, tempo_instalacao_min, profissionais_ids").order("nome"),
         supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
-        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "custo_diario_equipe"]),
+        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct"]),
+        supabase.from("logistica_profissionais").select("*").eq("ativo", true).order("nome"),
       ]);
       if (sups) setSuprimentos(sups as Suprimento[]);
+      if (profs) setProfissionais(profs as Profissional[]);
       if (cfgs) {
         for (const row of cfgs) {
           if (row.chave === "imposto_padrao_pct") setImpostoPct(Number(row.valor) || 10);
           if (row.chave === "margem_minima_pct") setMargemMin(Number(row.valor) || 25);
           if (row.chave === "margem_ideal_pct") setMargemIdeal(Number(row.valor) || 45);
-          if (row.chave === "custo_diario_equipe") setCustoEquipeDia(Number(row.valor) || 0);
         }
       }
       if (orc && orc.length > 0) {
@@ -226,7 +238,18 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     return acc + (sup?.tempo_instalacao_min ?? 0) * i.quantidade;
   }, 0);
   const diasCampo = totalMinInstalacao > 0 ? Math.ceil(totalMinInstalacao / MIN_DIA) : 0;
-  const custoMO = diasCampo * custoEquipeDia;
+
+  // Custo MO por profissional: coleta todos os IDs únicos de profissionais nos itens do orçamento
+  const profIdsNecessarios = new Set<string>();
+  itens.forEach(i => {
+    const sup = suprimentos.find(s => s.id === i.suprimento_id);
+    (sup?.profissionais_ids ?? []).forEach(pid => profIdsNecessarios.add(pid));
+  });
+  // Custo de cada profissional = custo_diario × diasCampo
+  const custoPorProfissional = profissionais
+    .filter(p => profIdsNecessarios.has(p.id))
+    .map(p => ({ id: p.id, nome: p.nome, especialidade: p.especialidade, custo_diario: p.custo_diario, total: p.custo_diario * diasCampo }));
+  const custoMO = custoPorProfissional.reduce((acc, p) => acc + p.total, 0);
 
   // Cálculos financeiros (MO entra na base de custo)
   const custoMateriais = itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0);
@@ -426,7 +449,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                   </span>
                   <span className="text-blue-500 ml-1">
                     = {diasCampo} {diasCampo === 1 ? "dia" : "dias"} de roteiro
-                    {custoEquipeDia > 0 && ` · MO: ${fmt(custoMO)}`}
+                    {custoMO > 0 && ` · MO: ${fmt(custoMO)}`}
                   </span>
                 </div>
               </div>
@@ -437,12 +460,12 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               <div className="flex justify-between text-gray-500">
                 <span>Materiais</span><span className="font-semibold text-gray-700">{fmt(custoMateriais)}</span>
               </div>
-              {custoMO > 0 && (
-                <div className="flex justify-between text-gray-500">
-                  <span>Mão de obra ({diasCampo}d × {fmt(custoEquipeDia)})</span>
-                  <span className="font-semibold text-blue-600">+ {fmt(custoMO)}</span>
+              {custoPorProfissional.map(p => (
+                <div key={p.id} className="flex justify-between text-gray-500">
+                  <span>{p.especialidade || p.nome} ({diasCampo}d × {fmt(p.custo_diario)})</span>
+                  <span className="font-semibold text-blue-600">+ {fmt(p.total)}</span>
                 </div>
-              )}
+              ))}
               <div className="flex justify-between text-gray-500">
                 <span>Margem ({margemPct}%)</span><span className="font-semibold text-green-600">+ {fmt(valorMargem)}</span>
               </div>

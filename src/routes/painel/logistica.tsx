@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Package, Plus, AlertTriangle, X, ShoppingCart,
   ExternalLink, Clock, Pencil, Trash2, AlertCircle,
-  Wrench, CalendarDays, Ticket, ChevronRight, MapPin, User
+  Wrench, CalendarDays, Ticket, ChevronRight, MapPin, User, Users, HardHat
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +24,15 @@ interface ItemEstoque {
   localizacao: string;
 }
 
+// ─── Profissionais Terceirizados ──────────────────────────────────────────────
+interface Profissional {
+  id: string;
+  nome: string;
+  especialidade: string;
+  custo_diario: number;
+  ativo: boolean;
+}
+
 // ─── Suprimentos ──────────────────────────────────────────────────────────────
 interface Suprimento {
   id: string;
@@ -33,6 +42,7 @@ interface Suprimento {
   unidade: string;
   custo_unitario: number;
   tempo_instalacao_min: number;  // minutos por unidade para instalação
+  profissionais_ids: string[];   // profissionais necessários para instalar
   link_compra: string;
   atualizado_em: string;
 }
@@ -89,7 +99,7 @@ const PRIORIDADE_CORES: Record<string, string> = {
 };
 
 function LogisticaPage() {
-  const [aba, setAba] = useState<"estoque" | "suprimentos" | "tecnico">("estoque");
+  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico">("estoque");
 
   // ── Estoque ────────────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemEstoque[]>([]);
@@ -137,7 +147,7 @@ function LogisticaPage() {
     custo_unitario: 0, link_compra: "",
   });
 
-  useEffect(() => { if (aba === "suprimentos") carregarSuprimentos(); }, [aba]);
+  // carregarSuprimentos e profissionais são gerenciados pelo useEffect do bloco de profissionais
 
   async function carregarSuprimentos() {
     setCarregandoSup(true);
@@ -148,7 +158,7 @@ function LogisticaPage() {
 
   function abrirSup(s?: Suprimento) {
     if (s) { setSelSup(s); setFormSup({ ...s }); }
-    else { setSelSup(null); setFormSup({ nome: "", codigo: "", categoria: "", unidade: "un", custo_unitario: 0, tempo_instalacao_min: 0, link_compra: "" }); }
+    else { setSelSup(null); setFormSup({ nome: "", codigo: "", categoria: "", unidade: "un", custo_unitario: 0, tempo_instalacao_min: 0, profissionais_ids: [], link_compra: "" }); }
     setModalSup(true);
   }
 
@@ -175,6 +185,55 @@ function LogisticaPage() {
   );
 
   const precosDesatualizados = suprimentos.filter(s => s.atualizado_em && diasDesdeAtualizacao(s.atualizado_em) > DIAS_ALERTA);
+
+  // ── Profissionais Terceirizados ─────────────────────────────────────────────
+  const [profissionais, setProfissionais] = useState<Profissional[]>([]);
+  const [carregandoProf, setCarregandoProf] = useState(true);
+  const [modalProf, setModalProf] = useState(false);
+  const [selProf, setSelProf] = useState<Profissional | null>(null);
+  const [formProf, setFormProf] = useState<Partial<Profissional>>({
+    nome: "", especialidade: "", custo_diario: 0, ativo: true,
+  });
+
+  useEffect(() => {
+    if (aba === "equipe") carregarProfissionais();
+    if (aba === "suprimentos") { carregarSuprimentos(); carregarProfissionais(); }
+  }, [aba]);
+
+  async function carregarProfissionais() {
+    setCarregandoProf(true);
+    const { data } = await supabase.from("logistica_profissionais").select("*").order("nome");
+    if (data) setProfissionais(data as Profissional[]);
+    setCarregandoProf(false);
+  }
+
+  function abrirProf(p?: Profissional) {
+    if (p) { setSelProf(p); setFormProf({ ...p }); }
+    else { setSelProf(null); setFormProf({ nome: "", especialidade: "", custo_diario: 0, ativo: true }); }
+    setModalProf(true);
+  }
+
+  async function salvarProf() {
+    if (!formProf.nome?.trim()) return;
+    if (selProf) await supabase.from("logistica_profissionais").update(formProf).eq("id", selProf.id);
+    else await supabase.from("logistica_profissionais").insert(formProf);
+    setModalProf(false);
+    carregarProfissionais();
+  }
+
+  async function excluirProf(id: string) {
+    if (!confirm("Excluir este profissional?")) return;
+    await supabase.from("logistica_profissionais").delete().eq("id", id);
+    carregarProfissionais();
+  }
+
+  function toggleProfissionalNoSup(profId: string) {
+    const atual = formSup.profissionais_ids ?? [];
+    const novo = atual.includes(profId)
+      ? atual.filter(id => id !== profId)
+      : [...atual, profId];
+    setFormSup({ ...formSup, profissionais_ids: novo });
+  }
 
   // ── Técnico ────────────────────────────────────────────────────────────────
   const [tickets, setTickets] = useState<TicketTecnico[]>([]);
@@ -213,7 +272,8 @@ function LogisticaPage() {
       <div className="mb-6 flex gap-1 border-b border-gray-200">
         {([
           { key: "estoque",     label: "Estoque",             icon: Package },
-          { key: "suprimentos", label: "Catálogo de Suprimentos", icon: ShoppingCart },
+          { key: "suprimentos", label: "Catálogo",            icon: ShoppingCart },
+          { key: "equipe",      label: "Equipe / Terceirizados", icon: HardHat },
           { key: "tecnico",     label: "Área Técnica",        icon: Wrench },
         ] as const).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setAba(key)}
@@ -646,6 +706,132 @@ function LogisticaPage() {
         </div>
       )}
 
+      {/* ═══════ ABA EQUIPE ═══════ */}
+      {aba === "equipe" && (
+        <>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">
+                {profissionais.length} profissional{profissionais.length !== 1 ? "is" : ""} cadastrado{profissionais.length !== 1 ? "s" : ""}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">Cada profissional é vinculado aos suprimentos que ele instala</p>
+            </div>
+            <button onClick={() => abrirProf()}
+              className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
+              <Plus className="h-4 w-4" /> Novo Profissional
+            </button>
+          </div>
+
+          {carregandoProf ? (
+            <div className="py-16 text-center text-sm text-gray-400">Carregando…</div>
+          ) : profissionais.length === 0 ? (
+            <div className="flex flex-col items-center py-16 text-gray-400">
+              <HardHat className="mb-3 h-10 w-10 opacity-30" />
+              <p className="text-sm font-medium">Nenhum profissional cadastrado</p>
+              <p className="text-xs mt-1 text-gray-300">Cadastre pedreiros, pintores, ajudantes e outros terceirizados</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {profissionais.map(p => (
+                <div key={p.id} className={cn(
+                  "rounded-xl border bg-white p-4 shadow-sm",
+                  p.ativo ? "border-gray-200" : "border-gray-100 opacity-60"
+                )}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg bg-[#1a6b2f]/10 p-2">
+                        <HardHat className="h-4 w-4 text-[#1a6b2f]" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{p.nome}</p>
+                        <p className="text-xs text-gray-400">{p.especialidade || "Sem especialidade"}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => abrirProf(p)} className="rounded-md p-1 text-gray-300 hover:text-gray-600 hover:bg-gray-100">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => excluirProf(p.id)} className="rounded-md p-1 text-gray-300 hover:text-red-500 hover:bg-red-50">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                    <span className="text-xs text-gray-400">Custo diário</span>
+                    <span className="text-sm font-bold text-[#1a6b2f]">
+                      {p.custo_diario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                  </div>
+                  {!p.ativo && (
+                    <span className="mt-2 block text-[10px] text-gray-300 font-medium text-center">Inativo — não entra nos orçamentos</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Info sobre vinculação */}
+          {profissionais.length > 0 && (
+            <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-blue-700">Como vincular profissionais aos itens</p>
+                  <p className="text-xs text-blue-500 mt-1">
+                    Vá em <strong>Catálogo</strong> → edite um suprimento → na seção "Profissionais necessários", selecione quem é preciso para instalar aquele item.
+                    O orçamento calculará automaticamente o custo de cada profissional com base nos dias de campo estimados.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Modal Profissional ── */}
+      {modalProf && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalProf(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">{selProf ? "Editar Profissional" : "Novo Profissional"}</h2>
+              <button onClick={() => setModalProf(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Nome *</label>
+                <input type="text" value={formProf.nome || ""}
+                  onChange={e => setFormProf({ ...formProf, nome: e.target.value })}
+                  placeholder="Ex: João Pedreiro, Carlos Pintor…"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Especialidade</label>
+                <input type="text" value={formProf.especialidade || ""}
+                  onChange={e => setFormProf({ ...formProf, especialidade: e.target.value })}
+                  placeholder="Ex: Pedreiro, Pintor, Técnico fotoluminescente, Ajudante…"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Custo diário (R$)</label>
+                <input type="number" min={0} step={10} value={formProf.custo_diario ?? 0}
+                  onChange={e => setFormProf({ ...formProf, custo_diario: Number(e.target.value) })}
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="ativo-prof" checked={formProf.ativo ?? true}
+                  onChange={e => setFormProf({ ...formProf, ativo: e.target.checked })}
+                  className="rounded border-gray-300 text-[#1a6b2f]" />
+                <label htmlFor="ativo-prof" className="text-sm text-gray-700">Profissional ativo (entra nos orçamentos)</label>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setModalProf(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button onClick={salvarProf} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal Suprimento ── */}
       {modalSup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalSup(false)}>
@@ -719,6 +905,40 @@ function LogisticaPage() {
                   placeholder="https://..."
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
               </div>
+
+              {/* ── Profissionais necessários ── */}
+              {profissionais.filter(p => p.ativo).length > 0 && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    <span className="flex items-center gap-1.5">
+                      <HardHat className="h-3.5 w-3.5 text-gray-400" />
+                      Profissionais necessários para instalar
+                    </span>
+                  </label>
+                  <div className="space-y-1.5 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    {profissionais.filter(p => p.ativo).map(p => {
+                      const selecionado = (formSup.profissionais_ids ?? []).includes(p.id);
+                      return (
+                        <label key={p.id} className={cn(
+                          "flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 transition-colors",
+                          selecionado ? "bg-[#1a6b2f]/10" : "hover:bg-white"
+                        )}>
+                          <input type="checkbox" checked={selecionado}
+                            onChange={() => toggleProfissionalNoSup(p.id)}
+                            className="rounded border-gray-300 text-[#1a6b2f]" />
+                          <span className="flex-1 text-sm text-gray-700">{p.nome}</span>
+                          {p.especialidade && <span className="text-xs text-gray-400">{p.especialidade}</span>}
+                          <span className="text-xs font-medium text-[#1a6b2f]">
+                            {p.custo_diario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/dia
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">O custo de cada profissional será calculado por dias de campo no orçamento</p>
+                </div>
+              )}
+
               {selSup?.atualizado_em && (
                 <p className="text-xs text-gray-400">
                   Última atualização: {new Date(selSup.atualizado_em).toLocaleDateString("pt-BR")} — ao salvar, a data será atualizada para hoje.
