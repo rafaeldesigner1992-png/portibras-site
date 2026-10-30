@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { DollarSign, Plus, TrendingUp, TrendingDown, X } from "lucide-react";
+import { DollarSign, Plus, TrendingUp, TrendingDown, X, Settings2, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/painel/financeiro")({
@@ -28,7 +28,14 @@ function FinanceiroPage() {
     data: new Date().toISOString().slice(0, 10), pago: false
   });
 
-  useEffect(() => { carregar(); }, []);
+  // Configuração de alíquota padrão
+  const [aliquota, setAliquota] = useState<number>(10);
+  const [aliquotaInput, setAliquotaInput] = useState<string>("10");
+  const [salvandoAliquota, setSalvandoAliquota] = useState(false);
+  const [aliquotaSalva, setAliquotaSalva] = useState(false);
+  const [configId, setConfigId] = useState<string | null>(null);
+
+  useEffect(() => { carregar(); carregarConfig(); }, []);
 
   async function carregar() {
     setCarregando(true);
@@ -38,6 +45,36 @@ function FinanceiroPage() {
       .order("data", { ascending: false });
     if (data) setLancamentos(data as Lancamento[]);
     setCarregando(false);
+  }
+
+  async function carregarConfig() {
+    const { data } = await supabase
+      .from("configuracoes")
+      .select("*")
+      .eq("chave", "imposto_padrao_pct")
+      .single();
+    if (data) {
+      const val = Number(data.valor);
+      setAliquota(val);
+      setAliquotaInput(String(val));
+      setConfigId(data.id);
+    }
+  }
+
+  async function salvarAliquota() {
+    const val = Number(aliquotaInput);
+    if (isNaN(val) || val < 0 || val > 100) return;
+    setSalvandoAliquota(true);
+    if (configId) {
+      await supabase.from("configuracoes").update({ valor: String(val), atualizado_em: new Date().toISOString() }).eq("id", configId);
+    } else {
+      const { data } = await supabase.from("configuracoes").insert({ chave: "imposto_padrao_pct", valor: String(val), descricao: "Alíquota padrão de impostos e encargos usada nos orçamentos" }).select().single();
+      if (data) setConfigId(data.id);
+    }
+    setAliquota(val);
+    setSalvandoAliquota(false);
+    setAliquotaSalva(true);
+    setTimeout(() => setAliquotaSalva(false), 2500);
   }
 
   async function salvar() {
@@ -90,6 +127,46 @@ function FinanceiroPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Configuração fiscal */}
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Settings2 className="h-4 w-4 text-[#1a6b2f]" />
+          <h2 className="text-sm font-semibold text-gray-800">Configurações Fiscais</h2>
+          <span className="text-xs text-gray-400">— aplicadas automaticamente em todos os orçamentos</span>
+        </div>
+        <div className="flex items-end gap-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+              Alíquota padrão de Impostos / Encargos (%)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number" min={0} max={100} step={0.5}
+                value={aliquotaInput}
+                onChange={e => setAliquotaInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && salvarAliquota()}
+                className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20"
+              />
+              <button
+                onClick={salvarAliquota}
+                disabled={salvandoAliquota}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors",
+                  aliquotaSalva ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
+                  salvandoAliquota && "opacity-60 cursor-not-allowed"
+                )}
+              >
+                {salvandoAliquota ? <Loader2 className="h-4 w-4 animate-spin" /> : aliquotaSalva ? <Check className="h-4 w-4" /> : null}
+                {aliquotaSalva ? "Salvo!" : "Salvar"}
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-gray-400">
+              Valor atual: <span className="font-semibold text-gray-600">{aliquota}%</span> — padrão ao criar novos orçamentos
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Tabela */}

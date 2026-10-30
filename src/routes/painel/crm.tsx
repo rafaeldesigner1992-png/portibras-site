@@ -51,8 +51,9 @@ interface ItemOrcamento {
   suprimento_id: string;
   nome: string;
   unidade: string;
-  custo_unitario: number;
+  custo_unitario: number;   // preço de compra (editável pelo vendedor)
   quantidade: number;
+  descricao: string;        // descrição/variação do item (ex: "90 min, 0,80x2,10m")
 }
 
 interface Orcamento {
@@ -102,21 +103,34 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [orcamentoExistente, setOrcamentoExistente] = useState<Orcamento | null>(null);
+  const [busca, setBusca] = useState("");
+
+  // ID único para cada ocorrência do item no orçamento (permite múltiplas variações)
+  const [proximoId, setProximoId] = useState(1);
 
   useEffect(() => {
     async function init() {
       setCarregando(true);
-      const [{ data: sups }, { data: orc }] = await Promise.all([
+      const [{ data: sups }, { data: orc }, { data: cfg }] = await Promise.all([
         supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario").order("nome"),
         supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
+        supabase.from("configuracoes").select("valor").eq("chave", "imposto_padrao_pct").single(),
       ]);
       if (sups) setSuprimentos(sups as Suprimento[]);
+      if (cfg) setImpostoPct(Number(cfg.valor) || 10);
       if (orc && orc.length > 0) {
         const o = orc[0] as Orcamento;
         setOrcamentoExistente(o);
-        setItens(o.itens || []);
+        // garante que itens salvos têm o campo descricao
+        const itensCarregados = (o.itens || []).map((it: ItemOrcamento, idx: number) => ({
+          ...it,
+          descricao: it.descricao ?? "",
+          _uid: idx + 1,
+        }));
+        setItens(itensCarregados);
+        setProximoId(itensCarregados.length + 1);
         setMargemPct(o.margem_pct ?? 30);
-        setImpostoPct(o.imposto_pct ?? 10);
+        setImpostoPct(o.imposto_pct ?? (cfg ? Number(cfg.valor) : 10));
         setObsOrc(o.observacoes || "");
       }
       setCarregando(false);
@@ -124,28 +138,69 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     init();
   }, [lead.id]);
 
+  // Adiciona item ao orçamento: se já existe e usuário clicar, incrementa qtd
   function addItem(sup: Suprimento) {
-    const existe = itens.find(i => i.suprimento_id === sup.id);
-    if (existe) {
-      setItens(its => its.map(i => i.suprimento_id === sup.id ? { ...i, quantidade: i.quantidade + 1 } : i));
+    // Verifica se já existe algum item com esse suprimento_id (sem variação específica)
+    // Incrementa o ÚLTIMO item desse tipo adicionado
+    const existentes = itens.filter(i => i.suprimento_id === sup.id);
+    if (existentes.length > 0) {
+      const ultimo = existentes[existentes.length - 1];
+      setItens(its => its.map(i =>
+        (i as ItemOrcamento & { _uid: number })._uid === (ultimo as ItemOrcamento & { _uid: number })._uid
+          ? { ...i, quantidade: i.quantidade + 1 }
+          : i
+      ));
     } else {
+      const uid = proximoId;
+      setProximoId(n => n + 1);
       setItens(its => [...its, {
         suprimento_id: sup.id,
         nome: sup.nome,
         unidade: sup.unidade,
         custo_unitario: sup.custo_unitario,
         quantidade: 1,
-      }]);
+        descricao: "",
+        _uid: uid,
+      } as ItemOrcamento & { _uid: number }]);
     }
   }
 
-  function removeItem(id: string) {
-    setItens(its => its.filter(i => i.suprimento_id !== id));
+  // Adiciona NOVA variação do item (mesmo produto, linha separada)
+  function addVariacao(sup: Suprimento) {
+    const uid = proximoId;
+    setProximoId(n => n + 1);
+    setItens(its => [...its, {
+      suprimento_id: sup.id,
+      nome: sup.nome,
+      unidade: sup.unidade,
+      custo_unitario: sup.custo_unitario,
+      quantidade: 1,
+      descricao: "",
+      _uid: uid,
+    } as ItemOrcamento & { _uid: number }]);
   }
 
-  function setQtd(id: string, qtd: number) {
-    if (qtd <= 0) { removeItem(id); return; }
-    setItens(its => its.map(i => i.suprimento_id === id ? { ...i, quantidade: qtd } : i));
+  function removeItem(uid: number) {
+    setItens(its => its.filter(i => (i as ItemOrcamento & { _uid: number })._uid !== uid));
+  }
+
+  function setQtd(uid: number, qtd: number) {
+    if (qtd <= 0) { removeItem(uid); return; }
+    setItens(its => its.map(i =>
+      (i as ItemOrcamento & { _uid: number })._uid === uid ? { ...i, quantidade: qtd } : i
+    ));
+  }
+
+  function setPreco(uid: number, preco: number) {
+    setItens(its => its.map(i =>
+      (i as ItemOrcamento & { _uid: number })._uid === uid ? { ...i, custo_unitario: preco } : i
+    ));
+  }
+
+  function setDescricao(uid: number, desc: string) {
+    setItens(its => its.map(i =>
+      (i as ItemOrcamento & { _uid: number })._uid === uid ? { ...i, descricao: desc } : i
+    ));
   }
 
   // Cálculos
@@ -157,9 +212,15 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
 
   async function salvarOrcamento() {
     setSalvando(true);
+    // Remove _uid antes de salvar (campo interno de controle)
+    const itensSalvar = itens.map(({ ...i }) => {
+      const item = i as ItemOrcamento & { _uid?: number };
+      delete item._uid;
+      return item;
+    });
     const payload: Orcamento = {
       lead_id: lead.id,
-      itens,
+      itens: itensSalvar,
       custo_total: custoTotal,
       margem_pct: margemPct,
       imposto_pct: impostoPct,
@@ -177,7 +238,6 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     setTimeout(() => setSalvo(false), 2500);
   }
 
-  const [busca, setBusca] = useState("");
   const supFiltrados = suprimentos.filter(s =>
     !busca || s.nome.toLowerCase().includes(busca.toLowerCase()) || s.codigo?.toLowerCase().includes(busca.toLowerCase())
   );
@@ -211,15 +271,28 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               </div>
             )}
             {supFiltrados.map(s => {
-              const adicionado = itens.find(i => i.suprimento_id === s.id);
+              const qtdTotal = itens.filter(i => i.suprimento_id === s.id).reduce((acc, i) => acc + i.quantidade, 0);
+              const variacoes = itens.filter(i => i.suprimento_id === s.id).length;
+              const adicionado = qtdTotal > 0;
               return (
-                <button key={s.id} onClick={() => addItem(s)}
-                  className={cn("w-full text-left rounded-lg px-2.5 py-2 hover:bg-gray-50 transition-colors border",
-                    adicionado ? "border-green-200 bg-green-50" : "border-transparent")}>
-                  <p className="text-xs font-medium text-gray-800 leading-tight">{s.nome}</p>
-                  <p className="text-[10px] text-[#1a6b2f] font-semibold mt-0.5">{fmt(s.custo_unitario)}/{s.unidade}</p>
-                  {adicionado && <p className="text-[10px] text-green-600 mt-0.5">✓ qtd {adicionado.quantidade}</p>}
-                </button>
+                <div key={s.id} className={cn("rounded-lg border transition-colors", adicionado ? "border-green-200 bg-green-50" : "border-transparent")}>
+                  <button onClick={() => addItem(s)} className="w-full text-left px-2.5 py-2 hover:bg-green-50/60 rounded-lg">
+                    <p className="text-xs font-medium text-gray-800 leading-tight">{s.nome}</p>
+                    <p className="text-[10px] text-[#1a6b2f] font-semibold mt-0.5">{fmt(s.custo_unitario)}/{s.unidade}</p>
+                    {adicionado && (
+                      <p className="text-[10px] text-green-600 mt-0.5">
+                        ✓ {qtdTotal} {s.unidade}{variacoes > 1 ? ` · ${variacoes} variações` : ""}
+                      </p>
+                    )}
+                  </button>
+                  {/* Botão para adicionar variação separada */}
+                  {adicionado && (
+                    <button onClick={() => addVariacao(s)}
+                      className="w-full text-[10px] text-green-700 font-semibold px-2.5 pb-1.5 text-left hover:text-green-900 flex items-center gap-1">
+                      <Plus className="h-2.5 w-2.5" /> Adicionar variação
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -234,22 +307,59 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                 <ShoppingCart className="h-8 w-8 mb-2 opacity-40" />
                 <p className="text-xs">Clique nos itens ao lado para adicionar</p>
               </div>
-            ) : itens.map(item => (
-              <div key={item.suprimento_id} className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-800 truncate">{item.nome}</p>
-                  <p className="text-[10px] text-gray-400">{fmt(item.custo_unitario)}/{item.unidade}</p>
+            ) : itens.map(item => {
+              const uid = (item as ItemOrcamento & { _uid: number })._uid;
+              // Busca o preço de referência do catálogo
+              const supRef = suprimentos.find(s => s.id === item.suprimento_id);
+              return (
+                <div key={uid} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-2">
+                  {/* Linha 1: nome + controles de qtd + total + remover */}
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800 leading-tight">{item.nome}</p>
+                      {/* Campo de descrição/variação */}
+                      <input
+                        type="text"
+                        value={item.descricao}
+                        onChange={e => setDescricao(uid, e.target.value)}
+                        placeholder="Descrição / variação (ex: 90min, 0,80×2,10m)…"
+                        className="mt-1 w-full rounded border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-600 outline-none focus:border-[#1a6b2f] placeholder:text-gray-300"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button onClick={() => setQtd(uid, item.quantidade - 1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-300 flex items-center justify-center">−</button>
+                      <input type="number" min={1} value={item.quantidade} onChange={e => setQtd(uid, Number(e.target.value))}
+                        className="w-10 text-center text-xs border border-gray-200 rounded px-1 py-0.5 bg-white outline-none focus:border-[#1a6b2f]" />
+                      <button onClick={() => setQtd(uid, item.quantidade + 1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-300 flex items-center justify-center">+</button>
+                      <button onClick={() => removeItem(uid)} className="text-gray-300 hover:text-red-500 ml-1"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </div>
+
+                  {/* Linha 2: preço de compra editável + subtotal */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Preço compra</label>
+                      <input
+                        type="number" min={0} step={0.01}
+                        value={item.custo_unitario}
+                        onChange={e => setPreco(uid, Number(e.target.value))}
+                        className="w-24 rounded border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]"
+                      />
+                      <span className="text-[10px] text-gray-400">/{item.unidade}</span>
+                      {supRef && supRef.custo_unitario !== item.custo_unitario && (
+                        <span className="text-[10px] text-amber-500 font-medium">
+                          ref: {fmt(supRef.custo_unitario)}
+                        </span>
+                      )}
+                      {supRef && supRef.custo_unitario === item.custo_unitario && supRef.custo_unitario > 0 && (
+                        <span className="text-[10px] text-gray-300">ref: {fmt(supRef.custo_unitario)}</span>
+                      )}
+                    </div>
+                    <span className="text-xs font-bold text-gray-700 flex-shrink-0">{fmt(item.custo_unitario * item.quantidade)}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <button onClick={() => setQtd(item.suprimento_id, item.quantidade - 1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-300 flex items-center justify-center">−</button>
-                  <input type="number" min={1} value={item.quantidade} onChange={e => setQtd(item.suprimento_id, Number(e.target.value))}
-                    className="w-10 text-center text-xs border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-[#1a6b2f]" />
-                  <button onClick={() => setQtd(item.suprimento_id, item.quantidade + 1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-300 flex items-center justify-center">+</button>
-                  <span className="text-xs font-semibold text-gray-700 w-16 text-right">{fmt(item.custo_unitario * item.quantidade)}</span>
-                  <button onClick={() => removeItem(item.suprimento_id)} className="text-gray-300 hover:text-red-500 ml-1"><X className="h-3.5 w-3.5" /></button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Painel de parâmetros e resultado */}
@@ -263,7 +373,10 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                   className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Imposto / Encargos (%)</label>
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
+                  Imposto / Encargos (%)
+                  <span className="ml-1 font-normal text-gray-300 normal-case tracking-normal">· alíquota fiscal</span>
+                </label>
                 <input type="number" min={0} max={100} step={0.5} value={impostoPct}
                   onChange={e => setImpostoPct(Number(e.target.value))}
                   className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
@@ -273,7 +386,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
             {/* Breakdown */}
             <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-1.5 text-xs">
               <div className="flex justify-between text-gray-500">
-                <span>Custo dos materiais</span><span className="font-semibold text-gray-700">{fmt(custoTotal)}</span>
+                <span>Custo de compra</span><span className="font-semibold text-gray-700">{fmt(custoTotal)}</span>
               </div>
               <div className="flex justify-between text-gray-500">
                 <span>Margem ({margemPct}%)</span><span className="font-semibold text-green-600">+ {fmt(valorMargem)}</span>
