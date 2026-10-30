@@ -871,6 +871,8 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
   const [copiado, setCopiado] = useState<"texto" | "zap" | null>(null);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [propostaSalva, setPropostaSalva] = useState(false);
+  const [gerandoContrato, setGerandoContrato] = useState(false);
+  const [contratoSalvo, setContratoSalvo] = useState(false);
 
   // Número de proposta único por sessão
   const numProposta = useRef(`PB-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`);
@@ -1099,6 +1101,194 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
       alert("Não foi possível gerar o PDF. Tente novamente.");
     } finally {
       setGerandoPdf(false);
+    }
+  }
+
+  async function gerarContrato() {
+    setGerandoContrato(true);
+    setContratoSalvo(false);
+    try {
+      await carregarPdfMake();
+      const pm = (window as Record<string, unknown>).pdfMake as {
+        createPdf: (def: unknown) => { download: (name: string) => void; getBlob: (cb: (b: Blob) => void) => void };
+      };
+
+      const cinza = "#6b7280";
+      const laranja = "#C94500";
+      const dataHoje = new Date().toLocaleDateString("pt-BR");
+      const dataVigencia = new Date();
+      dataVigencia.setFullYear(dataVigencia.getFullYear() + 1);
+      const dataFim = dataVigencia.toLocaleDateString("pt-BR");
+
+      const contratante = lead.empresa || lead.nome || "—";
+      const cnpjContratante = lead.cnpj || "________________";
+      const enderecoContratante = lead.endereco_fiscal || "________________________________";
+      const responsavel = lead.nome || "—";
+      const numContrato = `CTR-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+      const nomeArquivo = `Contrato_${numContrato}_${contratante.replace(/\s+/g, "_")}.pdf`;
+
+      const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      const valorTotal = parcela * 12;
+
+      const titulo = (txt: string) => ({ text: txt, fontSize: 9, bold: true, color: laranja, characterSpacing: 0.5, margin: [0, 14, 0, 4] });
+      const clausula = (num: string, cabecalho: string, corpo: string) => ([
+        { text: `${num}. ${cabecalho}`, fontSize: 9, bold: true, color: "#1f2937", margin: [0, 10, 0, 3] },
+        { text: corpo, fontSize: 8.5, color: "#374151", lineHeight: 1.45 },
+      ]);
+
+      const docDef = {
+        pageSize: "A4",
+        pageMargins: [50, 50, 50, 60],
+        defaultStyle: { font: "Roboto" },
+        footer: (currentPage: number, pageCount: number) => ({
+          columns: [
+            { text: `${contratante} · PORTIBRAS`, fontSize: 7, color: cinza, margin: [50, 0, 0, 0] },
+            { text: `Página ${currentPage} de ${pageCount}`, fontSize: 7, color: cinza, alignment: "right", margin: [0, 0, 50, 0] },
+          ],
+          margin: [0, 10, 0, 0],
+        }),
+        content: [
+          // Cabeçalho
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "PORTIBRAS", fontSize: 18, bold: true, color: "#1f2937", characterSpacing: 1 },
+                  { text: "SOLUÇÕES EM PORTAS CORTA-FOGO · NBR 11.742", fontSize: 6.5, color: cinza, margin: [0, 2, 0, 0] },
+                  { text: "CNPJ: 47.594.074/0001-10  ·  Rio de Janeiro – RJ", fontSize: 7, color: cinza, margin: [0, 2, 0, 0] },
+                ],
+              },
+              {
+                stack: [
+                  { text: "CONTRATO DE PRESTAÇÃO DE SERVIÇOS", fontSize: 8, bold: true, color: laranja, alignment: "right", characterSpacing: 0.5 },
+                  { text: `Nº ${numContrato}`, fontSize: 8, color: "#374151", alignment: "right", margin: [0, 2, 0, 0] },
+                  { text: `Data: ${dataHoje}`, fontSize: 8, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
+                ],
+              },
+            ],
+            margin: [0, 0, 0, 6],
+          },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 1.5, lineColor: laranja }], margin: [0, 0, 0, 4] },
+          { text: "MANUTENÇÃO PREVENTIVA DE PORTAS CORTA-FOGO — PLANO ANUAL 12×", fontSize: 8, bold: true, color: "#374151", alignment: "center", characterSpacing: 0.3, margin: [0, 0, 0, 0] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 4, 0, 0] },
+
+          titulo("IDENTIFICAÇÃO DAS PARTES"),
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "CONTRATANTE", fontSize: 7.5, bold: true, color: cinza, characterSpacing: 0.5 },
+                  { text: contratante, fontSize: 9, bold: true, color: "#1f2937", margin: [0, 2, 0, 0] },
+                  { text: `CNPJ: ${cnpjContratante}`, fontSize: 8.5, color: "#374151", margin: [0, 1, 0, 0] },
+                  { text: `Endereço: ${enderecoContratante}`, fontSize: 8.5, color: "#374151", margin: [0, 1, 0, 0] },
+                  { text: `Representante: ${responsavel}`, fontSize: 8.5, color: "#374151", margin: [0, 1, 0, 0] },
+                ],
+              },
+              {
+                stack: [
+                  { text: "CONTRATADA", fontSize: 7.5, bold: true, color: cinza, characterSpacing: 0.5 },
+                  { text: "PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA", fontSize: 9, bold: true, color: "#1f2937", margin: [0, 2, 0, 0] },
+                  { text: "CNPJ: 47.594.074/0001-10", fontSize: 8.5, color: "#374151", margin: [0, 1, 0, 0] },
+                  { text: "Rio de Janeiro – RJ", fontSize: 8.5, color: "#374151", margin: [0, 1, 0, 0] },
+                  { text: "vendas@portibras.com.br · (22) 99104-8162", fontSize: 8.5, color: "#374151", margin: [0, 1, 0, 0] },
+                ],
+              },
+            ],
+            columnGap: 20,
+            margin: [0, 0, 0, 4],
+          },
+
+          ...clausula("1", "OBJETO DO CONTRATO",
+            `A CONTRATADA obriga-se a prestar serviços de manutenção preventiva e corretiva de Portas Corta-Fogo nas instalações da CONTRATANTE, conforme as normas ABNT NBR 11.742:2018 e NBR 11.785, mediante o Plano Anual de Manutenção Preventiva descrito neste instrumento.`),
+
+          ...clausula("2", "ESCOPO DOS SERVIÇOS",
+            `Os serviços compreendem: (a) 2 (dois) roteiros completos de manutenção preventiva por ano, realizados a cada 6 (seis) meses, nas ${portas} (${portas}) portas corta-fogo; (b) Ajustes de mola, lubrificação de dobradiças e regulagem de batentes; (c) Registro fotográfico antes e depois de cada serviço; (d) Emissão de Laudo Técnico DTS (Declaração de Trabalho de Serviço) em cada roteiro, atestando conformidade com a NBR 11.742:2018; (e) Atendimento prioritário em emergências durante a vigência do contrato.`),
+
+          ...clausula("3", "PRAZO E VIGÊNCIA",
+            `O presente contrato tem vigência de 12 (doze) meses, com início na data de assinatura (${dataHoje}) e término em ${dataFim}, renovando-se automaticamente por igual período caso nenhuma das partes manifeste interesse de rescisão com antecedência mínima de 30 (trinta) dias.`),
+
+          ...clausula("4", "VALOR E FORMA DE PAGAMENTO",
+            `O valor total dos serviços é de ${fmt(valorTotal)} (${valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }).replace("R$", "reais").trim()}), parcelado em 12 (doze) parcelas mensais de ${fmt(parcela)}, com vencimento no mesmo dia do mês da assinatura deste contrato, mediante boleto bancário, PIX ou transferência para conta indicada pela CONTRATADA. O atraso no pagamento sujeita a CONTRATANTE a multa de 2% e juros de 1% ao mês.`),
+
+          ...clausula("5", "GARANTIA DOS SERVIÇOS",
+            `A CONTRATADA garante os serviços executados pelo prazo de 6 (seis) meses a partir de cada visita técnica, abrangendo mão de obra e ajustes realizados. Peças e componentes substituídos possuem garantia do fabricante. A garantia não cobre danos causados por uso inadequado, vandalismo, sinistros ou alterações realizadas por terceiros sem anuência da CONTRATADA.`),
+
+          ...clausula("6", "OBRIGAÇÕES DA CONTRATANTE",
+            `São obrigações da CONTRATANTE: (a) Efetuar os pagamentos nas datas acordadas; (b) Garantir acesso às instalações nas datas agendadas para manutenção; (c) Comunicar à CONTRATADA qualquer anomalia ou mau funcionamento das portas corta-fogo no prazo máximo de 48 (quarenta e oito) horas após a constatação; (d) Não contratar terceiros para executar serviços nas portas objeto deste contrato sem prévia anuência da CONTRATADA.`),
+
+          ...clausula("7", "OBRIGAÇÕES DA CONTRATADA",
+            `São obrigações da CONTRATADA: (a) Executar os serviços com profissionais habilitados e equipamentos adequados; (b) Cumprir os prazos agendados ou comunicar reagendamento com antecedência mínima de 24 horas; (c) Emitir os laudos técnicos DTS após cada visita preventiva; (d) Manter sigilo sobre informações confidenciais das instalações da CONTRATANTE; (e) Responder por danos causados exclusivamente por culpa ou dolo de seus profissionais.`),
+
+          ...clausula("8", "RESCISÃO",
+            `O presente contrato poderá ser rescindido: (a) Por qualquer das partes, mediante aviso prévio de 30 (trinta) dias, por escrito; (b) Imediatamente pela CONTRATADA, em caso de inadimplência superior a 30 (trinta) dias; (c) Imediatamente por qualquer das partes, em caso de descumprimento das obrigações previstas neste instrumento. Na rescisão antecipada pela CONTRATANTE sem justa causa, serão devidos os valores das parcelas vencidas e não pagas, sem direito a restituição das já quitadas.`),
+
+          ...clausula("9", "DISPOSIÇÕES GERAIS",
+            `O presente contrato substitui quaisquer acordos anteriores entre as partes sobre o mesmo objeto. Alterações somente serão válidas mediante aditivo escrito assinado por ambas as partes. A CONTRATADA poderá ceder os direitos e obrigações deste contrato a empresa do mesmo grupo econômico, mediante comunicação à CONTRATANTE.`),
+
+          ...clausula("10", "FORO",
+            `As partes elegem o Foro da Comarca do Rio de Janeiro – RJ para dirimir quaisquer dúvidas ou litígios decorrentes do presente contrato, com renúncia expressa a qualquer outro, por mais privilegiado que seja.`),
+
+          // Assinaturas
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 18, 0, 14] },
+          {
+            text: `Rio de Janeiro, ${dataHoje}`,
+            fontSize: 9, color: "#374151", margin: [0, 0, 0, 24],
+          },
+          {
+            columns: [
+              {
+                stack: [
+                  { canvas: [{ type: "line", x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: "#374151" }] },
+                  { text: contratante, fontSize: 8.5, color: "#374151", margin: [0, 4, 0, 0] },
+                  { text: responsavel, fontSize: 8, color: cinza, margin: [0, 1, 0, 0] },
+                  { text: "CONTRATANTE", fontSize: 7.5, bold: true, color: cinza, margin: [0, 1, 0, 0] },
+                ],
+              },
+              {
+                stack: [
+                  { canvas: [{ type: "line", x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 0.5, lineColor: "#374151" }] },
+                  { text: "PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA", fontSize: 8.5, color: "#374151", margin: [0, 4, 0, 0] },
+                  { text: "CNPJ: 47.594.074/0001-10", fontSize: 8, color: cinza, margin: [0, 1, 0, 0] },
+                  { text: "CONTRATADA", fontSize: 7.5, bold: true, color: cinza, margin: [0, 1, 0, 0] },
+                ],
+              },
+            ],
+            columnGap: 40,
+          },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 28, 0, 10] },
+          {
+            columns: [
+              {
+                stack: [
+                  { canvas: [{ type: "line", x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 0.5, lineColor: "#9ca3af" }] },
+                  { text: "Testemunha 1 – Nome / CPF", fontSize: 7.5, color: cinza, margin: [0, 3, 0, 0] },
+                ],
+              },
+              {
+                stack: [
+                  { canvas: [{ type: "line", x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 0.5, lineColor: "#9ca3af" }] },
+                  { text: "Testemunha 2 – Nome / CPF", fontSize: 7.5, color: cinza, margin: [0, 3, 0, 0] },
+                ],
+              },
+            ],
+            columnGap: 40,
+          },
+        ],
+      };
+
+      pm.createPdf(docDef).download(nomeArquivo);
+      try {
+        await salvarPropostaStorage(lead.id, "manutencao", nomeArquivo, docDef);
+        setContratoSalvo(true);
+        setTimeout(() => setContratoSalvo(false), 4000);
+      } catch (storageErr) {
+        console.warn("Não foi possível salvar contrato no histórico:", storageErr);
+      }
+    } catch (err) {
+      console.error("Erro ao gerar contrato:", err);
+      alert("Não foi possível gerar o contrato. Tente novamente.");
+    } finally {
+      setGerandoContrato(false);
     }
   }
 
@@ -1418,6 +1608,19 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
         >
           {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : propostaSalva ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
           {gerandoPdf ? "Gerando PDF…" : propostaSalva ? "Salvo no histórico!" : "Baixar PDF"}
+        </button>
+        <button
+          onClick={gerarContrato}
+          disabled={gerandoContrato}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50",
+            contratoSalvo
+              ? "border-green-300 bg-green-50 text-green-700"
+              : "border-[#1a6b2f] text-[#1a6b2f] hover:bg-green-50"
+          )}
+        >
+          {gerandoContrato ? <Loader2 className="h-4 w-4 animate-spin" /> : contratoSalvo ? <Check className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+          {gerandoContrato ? "Gerando Contrato…" : contratoSalvo ? "Contrato gerado!" : "Gerar Contrato"}
         </button>
       </div>
     </div>
