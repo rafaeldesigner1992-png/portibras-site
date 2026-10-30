@@ -5,7 +5,7 @@ import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
   Loader2, Send, Pencil, Trash2, MapPin, Navigation,
-  Calculator, ShoppingCart, Save, Check, AlertCircle, Clock
+  Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -559,6 +559,7 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
   const [frequencia, setFrequencia] = useState(1.5);
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [copiado, setCopiado] = useState<"texto" | "zap" | null>(null);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   // Cálculos
   const corrAnual = portas * custoCorretivo * frequencia;
@@ -586,6 +587,182 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
     });
     setCopiado(tipo);
     setTimeout(() => setCopiado(null), 2500);
+  }
+
+  async function gerarPDF() {
+    setGerandoPdf(true);
+    try {
+      // Carrega pdfmake dinamicamente se ainda não estiver presente
+      if (!(window as Record<string, unknown>).pdfMake) {
+        await new Promise<void>((resolve, reject) => {
+          const s1 = document.createElement("script");
+          s1.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js";
+          s1.onload = () => {
+            const s2 = document.createElement("script");
+            s2.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.min.js";
+            s2.onload = () => resolve();
+            s2.onerror = reject;
+            document.head.appendChild(s2);
+          };
+          s1.onerror = reject;
+          document.head.appendChild(s1);
+        });
+      }
+
+      const pm = (window as Record<string, unknown>).pdfMake as {
+        createPdf: (def: unknown) => { download: (name: string) => void };
+      };
+
+      const verde = "#1a6b2f";
+      const laranja = "#C94500";
+      const cinza = "#6b7280";
+      const data = new Date().toLocaleDateString("pt-BR");
+      const nomeArquivo = `Proposta_Manutencao_${(lead.empresa || lead.nome || "PORTIBRAS").replace(/\s+/g, "_")}.pdf`;
+
+      const docDef = {
+        pageSize: "A4",
+        pageMargins: [40, 40, 40, 40],
+        defaultStyle: { font: "Roboto", fontSize: 10, color: "#1f2937" },
+        content: [
+          // Cabeçalho
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "PORTIBRAS", fontSize: 22, bold: true, color: laranja, characterSpacing: 2 },
+                  { text: "Portas Corta-Fogo · NBR 11.742:2018", fontSize: 8, color: cinza, margin: [0, 2, 0, 0] },
+                ],
+              },
+              {
+                stack: [
+                  { text: `Para: ${lead.empresa || lead.nome || "—"}`, fontSize: 10, bold: true, alignment: "right" },
+                  { text: `Responsável: ${lead.nome || "—"}`, fontSize: 9, color: cinza, alignment: "right" },
+                  ...(lead.endereco_fiscal ? [{ text: lead.endereco_fiscal, fontSize: 8, color: cinza, alignment: "right" as const }] : []),
+                  { text: `Data: ${data}`, fontSize: 9, color: cinza, alignment: "right" },
+                ],
+              },
+            ],
+          },
+          { canvas: [{ type: "line", x1: 0, y1: 4, x2: 515, y2: 4, lineWidth: 2, lineColor: laranja }], margin: [0, 8, 0, 12] },
+
+          // Título
+          { text: "PROPOSTA DE CONTRATO DE MANUTENÇÃO PREVENTIVA", fontSize: 13, bold: true, color: verde, margin: [0, 0, 0, 4] },
+          { text: `Plano 12 Parcelas Mensais — ${portas} Portas Corta-Fogo`, fontSize: 10, color: cinza, margin: [0, 0, 0, 14] },
+
+          // Situação atual
+          { text: "⚠ A SITUAÇÃO ATUAL", fontSize: 10, bold: true, margin: [0, 0, 0, 4] },
+          {
+            text: "Portas corta-fogo sem manutenção regular representam risco de segurança, não conformidade com a NBR 11.742:2018 e exposição a autuações do Corpo de Bombeiros. Manutenção corretiva acumula: custo de visita emergencial, peças e porta inoperante.",
+            fontSize: 9, color: "#374151", margin: [0, 0, 0, 14], lineHeight: 1.4,
+          },
+
+          // O que está incluído
+          { text: "✅ O QUE ESTÁ INCLUÍDO NO PLANO", fontSize: 10, bold: true, margin: [0, 0, 0, 6] },
+          {
+            ul: [
+              `2 roteiros completos de manutenção/ano — ${portas} portas`,
+              "Ajustes de mola, lubrificação e regulagem de batentes",
+              "Laudo técnico DTS em cada roteiro (NBR 11.742:2018)",
+              "Registro fotográfico antes e depois",
+              "Atendimento prioritário em emergências — INCLUÍDO",
+            ],
+            fontSize: 9, color: "#374151", lineHeight: 1.5, margin: [0, 0, 0, 14],
+          },
+
+          // Box investimento
+          {
+            table: {
+              widths: ["*"],
+              body: [[
+                {
+                  stack: [
+                    { text: "INVESTIMENTO — 12 PARCELAS MENSAIS DE", fontSize: 8, bold: true, color: laranja, alignment: "center", characterSpacing: 1 },
+                    { text: fmtBRL(parcela), fontSize: 28, bold: true, color: laranja, alignment: "center", margin: [0, 4, 0, 4] },
+                    { text: `${portas} portas · ${fmtBRL(porPorta)}/porta/mês · ${fmtBRL(porDia)}/porta/dia`, fontSize: 8, color: cinza, alignment: "center" },
+                  ],
+                  fillColor: "#FFF2EC",
+                  border: [true, true, true, true],
+                  borderColor: [laranja, laranja, laranja, laranja],
+                  margin: [12, 10, 12, 10],
+                },
+              ]],
+            },
+            margin: [0, 0, 0, 14],
+          },
+
+          // Tabela comparativa
+          { text: "📊 COMPARATIVO: SEM PLANO vs. COM PORTIBRAS", fontSize: 10, bold: true, margin: [0, 0, 0, 6] },
+          {
+            table: {
+              widths: ["*", "*", "*"],
+              headerRows: 1,
+              body: [
+                [
+                  { text: "", fillColor: "#f9fafb" },
+                  { text: "Sem Plano", bold: true, color: cinza, fillColor: "#f9fafb", fontSize: 9 },
+                  { text: "Com PORTIBRAS", bold: true, color: verde, fillColor: "#f0fdf4", fontSize: 9 },
+                ],
+                ["Custo mensal", { text: "R$ 0*", color: "#ef4444", fontSize: 9 }, { text: fmtBRL(parcela), color: verde, bold: true, fontSize: 9 }],
+                ["Visita emergencial", { text: `${fmtBRL(custoCorretivo)}+`, color: "#ef4444", fontSize: 9 }, { text: "Incluída ✓", color: verde, fontSize: 9 }],
+                ["Laudo técnico DTS", { text: "Separado ✗", color: "#ef4444", fontSize: 9 }, { text: "Incluído ✓", color: verde, fontSize: 9 }],
+                ["Conformidade NBR", { text: "Risco ✗", color: "#ef4444", fontSize: 9 }, { text: "Garantida ✓", color: verde, fontSize: 9 }],
+                ["Custo anual est.", { text: fmtBRL(corrAnual), color: "#ef4444", fontSize: 9 }, { text: fmtBRL(parcela * 12), color: verde, bold: true, fontSize: 9 }],
+              ],
+            },
+            layout: { hLineColor: "#e5e7eb", vLineColor: "#e5e7eb" },
+            margin: [0, 0, 0, 4],
+          },
+          { text: `* Até a primeira emergência — custo corretivo estimado de ${fmtBRL(corrAnual)}/ano sem plano`, fontSize: 7, color: cinza, margin: [0, 2, 0, 14] },
+
+          // Bloco economia
+          ...(economia > 0 ? [{
+            table: {
+              widths: ["*", "*"],
+              body: [[
+                {
+                  stack: [
+                    { text: "ECONOMIA MENSAL", fontSize: 8, bold: true, color: verde, alignment: "center" },
+                    { text: fmtBRL(economia), fontSize: 18, bold: true, color: verde, alignment: "center" },
+                  ],
+                  fillColor: "#f0fdf4",
+                  margin: [10, 8, 10, 8],
+                },
+                {
+                  stack: [
+                    { text: "ECONOMIA ANUAL", fontSize: 8, bold: true, color: verde, alignment: "center" },
+                    { text: fmtBRL(economiaAnual), fontSize: 18, bold: true, color: verde, alignment: "center" },
+                  ],
+                  fillColor: "#f0fdf4",
+                  margin: [10, 8, 10, 8],
+                },
+              ]],
+            },
+            layout: { hLineColor: "#bbf7d0", vLineColor: "#bbf7d0" },
+            margin: [0, 0, 0, 14],
+          }] : []),
+
+          // Próximo passo
+          { text: "📞 PRÓXIMO PASSO", fontSize: 10, bold: true, margin: [0, 0, 0, 4] },
+          { text: "Entre em contato para agendar uma visita técnica gratuita de avaliação e fechamento do contrato sem compromisso.", fontSize: 9, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 14] },
+
+          // Rodapé
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 8] },
+          {
+            columns: [
+              { text: "PORTIBRAS — Soluções em Portas Corta-Fogo", fontSize: 8, bold: true, color: laranja },
+              { text: "(22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 8, color: cinza, alignment: "right" },
+            ],
+          },
+        ],
+      };
+
+      pm.createPdf(docDef).download(nomeArquivo);
+    } catch (err) {
+      console.error("Erro ao gerar PDF:", err);
+      alert("Não foi possível gerar o PDF. Tente novamente.");
+    } finally {
+      setGerandoPdf(false);
+    }
   }
 
   function buildTexto(whatsapp: boolean) {
@@ -861,6 +1038,14 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
         >
           {copiado === "zap" ? <Check className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
           {copiado === "zap" ? "Copiado!" : "Formato WhatsApp"}
+        </button>
+        <button
+          onClick={gerarPDF}
+          disabled={gerandoPdf}
+          className="flex items-center gap-1.5 rounded-lg border border-[#C94500] px-4 py-2.5 text-sm font-medium text-[#C94500] hover:bg-orange-50 disabled:opacity-50 transition-colors"
+        >
+          {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {gerandoPdf ? "Gerando PDF…" : "Baixar PDF"}
         </button>
       </div>
     </div>
