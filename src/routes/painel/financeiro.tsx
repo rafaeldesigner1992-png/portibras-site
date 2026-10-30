@@ -1,14 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { DollarSign, Plus, TrendingUp, TrendingDown, X, Settings2, Check, Loader2 } from "lucide-react";
+import {
+  DollarSign, Plus, TrendingUp, TrendingDown, X, Settings2, Check,
+  Loader2, Car, Building2, AlertTriangle, Trash2, Pencil,
+  BarChart3, Target, Gauge, CreditCard, ChevronDown, ChevronUp, Info
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/painel/financeiro")({
   component: FinanceiroPage,
 });
 
+// ─── Interfaces ──────────────────────────────────────────────────────────────
 type Tipo = "receita" | "despesa";
+
 interface Lancamento {
   id: string;
   descricao: string;
@@ -19,75 +25,135 @@ interface Lancamento {
   pago: boolean;
 }
 
+interface CustoFixo {
+  id: string;
+  nome: string;
+  valor_mensal: number;
+  categoria: string;
+  ativo: boolean;
+}
+
+interface Divida {
+  id: string;
+  credor: string;
+  descricao: string;
+  categoria: string;
+  valor_total: number;
+  valor_pago: number;
+  parcela_mensal: number;
+  vencimento_dia: number;         // dia do mês (1–28)
+  data_inicio: string;            // ISO date
+  ativo: boolean;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function fmt(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function pct(v: number) {
+  return v.toFixed(1) + "%";
+}
+
+const CATS_CUSTO = ["Administrativo", "Veículo", "Pessoal", "Tecnologia", "Instalações", "Marketing", "Outros"];
+const CATS_DIVIDA = ["Empréstimo bancário", "Financiamento veículo", "Cartão de crédito", "Fornecedor", "Sócio", "Outros"];
+
+// ─── Componente principal ────────────────────────────────────────────────────
 function FinanceiroPage() {
+  // ── Lançamentos ──
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState<Partial<Lancamento>>({
     descricao: "", tipo: "receita", valor: 0, categoria: "",
-    data: new Date().toISOString().slice(0, 10), pago: false
+    data: new Date().toISOString().slice(0, 10), pago: false,
   });
 
-  // Configuração de alíquota padrão
-  const [aliquota, setAliquota] = useState<number>(10);
-  const [aliquotaInput, setAliquotaInput] = useState<string>("10");
+  // ── Configurações fiscais e de margem ──
+  const [aliquota, setAliquota] = useState(10);
+  const [aliquotaInput, setAliquotaInput] = useState("10");
   const [salvandoAliquota, setSalvandoAliquota] = useState(false);
   const [aliquotaSalva, setAliquotaSalva] = useState(false);
   const [configId, setConfigId] = useState<string | null>(null);
-
-  // Configurações de margem e mão de obra
-  const [margemMinInput, setMargemMinInput] = useState<string>("25");
-  const [margemIdealInput, setMargemIdealInput] = useState<string>("45");
-  const [custoEquipeInput, setCustoEquipeInput] = useState<string>("0");
+  const [margemMinInput, setMargemMinInput] = useState("25");
+  const [margemIdealInput, setMargemIdealInput] = useState("45");
   const [salvandoMargem, setSalvandoMargem] = useState(false);
   const [margemSalva, setMargemSalva] = useState(false);
 
-  useEffect(() => { carregar(); carregarConfig(); }, []);
+  // ── Veículo / km ──
+  const [precoCombInput, setPrecoCombInput] = useState("6.50");
+  const [consumoKmInput, setConsumoKmInput] = useState("10");
+  const [custoManutInput, setCustoManutInput] = useState("0.15");
+  const [salvandoVeiculo, setSalvandoVeiculo] = useState(false);
+  const [veiculoSalvo, setVeiculoSalvo] = useState(false);
+
+  // ── Custos Fixos ──
+  const [custosFixos, setCustosFixos] = useState<CustoFixo[]>([]);
+  const [carregandoCF, setCarregandoCF] = useState(true);
+  const [modalCF, setModalCF] = useState(false);
+  const [selCF, setSelCF] = useState<CustoFixo | null>(null);
+  const [formCF, setFormCF] = useState<Partial<CustoFixo>>({ nome: "", valor_mensal: 0, categoria: "Administrativo", ativo: true });
+
+  // ── Dívidas ──
+  const [dividas, setDividas] = useState<Divida[]>([]);
+  const [carregandoDiv, setCarregandoDiv] = useState(true);
+  const [modalDiv, setModalDiv] = useState(false);
+  const [selDiv, setSelDiv] = useState<Divida | null>(null);
+  const [formDiv, setFormDiv] = useState<Partial<Divida>>({
+    credor: "", descricao: "", categoria: "Empréstimo bancário",
+    valor_total: 0, valor_pago: 0, parcela_mensal: 0,
+    vencimento_dia: 10, data_inicio: new Date().toISOString().slice(0, 10), ativo: true,
+  });
+
+  // ── UI state ──
+  const [secaoAberta, setSecaoAberta] = useState<"config" | "custos" | "dividas" | "saude" | null>("saude");
+
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    carregar();
+    carregarConfig();
+    carregarCustosFixos();
+    carregarDividas();
+  }, []);
 
   async function carregar() {
     setCarregando(true);
-    const { data } = await supabase
-      .from("financeiro_lancamentos")
-      .select("*")
-      .order("data", { ascending: false });
+    const { data } = await supabase.from("financeiro_lancamentos").select("*").order("data", { ascending: false });
     if (data) setLancamentos(data as Lancamento[]);
     setCarregando(false);
   }
 
   async function carregarConfig() {
-    const { data } = await supabase
-      .from("configuracoes")
-      .select("*")
-      .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "custo_diario_equipe"]);
+    const { data } = await supabase.from("configuracoes").select("*")
+      .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct",
+        "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km"]);
     if (data) {
       for (const row of data) {
-        if (row.chave === "imposto_padrao_pct") {
-          setAliquota(Number(row.valor));
-          setAliquotaInput(String(Number(row.valor)));
-          setConfigId(row.id);
-        }
+        if (row.chave === "imposto_padrao_pct") { setAliquota(Number(row.valor)); setAliquotaInput(String(Number(row.valor))); setConfigId(row.id); }
         if (row.chave === "margem_minima_pct") setMargemMinInput(String(Number(row.valor)));
         if (row.chave === "margem_ideal_pct") setMargemIdealInput(String(Number(row.valor)));
-        if (row.chave === "custo_diario_equipe") setCustoEquipeInput(String(Number(row.valor)));
+        if (row.chave === "veiculo_preco_combustivel") setPrecoCombInput(String(Number(row.valor)));
+        if (row.chave === "veiculo_consumo_km_l") setConsumoKmInput(String(Number(row.valor)));
+        if (row.chave === "veiculo_custo_manut_km") setCustoManutInput(String(Number(row.valor)));
       }
     }
   }
 
-  async function salvarMargem() {
-    setSalvandoMargem(true);
-    const configs = [
-      { chave: "margem_minima_pct", valor: margemMinInput, descricao: "Margem de lucro mínima aceitável nos orçamentos (%)" },
-      { chave: "margem_ideal_pct",  valor: margemIdealInput, descricao: "Margem de lucro ideal nos orçamentos (%)" },
-      { chave: "custo_diario_equipe", valor: custoEquipeInput, descricao: "Custo diário da equipe técnica em campo (R$)" },
-    ];
-    for (const cfg of configs) {
-      await supabase.from("configuracoes").upsert({ ...cfg, atualizado_em: new Date().toISOString() }, { onConflict: "chave" });
-    }
-    setSalvandoMargem(false);
-    setMargemSalva(true);
-    setTimeout(() => setMargemSalva(false), 2500);
+  async function carregarCustosFixos() {
+    setCarregandoCF(true);
+    const { data } = await supabase.from("financeiro_custos_fixos").select("*").order("categoria").order("nome");
+    if (data) setCustosFixos(data as CustoFixo[]);
+    setCarregandoCF(false);
   }
 
+  async function carregarDividas() {
+    setCarregandoDiv(true);
+    const { data } = await supabase.from("financeiro_dividas").select("*").order("credor");
+    if (data) setDividas(data as Divida[]);
+    setCarregandoDiv(false);
+  }
+
+  // ── Salvar alíquota ──
   async function salvarAliquota() {
     const val = Number(aliquotaInput);
     if (isNaN(val) || val < 0 || val > 100) return;
@@ -104,6 +170,83 @@ function FinanceiroPage() {
     setTimeout(() => setAliquotaSalva(false), 2500);
   }
 
+  // ── Salvar margens ──
+  async function salvarMargem() {
+    setSalvandoMargem(true);
+    const configs = [
+      { chave: "margem_minima_pct", valor: margemMinInput, descricao: "Margem de lucro mínima aceitável nos orçamentos (%)" },
+      { chave: "margem_ideal_pct", valor: margemIdealInput, descricao: "Margem de lucro ideal nos orçamentos (%)" },
+    ];
+    for (const cfg of configs) {
+      await supabase.from("configuracoes").upsert({ ...cfg, atualizado_em: new Date().toISOString() }, { onConflict: "chave" });
+    }
+    setSalvandoMargem(false);
+    setMargemSalva(true);
+    setTimeout(() => setMargemSalva(false), 2500);
+  }
+
+  // ── Salvar veículo ──
+  async function salvarVeiculo() {
+    setSalvandoVeiculo(true);
+    const configs = [
+      { chave: "veiculo_preco_combustivel", valor: precoCombInput, descricao: "Preço do combustível (R$/litro)" },
+      { chave: "veiculo_consumo_km_l", valor: consumoKmInput, descricao: "Consumo médio do veículo (km/litro)" },
+      { chave: "veiculo_custo_manut_km", valor: custoManutInput, descricao: "Custo de manutenção por km rodado (R$/km)" },
+    ];
+    for (const cfg of configs) {
+      await supabase.from("configuracoes").upsert({ ...cfg, atualizado_em: new Date().toISOString() }, { onConflict: "chave" });
+    }
+    setSalvandoVeiculo(false);
+    setVeiculoSalvo(true);
+    setTimeout(() => setVeiculoSalvo(false), 2500);
+  }
+
+  // ── CRUD Custos Fixos ──
+  function abrirCF(cf?: CustoFixo) {
+    if (cf) { setSelCF(cf); setFormCF({ ...cf }); }
+    else { setSelCF(null); setFormCF({ nome: "", valor_mensal: 0, categoria: "Administrativo", ativo: true }); }
+    setModalCF(true);
+  }
+
+  async function salvarCF() {
+    if (!formCF.nome?.trim()) return;
+    if (selCF) await supabase.from("financeiro_custos_fixos").update(formCF).eq("id", selCF.id);
+    else await supabase.from("financeiro_custos_fixos").insert(formCF);
+    setModalCF(false);
+    carregarCustosFixos();
+  }
+
+  async function excluirCF(id: string) {
+    if (!confirm("Excluir este custo fixo?")) return;
+    await supabase.from("financeiro_custos_fixos").delete().eq("id", id);
+    carregarCustosFixos();
+  }
+
+  // ── CRUD Dívidas ──
+  function abrirDiv(d?: Divida) {
+    if (d) { setSelDiv(d); setFormDiv({ ...d }); }
+    else {
+      setSelDiv(null);
+      setFormDiv({ credor: "", descricao: "", categoria: "Empréstimo bancário", valor_total: 0, valor_pago: 0, parcela_mensal: 0, vencimento_dia: 10, data_inicio: new Date().toISOString().slice(0, 10), ativo: true });
+    }
+    setModalDiv(true);
+  }
+
+  async function salvarDiv() {
+    if (!formDiv.credor?.trim()) return;
+    if (selDiv) await supabase.from("financeiro_dividas").update(formDiv).eq("id", selDiv.id);
+    else await supabase.from("financeiro_dividas").insert(formDiv);
+    setModalDiv(false);
+    carregarDividas();
+  }
+
+  async function excluirDiv(id: string) {
+    if (!confirm("Excluir esta dívida?")) return;
+    await supabase.from("financeiro_dividas").delete().eq("id", id);
+    carregarDividas();
+  }
+
+  // ── Lançamento ──
   async function salvar() {
     if (!form.descricao?.trim() || !form.valor) return;
     await supabase.from("financeiro_lancamentos").insert(form);
@@ -111,19 +254,54 @@ function FinanceiroPage() {
     carregar();
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // CÁLCULOS FINANCEIROS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Receitas e despesas do mês dos lançamentos
   const receitas = lancamentos.filter(l => l.tipo === "receita" && l.pago).reduce((s, l) => s + l.valor, 0);
   const despesas = lancamentos.filter(l => l.tipo === "despesa" && l.pago).reduce((s, l) => s + l.valor, 0);
   const saldo = receitas - despesas;
 
-  function fmt(v: number) {
-    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  }
+  // Custo/km calculado
+  const precoComb = Number(precoCombInput) || 0;
+  const consumoKm = Number(consumoKmInput) || 1;
+  const custoManut = Number(custoManutInput) || 0;
+  const custoPorKm = (precoComb / consumoKm) + custoManut;
+
+  // Total custos fixos mensais ativos
+  const totalCustosFixos = custosFixos.filter(c => c.ativo).reduce((s, c) => s + c.valor_mensal, 0);
+
+  // Total comprometimento mensal com dívidas ativas
+  const totalParcelasMensais = dividas.filter(d => d.ativo && d.valor_pago < d.valor_total).reduce((s, d) => s + d.parcela_mensal, 0);
+  const totalDividaRestante = dividas.filter(d => d.ativo).reduce((s, d) => s + Math.max(0, d.valor_total - d.valor_pago), 0);
+
+  // Custo total mensal estrutural (fixos + dívidas)
+  const custoEstruturalMensal = totalCustosFixos + totalParcelasMensais;
+
+  // Margem de contribuição (receita - custos variáveis; aqui usamos o que há nos lançamentos)
+  // Se tiver receita nos lançamentos, calcula; caso contrário, mostra estrutura
+  const margemContribuicao = receitas > 0 ? receitas - despesas : 0;
+  const margemContribuicaoPct = receitas > 0 ? (margemContribuicao / receitas) * 100 : 0;
+
+  // Ponto de equilíbrio mensal = precisa faturar X para cobrir estrutura
+  const pontoEquilibrio = margemContribuicaoPct > 0
+    ? custoEstruturalMensal / (margemContribuicaoPct / 100)
+    : custoEstruturalMensal;
+
+  // Taxa de endividamento mensal = parcelas / receita
+  const taxaEndividamento = receitas > 0 ? (totalParcelasMensais / receitas) * 100 : 0;
+
+  // Resultado líquido estimado = receita - despesas variáveis - estrutura
+  const resultadoLiquido = receitas - despesas - custoEstruturalMensal;
 
   const mes = new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-8 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Financeiro</h1>
           <p className="mt-1 text-sm text-gray-500 capitalize">{mes}</p>
@@ -132,22 +310,19 @@ function FinanceiroPage() {
           onClick={() => { setForm({ descricao: "", tipo: "receita", valor: 0, categoria: "", data: new Date().toISOString().slice(0, 10), pago: false }); setModal(true); }}
           className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]"
         >
-          <Plus className="h-4 w-4" />
-          Lançamento
+          <Plus className="h-4 w-4" /> Lançamento
         </button>
       </div>
 
       {/* KPIs */}
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         {[
           { label: "Receitas (pagas)", valor: fmt(receitas), icon: TrendingUp, cor: "bg-green-50 text-green-600" },
           { label: "Despesas (pagas)", valor: fmt(despesas), icon: TrendingDown, cor: "bg-red-50 text-red-600" },
           { label: "Saldo", valor: fmt(saldo), icon: DollarSign, cor: saldo >= 0 ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600" },
         ].map((kpi) => (
           <div key={kpi.label} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex items-center gap-4">
-            <div className={cn("rounded-lg p-3", kpi.cor)}>
-              <kpi.icon className="h-5 w-5" />
-            </div>
+            <div className={cn("rounded-lg p-3", kpi.cor)}><kpi.icon className="h-5 w-5" /></div>
             <div>
               <p className="text-xs text-gray-500">{kpi.label}</p>
               <p className="text-xl font-bold text-gray-900">{kpi.valor}</p>
@@ -156,95 +331,271 @@ function FinanceiroPage() {
         ))}
       </div>
 
-      {/* Configurações fiscais e de margem */}
-      <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-        <div className="flex items-center gap-2 mb-5">
-          <Settings2 className="h-4 w-4 text-[#1a6b2f]" />
-          <h2 className="text-sm font-semibold text-gray-800">Configurações de Orçamento</h2>
-          <span className="text-xs text-gray-400">— aplicadas automaticamente em todos os orçamentos</span>
+      {/* ══════════ SAÚDE FINANCEIRA ══════════ */}
+      <Secao
+        icone={BarChart3} titulo="Saúde Financeira" cor="text-purple-600"
+        aberta={secaoAberta === "saude"} toggle={() => setSecaoAberta(s => s === "saude" ? null : "saude")}
+        badge={resultadoLiquido < 0 ? "⚠️ Resultado negativo" : undefined}
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            titulo="Custos Fixos Mensais" valor={fmt(totalCustosFixos)}
+            sub={`${custosFixos.filter(c => c.ativo).length} itens ativos`}
+            cor="bg-orange-50 text-orange-600" icone={Building2}
+          />
+          <KpiCard
+            titulo="Parcelas de Dívidas" valor={fmt(totalParcelasMensais)}
+            sub={`Saldo devedor: ${fmt(totalDividaRestante)}`}
+            cor="bg-red-50 text-red-600" icone={CreditCard}
+          />
+          <KpiCard
+            titulo="Ponto de Equilíbrio" valor={fmt(pontoEquilibrio)}
+            sub="Receita mínima para cobrir estrutura"
+            cor="bg-yellow-50 text-yellow-600" icone={Target}
+            tooltip="Custos fixos + dívidas ÷ margem de contribuição %"
+          />
+          <KpiCard
+            titulo="Resultado Líquido Est." valor={fmt(resultadoLiquido)}
+            sub="Receitas − despesas − estrutura"
+            cor={resultadoLiquido >= 0 ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"} icone={Gauge}
+          />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        {receitas > 0 && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <Indicador
+              label="Margem de Contribuição"
+              valor={pct(margemContribuicaoPct)}
+              status={margemContribuicaoPct >= Number(margemIdealInput) ? "verde" : margemContribuicaoPct >= Number(margemMinInput) ? "amarelo" : "vermelho"}
+              desc="(Receitas − despesas variáveis) ÷ Receitas"
+            />
+            <Indicador
+              label="Taxa de Endividamento"
+              valor={pct(taxaEndividamento)}
+              status={taxaEndividamento <= 20 ? "verde" : taxaEndividamento <= 35 ? "amarelo" : "vermelho"}
+              desc="Parcelas mensais ÷ Receitas — saudável abaixo de 20%"
+            />
+            <Indicador
+              label="Custo Estrutural / Receita"
+              valor={pct(receitas > 0 ? (custoEstruturalMensal / receitas) * 100 : 0)}
+              status={(custoEstruturalMensal / receitas) * 100 <= 40 ? "verde" : (custoEstruturalMensal / receitas) * 100 <= 60 ? "amarelo" : "vermelho"}
+              desc="(Fixos + dívidas) ÷ Receitas"
+            />
+          </div>
+        )}
+
+        {receitas === 0 && (
+          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-600 flex items-start gap-2">
+            <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <span>Lance receitas pagas para calcular margem, ponto de equilíbrio e taxa de endividamento em relação à produção.</span>
+          </div>
+        )}
+      </Secao>
+
+      {/* ══════════ CUSTOS FIXOS ══════════ */}
+      <Secao
+        icone={Building2} titulo="Custos Fixos Mensais" cor="text-orange-600"
+        aberta={secaoAberta === "custos"} toggle={() => setSecaoAberta(s => s === "custos" ? null : "custos")}
+        badge={totalCustosFixos > 0 ? fmt(totalCustosFixos) + "/mês" : undefined}
+        acao={<button onClick={() => abrirCF()} className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824]"><Plus className="h-3.5 w-3.5" /> Novo custo</button>}
+      >
+        {carregandoCF ? (
+          <div className="py-8 text-center text-sm text-gray-400">Carregando…</div>
+        ) : custosFixos.length === 0 ? (
+          <div className="flex flex-col items-center py-10 text-gray-400">
+            <Building2 className="mb-2 h-8 w-8 opacity-30" />
+            <p className="text-sm">Nenhum custo fixo cadastrado</p>
+            <p className="text-xs mt-1 text-gray-300">Adicione aluguel, contador, internet, pró-labore, etc.</p>
+          </div>
+        ) : (
+          <>
+            {/* Agrupa por categoria */}
+            {Array.from(new Set(custosFixos.map(c => c.categoria))).map(cat => {
+              const itens = custosFixos.filter(c => c.categoria === cat);
+              const subtotal = itens.filter(c => c.ativo).reduce((s, c) => s + c.valor_mensal, 0);
+              return (
+                <div key={cat} className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">{cat}</span>
+                    <span className="text-xs font-semibold text-gray-500">{fmt(subtotal)}/mês</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {itens.map(cf => (
+                      <div key={cf.id} className={cn("flex items-center justify-between rounded-lg border px-4 py-3", cf.ativo ? "border-gray-100 bg-white" : "border-gray-50 bg-gray-50 opacity-60")}>
+                        <div className="flex items-center gap-3">
+                          <div className={cn("h-2 w-2 rounded-full", cf.ativo ? "bg-green-400" : "bg-gray-300")} />
+                          <span className="text-sm text-gray-800">{cf.nome}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-sm font-semibold text-gray-700">{fmt(cf.valor_mensal)}<span className="text-xs font-normal text-gray-400">/mês</span></span>
+                          <div className="flex gap-1">
+                            <button onClick={() => abrirCF(cf)} className="rounded p-1 text-gray-300 hover:text-gray-600 hover:bg-gray-100"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => excluirCF(cf.id)} className="rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="mt-3 flex justify-end border-t pt-3">
+              <span className="text-sm font-bold text-gray-700">Total mensal: <span className="text-[#1a6b2f]">{fmt(totalCustosFixos)}</span></span>
+            </div>
+          </>
+        )}
+      </Secao>
+
+      {/* ══════════ DÍVIDAS ══════════ */}
+      <Secao
+        icone={CreditCard} titulo="Dívidas e Financiamentos" cor="text-red-600"
+        aberta={secaoAberta === "dividas"} toggle={() => setSecaoAberta(s => s === "dividas" ? null : "dividas")}
+        badge={totalDividaRestante > 0 ? `Saldo: ${fmt(totalDividaRestante)}` : undefined}
+        acao={<button onClick={() => abrirDiv()} className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824]"><Plus className="h-3.5 w-3.5" /> Nova dívida</button>}
+      >
+        {carregandoDiv ? (
+          <div className="py-8 text-center text-sm text-gray-400">Carregando…</div>
+        ) : dividas.length === 0 ? (
+          <div className="flex flex-col items-center py-10 text-gray-400">
+            <CreditCard className="mb-2 h-8 w-8 opacity-30" />
+            <p className="text-sm">Nenhuma dívida cadastrada</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {dividas.map(d => {
+              const restante = Math.max(0, d.valor_total - d.valor_pago);
+              const progresso = d.valor_total > 0 ? (d.valor_pago / d.valor_total) * 100 : 0;
+              const quitada = restante === 0;
+              return (
+                <div key={d.id} className={cn("rounded-xl border p-4", quitada ? "border-green-100 bg-green-50/40" : d.ativo ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50 opacity-60")}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900">{d.credor}</span>
+                        {quitada && <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">QUITADA</span>}
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">{d.categoria}</span>
+                      </div>
+                      {d.descricao && <p className="text-xs text-gray-400 mt-0.5">{d.descricao}</p>}
+                    </div>
+                    <div className="flex gap-1 ml-2 flex-shrink-0">
+                      <button onClick={() => abrirDiv(d)} className="rounded p-1 text-gray-300 hover:text-gray-600 hover:bg-gray-100"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => excluirDiv(d.id)} className="rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </div>
+
+                  {/* Barra de progresso */}
+                  <div className="mb-3">
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                      <span>Pago: {fmt(d.valor_pago)}</span>
+                      <span>Total: {fmt(d.valor_total)}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                      <div
+                        className={cn("h-2 rounded-full transition-all", quitada ? "bg-green-400" : "bg-[#1a6b2f]")}
+                        style={{ width: `${Math.min(progresso, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-right text-[10px] text-gray-400 mt-0.5">{progresso.toFixed(0)}% quitado</p>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    {!quitada && (
+                      <>
+                        <span>Parcela: <strong className="text-red-600">{fmt(d.parcela_mensal)}/mês</strong></span>
+                        <span>Vence dia <strong>{d.vencimento_dia}</strong></span>
+                        <span>Restante: <strong className="text-gray-700">{fmt(restante)}</strong></span>
+                      </>
+                    )}
+                    {quitada && <span className="text-green-600 font-medium">✓ Dívida quitada</span>}
+                  </div>
+                </div>
+              );
+            })}
+
+            {totalParcelasMensais > 0 && (
+              <div className="flex justify-end border-t pt-3">
+                <span className="text-sm font-bold text-gray-700">Comprometimento mensal: <span className="text-red-600">{fmt(totalParcelasMensais)}</span></span>
+              </div>
+            )}
+          </div>
+        )}
+      </Secao>
+
+      {/* ══════════ CONFIGURAÇÕES ══════════ */}
+      <Secao
+        icone={Settings2} titulo="Configurações de Orçamento e Veículo" cor="text-gray-500"
+        aberta={secaoAberta === "config"} toggle={() => setSecaoAberta(s => s === "config" ? null : "config")}
+      >
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {/* Alíquota */}
           <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Fiscal</p>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Alíquota de Impostos / Encargos (%)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Alíquota de Impostos (%)</label>
             <div className="flex items-center gap-2">
-              <input
-                type="number" min={0} max={100} step={0.5}
-                value={aliquotaInput}
-                onChange={e => setAliquotaInput(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && salvarAliquota()}
-                className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]"
-              />
-              <button
-                onClick={salvarAliquota}
-                disabled={salvandoAliquota}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors",
-                  aliquotaSalva ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
-                  salvandoAliquota && "opacity-60 cursor-not-allowed"
-                )}
-              >
-                {salvandoAliquota ? <Loader2 className="h-4 w-4 animate-spin" /> : aliquotaSalva ? <Check className="h-4 w-4" /> : null}
-                {aliquotaSalva ? "Salvo!" : "Salvar"}
-              </button>
+              <input type="number" min={0} max={100} step={0.5} value={aliquotaInput} onChange={e => setAliquotaInput(e.target.value)} onKeyDown={e => e.key === "Enter" && salvarAliquota()}
+                className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+              <SalvarBtn loading={salvandoAliquota} salvo={aliquotaSalva} onClick={salvarAliquota} />
             </div>
-            <p className="mt-1.5 text-xs text-gray-400">
-              Atual: <span className="font-semibold text-gray-600">{aliquota}%</span>
-            </p>
+            <p className="mt-1.5 text-xs text-gray-400">Atual: <strong>{aliquota}%</strong></p>
           </div>
 
-          {/* Margem e custo equipe */}
+          {/* Margem */}
           <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Margem e Mão de Obra</p>
-            <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Margens nos Orçamentos</p>
+            <div className="space-y-2.5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Margem mínima (%) <span className="text-red-500 font-bold">·</span> <span className="text-xs text-red-500">alerta vermelho</span>
-                </label>
-                <input type="number" min={0} max={100} step={0.5}
-                  value={margemMinInput} onChange={e => setMargemMinInput(e.target.value)}
-                  className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+                <label className="block text-xs font-medium text-gray-600 mb-1">Mínima (%) <span className="text-red-500">● alerta</span></label>
+                <input type="number" min={0} max={100} step={0.5} value={margemMinInput} onChange={e => setMargemMinInput(e.target.value)}
+                  className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Margem ideal (%) <span className="text-green-600 font-bold">·</span> <span className="text-xs text-green-600">verde acima disso</span>
-                </label>
-                <input type="number" min={0} max={100} step={0.5}
-                  value={margemIdealInput} onChange={e => setMargemIdealInput(e.target.value)}
-                  className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Custo diário da equipe (R$)
-                </label>
-                <input type="number" min={0} step={10}
-                  value={custoEquipeInput} onChange={e => setCustoEquipeInput(e.target.value)}
-                  className="w-36 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]" />
-                <p className="mt-1 text-xs text-gray-400">Usado para calcular custo da mão de obra nos orçamentos</p>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Ideal (%) <span className="text-green-600">● verde</span></label>
+                <input type="number" min={0} max={100} step={0.5} value={margemIdealInput} onChange={e => setMargemIdealInput(e.target.value)}
+                  className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
               </div>
             </div>
-            <button
-              onClick={salvarMargem}
-              disabled={salvandoMargem}
-              className={cn(
-                "mt-3 flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors",
-                margemSalva ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
-                salvandoMargem && "opacity-60 cursor-not-allowed"
-              )}
-            >
-              {salvandoMargem ? <Loader2 className="h-4 w-4 animate-spin" /> : margemSalva ? <Check className="h-4 w-4" /> : null}
-              {margemSalva ? "Salvo!" : "Salvar"}
-            </button>
+            <SalvarBtn loading={salvandoMargem} salvo={margemSalva} onClick={salvarMargem} className="mt-3" />
+          </div>
+
+          {/* Veículo / km */}
+          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <Car className="h-3.5 w-3.5 text-gray-400" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Veículo / Km Rodado</p>
+            </div>
+            <div className="space-y-2.5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Preço do combustível (R$/litro)</label>
+                <input type="number" min={0} step={0.05} value={precoCombInput} onChange={e => setPrecoCombInput(e.target.value)}
+                  className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Consumo médio (km/litro)</label>
+                <input type="number" min={1} step={0.5} value={consumoKmInput} onChange={e => setConsumoKmInput(e.target.value)}
+                  className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Custo de manutenção (R$/km)</label>
+                <input type="number" min={0} step={0.01} value={custoManutInput} onChange={e => setCustoManutInput(e.target.value)}
+                  className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]" />
+              </div>
+            </div>
+            {custoPorKm > 0 && (
+              <div className="mt-3 rounded-lg bg-[#1a6b2f]/10 px-3 py-2">
+                <p className="text-xs text-[#1a6b2f]">Custo total por km: <strong>{custoPorKm.toFixed(2).replace(".", ",")} R$/km</strong></p>
+              </div>
+            )}
+            <SalvarBtn loading={salvandoVeiculo} salvo={veiculoSalvo} onClick={salvarVeiculo} className="mt-3" />
           </div>
         </div>
-      </div>
+      </Secao>
 
-      {/* Tabela */}
+      {/* Tabela de Lançamentos */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-800">Lançamentos do mês</h2>
+          <span className="text-xs text-gray-400">{lancamentos.length} registros</span>
+        </div>
         {carregando ? (
           <div className="py-16 text-center text-sm text-gray-400">Carregando…</div>
         ) : lancamentos.length === 0 ? (
@@ -266,9 +617,7 @@ function FinanceiroPage() {
             <tbody className="divide-y divide-gray-50">
               {lancamentos.map((l) => (
                 <tr key={l.id} className="hover:bg-gray-50/60">
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {new Date(l.data + "T12:00:00").toLocaleDateString("pt-BR")}
-                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(l.data + "T12:00:00").toLocaleDateString("pt-BR")}</td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{l.descricao}</td>
                   <td className="px-6 py-4 text-sm text-gray-400">{l.categoria || "—"}</td>
                   <td className={cn("px-6 py-4 text-right text-sm font-semibold", l.tipo === "receita" ? "text-green-600" : "text-red-600")}>
@@ -286,7 +635,7 @@ function FinanceiroPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* ══ Modal Lançamento ══ */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && setModal(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
@@ -299,16 +648,10 @@ function FinanceiroPage() {
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Tipo</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["receita", "despesa"] as Tipo[]).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setForm({ ...form, tipo: t })}
-                      className={cn(
-                        "rounded-lg border py-2.5 text-sm font-medium capitalize transition",
-                        form.tipo === t
-                          ? t === "receita" ? "border-green-300 bg-green-50 text-green-700" : "border-red-300 bg-red-50 text-red-700"
-                          : "border-gray-200 text-gray-500 hover:bg-gray-50"
-                      )}
-                    >
+                    <button key={t} onClick={() => setForm({ ...form, tipo: t })}
+                      className={cn("rounded-lg border py-2.5 text-sm font-medium capitalize transition",
+                        form.tipo === t ? t === "receita" ? "border-green-300 bg-green-50 text-green-700" : "border-red-300 bg-red-50 text-red-700"
+                          : "border-gray-200 text-gray-500 hover:bg-gray-50")}>
                       {t}
                     </button>
                   ))}
@@ -337,8 +680,7 @@ function FinanceiroPage() {
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
               </div>
               <div className="flex items-center gap-3">
-                <input type="checkbox" id="pago" checked={form.pago || false} onChange={(e) => setForm({ ...form, pago: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-300 accent-[#1a6b2f]" />
+                <input type="checkbox" id="pago" checked={form.pago || false} onChange={(e) => setForm({ ...form, pago: e.target.checked })} className="h-4 w-4 rounded border-gray-300 accent-[#1a6b2f]" />
                 <label htmlFor="pago" className="text-sm text-gray-700">Já foi pago/recebido</label>
               </div>
               <div className="flex gap-3 pt-2">
@@ -349,6 +691,186 @@ function FinanceiroPage() {
           </div>
         </div>
       )}
+
+      {/* ══ Modal Custo Fixo ══ */}
+      {modalCF && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalCF(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">{selCF ? "Editar Custo Fixo" : "Novo Custo Fixo"}</h2>
+              <button onClick={() => setModalCF(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Nome *</label>
+                <input type="text" value={formCF.nome || ""} onChange={e => setFormCF({ ...formCF, nome: e.target.value })}
+                  placeholder="Ex: Aluguel, Contador, Internet…"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Valor mensal (R$)</label>
+                <input type="number" min={0} step={10} value={formCF.valor_mensal ?? 0} onChange={e => setFormCF({ ...formCF, valor_mensal: Number(e.target.value) })}
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Categoria</label>
+                <select value={formCF.categoria || "Administrativo"} onChange={e => setFormCF({ ...formCF, categoria: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
+                  {CATS_CUSTO.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="ativo-cf" checked={formCF.ativo ?? true} onChange={e => setFormCF({ ...formCF, ativo: e.target.checked })} className="rounded border-gray-300 text-[#1a6b2f]" />
+                <label htmlFor="ativo-cf" className="text-sm text-gray-700">Ativo (entra nos cálculos)</label>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setModalCF(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button onClick={salvarCF} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal Dívida ══ */}
+      {modalDiv && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalDiv(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">{selDiv ? "Editar Dívida" : "Nova Dívida"}</h2>
+              <button onClick={() => setModalDiv(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Credor *</label>
+                <input type="text" value={formDiv.credor || ""} onChange={e => setFormDiv({ ...formDiv, credor: e.target.value })}
+                  placeholder="Ex: Banco Itaú, Fornecedor X…"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Descrição</label>
+                <input type="text" value={formDiv.descricao || ""} onChange={e => setFormDiv({ ...formDiv, descricao: e.target.value })}
+                  placeholder="Ex: Financiamento caminhonete, Empréstimo capital…"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Categoria</label>
+                <select value={formDiv.categoria || "Empréstimo bancário"} onChange={e => setFormDiv({ ...formDiv, categoria: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
+                  {CATS_DIVIDA.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Valor total (R$)</label>
+                  <input type="number" min={0} step={100} value={formDiv.valor_total ?? 0} onChange={e => setFormDiv({ ...formDiv, valor_total: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Já pago (R$)</label>
+                  <input type="number" min={0} step={100} value={formDiv.valor_pago ?? 0} onChange={e => setFormDiv({ ...formDiv, valor_pago: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Parcela mensal (R$)</label>
+                  <input type="number" min={0} step={10} value={formDiv.parcela_mensal ?? 0} onChange={e => setFormDiv({ ...formDiv, parcela_mensal: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Vence dia</label>
+                  <input type="number" min={1} max={28} value={formDiv.vencimento_dia ?? 10} onChange={e => setFormDiv({ ...formDiv, vencimento_dia: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Data de início</label>
+                <input type="date" value={formDiv.data_inicio || ""} onChange={e => setFormDiv({ ...formDiv, data_inicio: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="ativo-div" checked={formDiv.ativo ?? true} onChange={e => setFormDiv({ ...formDiv, ativo: e.target.checked })} className="rounded border-gray-300 text-[#1a6b2f]" />
+                <label htmlFor="ativo-div" className="text-sm text-gray-700">Ativa (entra nos cálculos)</label>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setModalDiv(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button onClick={salvarDiv} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
+
+function Secao({ icone: Icone, titulo, cor, aberta, toggle, badge, acao, children }: {
+  icone: React.ElementType; titulo: string; cor: string;
+  aberta: boolean; toggle: () => void;
+  badge?: string; acao?: React.ReactNode; children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <button onClick={toggle} className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/60 transition-colors">
+        <div className="flex items-center gap-2.5">
+          <Icone className={cn("h-4 w-4", cor)} />
+          <span className="text-sm font-semibold text-gray-800">{titulo}</span>
+          {badge && <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{badge}</span>}
+        </div>
+        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+          {acao}
+          {aberta ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        </div>
+      </button>
+      {aberta && <div className="px-5 pb-5 border-t border-gray-50">{children}</div>}
+    </div>
+  );
+}
+
+function KpiCard({ titulo, valor, sub, cor, icone: Icone, tooltip }: {
+  titulo: string; valor: string; sub: string;
+  cor: string; icone: React.ElementType; tooltip?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <div className={cn("rounded-lg p-2", cor)}><Icone className="h-4 w-4" /></div>
+        <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+          {titulo}
+          {tooltip && <span title={tooltip}><Info className="h-3 w-3 text-gray-300" /></span>}
+        </span>
+      </div>
+      <p className="text-xl font-bold text-gray-900">{valor}</p>
+      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+    </div>
+  );
+}
+
+function Indicador({ label, valor, status, desc }: { label: string; valor: string; status: "verde" | "amarelo" | "vermelho"; desc: string }) {
+  const cor = status === "verde" ? "bg-green-50 border-green-200 text-green-700" : status === "amarelo" ? "bg-yellow-50 border-yellow-200 text-yellow-700" : "bg-red-50 border-red-200 text-red-700";
+  const emoji = status === "verde" ? "🟢" : status === "amarelo" ? "🟡" : "🔴";
+  return (
+    <div className={cn("rounded-xl border p-4", cor)}>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium">{emoji} {label}</span>
+        <span className="text-lg font-bold">{valor}</span>
+      </div>
+      <p className="text-[11px] opacity-70">{desc}</p>
+    </div>
+  );
+}
+
+function SalvarBtn({ loading, salvo, onClick, className }: { loading: boolean; salvo: boolean; onClick: () => void; className?: string }) {
+  return (
+    <button onClick={onClick} disabled={loading}
+      className={cn("flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors",
+        salvo ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
+        loading && "opacity-60 cursor-not-allowed", className)}>
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : salvo ? <Check className="h-4 w-4" /> : null}
+      {salvo ? "Salvo!" : "Salvar"}
+    </button>
   );
 }
