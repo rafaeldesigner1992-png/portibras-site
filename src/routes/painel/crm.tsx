@@ -2971,11 +2971,13 @@ function CrmPage() {
         endereco_fiscal: partes.join(", ") || f.endereco_fiscal,
       }));
 
-      // 2. Buscar cliente no banco de dados
+      // 2. Buscar cliente no banco de dados (CNPJ pode estar com ou sem formatação)
+      const cnpjFormatado = digits
+        .replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
       const { data: clienteDb } = await supabase
         .from("clientes")
         .select("id, nome, cnpj, telefone, email")
-        .eq("cnpj", digits)
+        .or(`cnpj.eq.${digits},cnpj.eq.${cnpjFormatado}`)
         .maybeSingle();
 
       if (clienteDb) {
