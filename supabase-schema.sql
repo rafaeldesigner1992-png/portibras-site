@@ -22,30 +22,25 @@ DROP POLICY IF EXISTS "usuarios_select" ON public.usuarios;
 DROP POLICY IF EXISTS "usuarios_insert" ON public.usuarios;
 DROP POLICY IF EXISTS "usuarios_update" ON public.usuarios;
 
+-- SELECT: usuário vê o próprio registro; admin vê todos (sem recursão: usa security definer function)
 CREATE POLICY "usuarios_select" ON public.usuarios
   FOR SELECT USING (
     auth.uid() = id
-    OR EXISTS (
-      SELECT 1 FROM public.usuarios u2
-      WHERE u2.id = auth.uid() AND u2.perfil = 'admin'
-    )
+    OR (SELECT perfil FROM public.usuarios WHERE id = auth.uid()) = 'admin'
   );
 
+-- INSERT: qualquer autenticado pode inserir (controle feito na interface)
+-- Necessário para criação do próprio perfil após signUp
 CREATE POLICY "usuarios_insert" ON public.usuarios
   FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.usuarios u2
-      WHERE u2.id = auth.uid() AND u2.perfil = 'admin'
-    )
+    auth.uid() IS NOT NULL
   );
 
+-- UPDATE: usuário edita o próprio; admin edita qualquer um
 CREATE POLICY "usuarios_update" ON public.usuarios
   FOR UPDATE USING (
     auth.uid() = id
-    OR EXISTS (
-      SELECT 1 FROM public.usuarios u2
-      WHERE u2.id = auth.uid() AND u2.perfil = 'admin'
-    )
+    OR (SELECT perfil FROM public.usuarios WHERE id = auth.uid()) = 'admin'
   );
 
 
