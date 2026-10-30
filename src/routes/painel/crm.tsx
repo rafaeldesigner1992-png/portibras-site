@@ -1050,7 +1050,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 <div class="ct-clausula">
   <div class="ct-clausula-titulo">Cláusula 1ª — Objeto</div>
   <div class="ct-clausula-corpo">
-    A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de portas corta-fogo no imóvel situado em ${enderecoContratante}, de acordo com as normas técnicas ABNT NBR 11.742/2018 e demais normas vigentes. Os serviços abrangem inspeção técnica periódica (DTS) e execução de manutenção porta a porta (DTE), com emissão de laudos normativos.
+    A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de portas corta-fogo no imóvel situado em ${enderecoContratante}, de acordo com as normas técnicas ABNT NBR 11.742/2018 e demais normas vigentes. Os serviços abrangem inspeção técnica periódica (Documento Técnico de Serviço — DTS) e execução de manutenção porta a porta (Documento Técnico de Execução — DTE), com emissão de laudos normativos.
     <p>A CONTRATADA cobrará exclusivamente a mão de obra referente aos serviços executados. Os materiais e peças de reposição eventualmente necessários serão adquiridos diretamente pelo CONTRATANTE, podendo a CONTRATADA indicar fornecedores homologados para garantia da qualidade técnica.</p>
   </div>
 </div>
@@ -1074,7 +1074,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 <div class="ct-clausula">
   <div class="ct-clausula-titulo">Cláusula 4ª — Garantia</div>
   <div class="ct-clausula-corpo">
-    A CONTRATADA garante os serviços executados pelo prazo de 1 (um) ano, contado da data de realização de cada serviço, cobrindo vícios e defeitos decorrentes da execução.
+    A CONTRATADA garante os serviços executados pelo prazo de 1 (um) ano, contado da data de realização do primeiro serviço, cobrindo vícios e defeitos decorrentes da execução.
   </div>
 </div>
 
@@ -1100,7 +1100,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 <div class="ct-clausula">
   <div class="ct-clausula-titulo">Cláusula 6ª — Obrigações da Contratada</div>
   <div class="ct-clausula-corpo">
-    A CONTRATADA obriga-se a: prestar os serviços com técnicos habilitados e equipamentos adequados; observar as normas técnicas ABNT aplicáveis; emitir laudos e relatórios técnicos (DTS e DTE) após cada atendimento; comunicar previamente o agendamento das visitas; e manter sigilo sobre as informações do imóvel.
+    A CONTRATADA obriga-se a: prestar os serviços com técnicos habilitados e equipamentos adequados; observar as normas técnicas ABNT aplicáveis; emitir laudos e relatórios técnicos (Documento Técnico de Serviço — DTS e Documento Técnico de Execução — DTE) após cada atendimento; comunicar previamente o agendamento das visitas; e manter sigilo sobre as informações do imóvel.
   </div>
 </div>
 
