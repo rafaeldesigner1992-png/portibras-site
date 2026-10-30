@@ -1075,10 +1075,10 @@ const STATUS_LABELS: Record<StatusProposta, string> = {
   descontinuado: "Descontinuado",
 };
 const STATUS_CORES: Record<StatusProposta, string> = {
-  criado: "bg-blue-50 text-blue-700 border-blue-200",
-  enviado: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  fechado: "bg-green-50 text-green-700 border-green-200",
-  descontinuado: "bg-gray-100 text-gray-500 border-gray-200",
+  criado: "bg-white text-gray-500 border-gray-300",
+  enviado: "bg-blue-50 text-blue-700 border-blue-200",
+  fechado: "bg-green-50 text-green-700 border-green-300",
+  descontinuado: "bg-red-50 text-red-600 border-red-200",
 };
 
 // ─── Detalhe de uma Proposta ──────────────────────────────────────────────────
