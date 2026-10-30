@@ -362,17 +362,17 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       const nomeArquivo = `${numPropostaOrc.current}_${empresa.replace(/\s+/g, "_")}.pdf`;
 
       const linhasItens = itens.map(i => [
-        { text: i.nome, fontSize: 9, color: "#374151" },
-        { text: i.quantidade.toString(), fontSize: 9, color: cinza, alignment: "center" },
-        { text: i.custo_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 9, color: cinza, alignment: "right" },
-        { text: (i.custo_unitario * i.quantidade).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 9, bold: true, color: "#374151", alignment: "right" },
+        { text: i.nome, fontSize: 8, color: "#374151" },
+        { text: i.quantidade.toString(), fontSize: 8, color: cinza, alignment: "center" },
+        { text: i.custo_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 8, color: cinza, alignment: "right" },
+        { text: (i.custo_unitario * i.quantidade).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 8, bold: true, color: "#374151", alignment: "right" },
       ]);
 
       const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
       const docDef = {
         pageSize: "A4",
-        pageMargins: [48, 48, 48, 48],
+        pageMargins: [36, 32, 36, 32],
         defaultStyle: { font: "Roboto" },
         content: [
           // Header
@@ -380,7 +380,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
             columns: [
               {
                 stack: [
-                  { text: "PORTIBRAS", fontSize: 16, bold: true, color: "#1f2937", characterSpacing: 1 },
+                  { text: "PORTIBRAS", fontSize: 14, bold: true, color: "#1f2937", characterSpacing: 1 },
                   { text: "SOLUÇÕES EM PORTAS CORTA-FOGO · NBR 11.742", fontSize: 7, color: cinza, characterSpacing: 0.5, margin: [0, 2, 0, 0] },
                   { text: `Proposta nº ${numPropostaOrc.current}`, fontSize: 9, color: laranja, bold: true, margin: [0, 4, 0, 0] },
                 ],
@@ -393,84 +393,72 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                 ],
               },
             ],
-            margin: [0, 0, 0, 12],
+            margin: [0, 0, 0, 8],
           },
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 1.5, lineColor: laranja }], margin: [0, 0, 0, 16] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1.5, lineColor: laranja }], margin: [0, 0, 0, 10] },
 
-          { text: "ORÇAMENTO DE MATERIAIS E SERVIÇOS", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 8] },
+          { text: "ORÇAMENTO DE MATERIAIS E SERVIÇOS", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 6] },
 
           // Tabela de itens
           {
             table: {
               headerRows: 1,
-              widths: ["*", 50, 80, 80],
+              widths: ["*", 45, 75, 75],
               body: [
                 [
-                  { text: "Item", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", border: [false, false, false, true] },
-                  { text: "Qtd", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "center", border: [false, false, false, true] },
-                  { text: "Custo unit.", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
-                  { text: "Total", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
+                  { text: "Item", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", border: [false, false, false, true] },
+                  { text: "Qtd", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "center", border: [false, false, false, true] },
+                  { text: "Custo unit.", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
+                  { text: "Total", fontSize: 7.5, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
                 ],
                 ...linhasItens,
               ],
             },
-            layout: { defaultBorder: false, hLineColor: () => "#f3f4f6", vLineColor: () => "transparent", paddingTop: () => 6, paddingBottom: () => 6 },
-            margin: [0, 0, 0, 16],
+            layout: { defaultBorder: false, hLineColor: () => "#f3f4f6", vLineColor: () => "transparent", paddingTop: () => 4, paddingBottom: () => 4 },
+            margin: [0, 0, 0, 10],
           },
 
           // Resumo financeiro
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 8] },
           {
             columns: [
               { text: "", width: "*" },
               {
                 stack: [
-                  { text: `Custo total: ${fmt(custoTotal)}`, fontSize: 9, color: cinza, margin: [0, 0, 0, 3] },
-                  { text: `Margem (${margemPct}%): ${fmt(valorMargem)}`, fontSize: 9, color: cinza, margin: [0, 0, 0, 3] },
-                  { text: `Impostos (${impostoPct}%): ${fmt(valorImposto)}`, fontSize: 9, color: cinza, margin: [0, 0, 0, 8] },
+                  { text: `Custo total: ${fmt(custoTotal)}`, fontSize: 8, color: cinza, margin: [0, 0, 0, 2] },
+                  { text: `Margem (${margemPct}%): ${fmt(valorMargem)}`, fontSize: 8, color: cinza, margin: [0, 0, 0, 2] },
+                  { text: `Impostos (${impostoPct}%): ${fmt(valorImposto)}`, fontSize: 8, color: cinza, margin: [0, 0, 0, 6] },
                   {
                     table: {
                       widths: ["*"],
                       body: [[{
                         text: `PREÇO FINAL: ${fmt(precoFinal)}`,
-                        fontSize: 12, bold: true, color: "#ffffff",
+                        fontSize: 11, bold: true, color: "#ffffff",
                         fillColor: verde, alignment: "right",
-                        margin: [12, 6, 12, 6], border: [false, false, false, false],
+                        margin: [10, 5, 10, 5], border: [false, false, false, false],
                       }]],
                     },
                     layout: "noBorders",
                   },
                 ],
-                width: 220,
+                width: 200,
               },
             ],
-            margin: [0, 0, 0, 16],
+            margin: [0, 0, 0, 10],
           },
 
           ...(obsOrc ? [
-            { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
-            { text: "OBSERVAÇÕES", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 4] },
-            { text: obsOrc, fontSize: 9, color: "#374151", lineHeight: 1.5, margin: [0, 0, 0, 16] },
+            { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 6] },
+            { text: "OBSERVAÇÕES", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 3] },
+            { text: obsOrc, fontSize: 8, color: "#374151", lineHeight: 1.4, margin: [0, 0, 0, 10] },
           ] : []),
 
           // Rodapé
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 8] },
           {
-            columns: [
-              {
-                stack: [
-                  { text: "PORTIBRAS", fontSize: 9, bold: true, color: "#1f2937" },
-                  { text: "(22) 99104-8162", fontSize: 8, color: cinza },
-                  { text: "vendas@portibras.com.br", fontSize: 8, color: cinza },
-                ],
-              },
-              {
-                table: {
-                  widths: ["*"],
-                  body: [[{ text: "Aprovar Orçamento", color: "#ffffff", bold: true, fontSize: 9, alignment: "center", margin: [12, 6, 12, 6], fillColor: verde, border: [false, false, false, false] }]],
-                },
-                alignment: "right",
-              },
+            stack: [
+              { text: "PORTIBRAS", fontSize: 8, bold: true, color: "#1f2937" },
+              { text: "(22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 7.5, color: cinza, margin: [0, 2, 0, 0] },
             ],
           },
         ],
@@ -1088,21 +1076,9 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
 
           // Rodapé
           {
-            columns: [
-              {
-                stack: [
-                  { text: "PORTIBRAS", fontSize: 9, bold: true, color: "#1f2937" },
-                  { text: "(22) 99104-8162", fontSize: 8, color: cinza },
-                  { text: "vendas@portibras.com.br", fontSize: 8, color: cinza },
-                ],
-              },
-              {
-                table: {
-                  widths: ["*"],
-                  body: [[{ text: "Solicitar Orçamento", color: "#ffffff", bold: true, fontSize: 9, alignment: "center", margin: [12, 6, 12, 6], fillColor: laranja, border: [false, false, false, false] }]],
-                },
-                alignment: "right",
-              },
+            stack: [
+              { text: "PORTIBRAS", fontSize: 8, bold: true, color: "#1f2937" },
+              { text: "(22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 7.5, color: cinza, margin: [0, 2, 0, 0] },
             ],
           },
         ],
