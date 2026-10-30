@@ -4,7 +4,8 @@ import { supabase } from "@/lib/supabase";
 import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
-  Loader2, Send, Pencil, Trash2, MapPin, Navigation
+  Loader2, Send, Pencil, Trash2, MapPin, Navigation,
+  Calculator, ShoppingCart, Save, Check, AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,34 @@ interface Conversa {
   criado_em: string;
 }
 
+interface Suprimento {
+  id: string;
+  nome: string;
+  codigo: string;
+  unidade: string;
+  custo_unitario: number;
+}
+
+interface ItemOrcamento {
+  suprimento_id: string;
+  nome: string;
+  unidade: string;
+  custo_unitario: number;
+  quantidade: number;
+}
+
+interface Orcamento {
+  id?: string;
+  lead_id: string;
+  itens: ItemOrcamento[];
+  custo_total: number;
+  margem_pct: number;
+  imposto_pct: number;
+  preco_final: number;
+  observacoes: string;
+  criado_em?: string;
+}
+
 const ETAPAS: Record<Etapa, { label: string; cor: string; bg: string; border: string }> = {
   prospecto:  { label: "Prospecto",   cor: "text-gray-600",   bg: "bg-gray-100",   border: "border-gray-300" },
   contato:    { label: "Em Contato",  cor: "text-blue-700",   bg: "bg-blue-100",   border: "border-blue-300" },
@@ -58,6 +87,234 @@ function formatCNPJ(v: string) {
     .replace(/(\d{4})(\d)/, "$1-$2");
 }
 
+function fmt(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// ─── Calculadora de Orçamento ─────────────────────────────────────────────────
+function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+  const [suprimentos, setSuprimentos] = useState<Suprimento[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [itens, setItens] = useState<ItemOrcamento[]>([]);
+  const [margemPct, setMargemPct] = useState(30);
+  const [impostoPct, setImpostoPct] = useState(10);
+  const [obsOrc, setObsOrc] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const [orcamentoExistente, setOrcamentoExistente] = useState<Orcamento | null>(null);
+
+  useEffect(() => {
+    async function init() {
+      setCarregando(true);
+      const [{ data: sups }, { data: orc }] = await Promise.all([
+        supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario").order("nome"),
+        supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
+      ]);
+      if (sups) setSuprimentos(sups as Suprimento[]);
+      if (orc && orc.length > 0) {
+        const o = orc[0] as Orcamento;
+        setOrcamentoExistente(o);
+        setItens(o.itens || []);
+        setMargemPct(o.margem_pct ?? 30);
+        setImpostoPct(o.imposto_pct ?? 10);
+        setObsOrc(o.observacoes || "");
+      }
+      setCarregando(false);
+    }
+    init();
+  }, [lead.id]);
+
+  function addItem(sup: Suprimento) {
+    const existe = itens.find(i => i.suprimento_id === sup.id);
+    if (existe) {
+      setItens(its => its.map(i => i.suprimento_id === sup.id ? { ...i, quantidade: i.quantidade + 1 } : i));
+    } else {
+      setItens(its => [...its, {
+        suprimento_id: sup.id,
+        nome: sup.nome,
+        unidade: sup.unidade,
+        custo_unitario: sup.custo_unitario,
+        quantidade: 1,
+      }]);
+    }
+  }
+
+  function removeItem(id: string) {
+    setItens(its => its.filter(i => i.suprimento_id !== id));
+  }
+
+  function setQtd(id: string, qtd: number) {
+    if (qtd <= 0) { removeItem(id); return; }
+    setItens(its => its.map(i => i.suprimento_id === id ? { ...i, quantidade: qtd } : i));
+  }
+
+  // Cálculos
+  const custoTotal = itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0);
+  const valorMargem = custoTotal * (margemPct / 100);
+  const subtotalComMargem = custoTotal + valorMargem;
+  const valorImposto = subtotalComMargem * (impostoPct / 100);
+  const precoFinal = subtotalComMargem + valorImposto;
+
+  async function salvarOrcamento() {
+    setSalvando(true);
+    const payload: Orcamento = {
+      lead_id: lead.id,
+      itens,
+      custo_total: custoTotal,
+      margem_pct: margemPct,
+      imposto_pct: impostoPct,
+      preco_final: precoFinal,
+      observacoes: obsOrc,
+    };
+    if (orcamentoExistente?.id) {
+      await supabase.from("crm_orcamentos").update(payload).eq("id", orcamentoExistente.id);
+    } else {
+      const { data } = await supabase.from("crm_orcamentos").insert(payload).select().single();
+      if (data) setOrcamentoExistente(data as Orcamento);
+    }
+    setSalvando(false);
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+  }
+
+  const [busca, setBusca] = useState("");
+  const supFiltrados = suprimentos.filter(s =>
+    !busca || s.nome.toLowerCase().includes(busca.toLowerCase()) || s.codigo?.toLowerCase().includes(busca.toLowerCase())
+  );
+
+  if (carregando) return <div className="flex items-center justify-center py-12 text-sm text-gray-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Carregando catálogo…</div>;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <Calculator className="h-4 w-4 text-[#1a6b2f]" />
+          <span className="text-sm font-semibold text-gray-800">Calculadora de Orçamento</span>
+          {orcamentoExistente && <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">SALVO</span>}
+        </div>
+        <button onClick={onClose} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+      </div>
+
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Catálogo de suprimentos */}
+        <div className="w-[200px] flex-shrink-0 border-r border-gray-100 flex flex-col">
+          <div className="px-3 pt-3 pb-2">
+            <input type="text" placeholder="Buscar…" value={busca} onChange={e => setBusca(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs outline-none focus:border-[#1a6b2f]" />
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
+            {supFiltrados.length === 0 && (
+              <div className="py-6 text-center">
+                <ShoppingCart className="h-6 w-6 text-gray-200 mx-auto mb-1" />
+                <p className="text-xs text-gray-300">Nenhum suprimento</p>
+              </div>
+            )}
+            {supFiltrados.map(s => {
+              const adicionado = itens.find(i => i.suprimento_id === s.id);
+              return (
+                <button key={s.id} onClick={() => addItem(s)}
+                  className={cn("w-full text-left rounded-lg px-2.5 py-2 hover:bg-gray-50 transition-colors border",
+                    adicionado ? "border-green-200 bg-green-50" : "border-transparent")}>
+                  <p className="text-xs font-medium text-gray-800 leading-tight">{s.nome}</p>
+                  <p className="text-[10px] text-[#1a6b2f] font-semibold mt-0.5">{fmt(s.custo_unitario)}/{s.unidade}</p>
+                  {adicionado && <p className="text-[10px] text-green-600 mt-0.5">✓ qtd {adicionado.quantidade}</p>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Área principal */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Itens selecionados */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {itens.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-300">
+                <ShoppingCart className="h-8 w-8 mb-2 opacity-40" />
+                <p className="text-xs">Clique nos itens ao lado para adicionar</p>
+              </div>
+            ) : itens.map(item => (
+              <div key={item.suprimento_id} className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-800 truncate">{item.nome}</p>
+                  <p className="text-[10px] text-gray-400">{fmt(item.custo_unitario)}/{item.unidade}</p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button onClick={() => setQtd(item.suprimento_id, item.quantidade - 1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-300 flex items-center justify-center">−</button>
+                  <input type="number" min={1} value={item.quantidade} onChange={e => setQtd(item.suprimento_id, Number(e.target.value))}
+                    className="w-10 text-center text-xs border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-[#1a6b2f]" />
+                  <button onClick={() => setQtd(item.suprimento_id, item.quantidade + 1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-300 flex items-center justify-center">+</button>
+                  <span className="text-xs font-semibold text-gray-700 w-16 text-right">{fmt(item.custo_unitario * item.quantidade)}</span>
+                  <button onClick={() => removeItem(item.suprimento_id)} className="text-gray-300 hover:text-red-500 ml-1"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Painel de parâmetros e resultado */}
+          <div className="border-t border-gray-100 p-4 space-y-3 bg-gray-50/50">
+            {/* Parâmetros */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Margem de lucro (%)</label>
+                <input type="number" min={0} max={100} step={0.5} value={margemPct}
+                  onChange={e => setMargemPct(Number(e.target.value))}
+                  className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Imposto / Encargos (%)</label>
+                <input type="number" min={0} max={100} step={0.5} value={impostoPct}
+                  onChange={e => setImpostoPct(Number(e.target.value))}
+                  className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+              </div>
+            </div>
+
+            {/* Breakdown */}
+            <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-1.5 text-xs">
+              <div className="flex justify-between text-gray-500">
+                <span>Custo dos materiais</span><span className="font-semibold text-gray-700">{fmt(custoTotal)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Margem ({margemPct}%)</span><span className="font-semibold text-green-600">+ {fmt(valorMargem)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Impostos/Encargos ({impostoPct}%)</span><span className="font-semibold text-orange-500">+ {fmt(valorImposto)}</span>
+              </div>
+              <div className="flex justify-between border-t border-gray-100 pt-1.5 text-sm font-bold text-gray-900">
+                <span>Preço de venda sugerido</span><span className="text-[#1a6b2f] text-base">{fmt(precoFinal)}</span>
+              </div>
+            </div>
+
+            {/* Observações */}
+            <textarea rows={2} value={obsOrc} onChange={e => setObsOrc(e.target.value)}
+              placeholder="Observações do orçamento…"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs resize-none outline-none focus:border-[#1a6b2f]" />
+
+            {/* Salvar */}
+            <button onClick={salvarOrcamento} disabled={salvando || itens.length === 0}
+              className={cn(
+                "w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-colors",
+                salvo ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
+                (salvando || itens.length === 0) && "opacity-50 cursor-not-allowed"
+              )}>
+              {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : salvo ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+              {salvo ? "Orçamento salvo!" : salvando ? "Salvando…" : "Salvar orçamento no card"}
+            </button>
+
+            {itens.length === 0 && (
+              <p className="text-center text-[10px] text-gray-400 flex items-center justify-center gap-1">
+                <AlertCircle className="h-3 w-3" /> Adicione ao menos um item para salvar
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
 function CrmPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -66,15 +323,14 @@ function CrmPage() {
   const [filtroEtapa, setFiltroEtapa] = useState<Etapa | "todas">("todas");
   const [filtroPrazo, setFiltroPrazo] = useState("");
 
-  // Modal novo/editar
   const [modal, setModal] = useState(false);
   const [selecionado, setSelecionado] = useState<Lead | null>(null);
   const [form, setForm] = useState<Partial<Lead>>({});
   const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
   const [erroCNPJ, setErroCNPJ] = useState("");
 
-  // Card detalhado
   const [cardAberto, setCardAberto] = useState<Lead | null>(null);
+  const [abaCard, setAbaCard] = useState<"historico" | "orcamento">("historico");
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [novaMsg, setNovaMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -90,28 +346,20 @@ function CrmPage() {
   }
 
   async function carregarConversas(leadId: string) {
-    const { data } = await supabase
-      .from("crm_conversas")
-      .select("*")
-      .eq("lead_id", leadId)
-      .order("criado_em", { ascending: true });
+    const { data } = await supabase.from("crm_conversas").select("*").eq("lead_id", leadId).order("criado_em", { ascending: true });
     if (data) setConversas(data as Conversa[]);
     setTimeout(() => conversaRef.current?.scrollTo({ top: 9999, behavior: "smooth" }), 100);
   }
 
   function abrirCard(lead: Lead) {
     setCardAberto(lead);
+    setAbaCard("historico");
     carregarConversas(lead.id);
   }
 
   function abrirModal(lead?: Lead) {
-    if (lead) {
-      setSelecionado(lead);
-      setForm({ ...lead });
-    } else {
-      setSelecionado(null);
-      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "" });
-    }
+    if (lead) { setSelecionado(lead); setForm({ ...lead }); }
+    else { setSelecionado(null); setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "" }); }
     setErroCNPJ("");
     setModal(true);
   }
@@ -125,39 +373,28 @@ function CrmPage() {
       const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
       if (!res.ok) throw new Error("não encontrado");
       const d = await res.json();
-      // Monta endereço fiscal completo
       const partes = [
         d.logradouro && d.numero ? `${d.logradouro}, ${d.numero}` : d.logradouro,
-        d.complemento,
-        d.bairro,
+        d.complemento, d.bairro,
         d.municipio && d.uf ? `${d.municipio} - ${d.uf}` : d.municipio,
         d.cep ? d.cep.replace(/^(\d{5})(\d{3})$/, "$1-$2") : null,
       ].filter(Boolean);
-      const enderecoFiscal = partes.join(", ");
       setForm(f => ({
         ...f,
         empresa: d.razao_social || f.empresa,
         email: d.email || f.email,
-        telefone: d.ddd_telefone_1
-          ? d.ddd_telefone_1.replace(/\D/g, "").replace(/(\d{2})(\d{4,5})(\d{4})/, "($1) $2-$3")
-          : f.telefone,
-        endereco_fiscal: enderecoFiscal || f.endereco_fiscal,
+        telefone: d.ddd_telefone_1 ? d.ddd_telefone_1.replace(/\D/g, "").replace(/(\d{2})(\d{4,5})(\d{4})/, "($1) $2-$3") : f.telefone,
+        endereco_fiscal: partes.join(", ") || f.endereco_fiscal,
       }));
-    } catch {
-      setErroCNPJ("CNPJ não encontrado na Receita Federal.");
-    } finally {
-      setBuscandoCNPJ(false);
-    }
+    } catch { setErroCNPJ("CNPJ não encontrado na Receita Federal."); }
+    finally { setBuscandoCNPJ(false); }
   }
 
   async function salvar() {
     if (!form.nome?.trim()) return;
     const payload = { ...form, cnpj: form.cnpj?.replace(/\D/g, "") || "" };
-    if (selecionado) {
-      await supabase.from("crm_leads").update(payload).eq("id", selecionado.id);
-    } else {
-      await supabase.from("crm_leads").insert(payload);
-    }
+    if (selecionado) await supabase.from("crm_leads").update(payload).eq("id", selecionado.id);
+    else await supabase.from("crm_leads").insert(payload);
     setModal(false);
     carregar();
   }
@@ -178,17 +415,12 @@ function CrmPage() {
   async function enviarMensagem() {
     if (!novaMsg.trim() || !cardAberto) return;
     setEnviando(true);
-    await supabase.from("crm_conversas").insert({
-      lead_id: cardAberto.id,
-      texto: novaMsg.trim(),
-      autor: "Rafael",
-    });
+    await supabase.from("crm_conversas").insert({ lead_id: cardAberto.id, texto: novaMsg.trim(), autor: "Rafael" });
     setNovaMsg("");
     await carregarConversas(cardAberto.id);
     setEnviando(false);
   }
 
-  // Filtros
   const hoje = new Date().toISOString().split("T")[0];
   const filtrados = leads.filter(l => {
     const buscaOk = !busca || l.nome?.toLowerCase().includes(busca.toLowerCase()) || l.empresa?.toLowerCase().includes(busca.toLowerCase()) || l.cnpj?.includes(busca);
@@ -206,14 +438,12 @@ function CrmPage() {
     <div className="flex h-full">
       {/* Painel principal */}
       <div className={cn("flex flex-col flex-1 min-w-0 p-6 overflow-auto", cardAberto && "hidden md:flex")}>
-        {/* Header */}
         <div className="mb-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">CRM Comercial</h1>
             <p className="mt-0.5 text-sm text-gray-500">{leads.length} lead{leads.length !== 1 ? "s" : ""} na pipeline</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Toggle view */}
             <div className="flex rounded-lg border border-gray-200 overflow-hidden">
               <button onClick={() => setView("lista")} className={cn("flex items-center gap-1.5 px-3 py-2 text-sm", view === "lista" ? "bg-[#1a6b2f] text-white" : "bg-white text-gray-600 hover:bg-gray-50")}>
                 <LayoutList className="h-4 w-4" /> Lista
@@ -222,16 +452,12 @@ function CrmPage() {
                 <Columns className="h-4 w-4" /> Kanban
               </button>
             </div>
-            <button
-              onClick={() => abrirModal()}
-              className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]"
-            >
+            <button onClick={() => abrirModal()} className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
               <Plus className="h-4 w-4" /> Novo Lead
             </button>
           </div>
         </div>
 
-        {/* Filtros */}
         <div className="mb-4 flex gap-3 flex-wrap">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -246,23 +472,20 @@ function CrmPage() {
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-gray-400" />
             <input type="date" value={filtroPrazo} onChange={e => setFiltroPrazo(e.target.value)}
-              title="Filtrar por prazo até esta data"
               className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-[#1a6b2f]" />
             {filtroPrazo && <button onClick={() => setFiltroPrazo("")} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>}
           </div>
         </div>
 
-        {/* Badges de etapa */}
         <div className="mb-5 flex gap-2 flex-wrap">
           {ETAPA_ORDER.map(e => {
             const total = porEtapa[e].reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
             return (
-            <button key={e} onClick={() => setFiltroEtapa(filtroEtapa === e ? "todas" : e)}
-              className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-opacity", ETAPAS[e].bg, ETAPAS[e].cor, filtroEtapa !== "todas" && filtroEtapa !== e && "opacity-40")}>
-              {ETAPAS[e].label}
-              <span className="font-bold">({porEtapa[e].length})</span>
-              {total > 0 && <span className="opacity-80">· {total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}
-            </button>
+              <button key={e} onClick={() => setFiltroEtapa(filtroEtapa === e ? "todas" : e)}
+                className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-opacity", ETAPAS[e].bg, ETAPAS[e].cor, filtroEtapa !== "todas" && filtroEtapa !== e && "opacity-40")}>
+                {ETAPAS[e].label} <span className="font-bold">({porEtapa[e].length})</span>
+                {total > 0 && <span className="opacity-80">· {total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}
+              </button>
             );
           })}
         </div>
@@ -273,9 +496,7 @@ function CrmPage() {
             {carregando ? (
               <div className="py-16 text-center text-sm text-gray-400">Carregando…</div>
             ) : filtrados.length === 0 ? (
-              <div className="flex flex-col items-center py-16 text-gray-400">
-                <p className="text-sm">Nenhum lead encontrado</p>
-              </div>
+              <div className="flex flex-col items-center py-16 text-gray-400"><p className="text-sm">Nenhum lead encontrado</p></div>
             ) : (
               <table className="w-full">
                 <thead>
@@ -351,11 +572,7 @@ function CrmPage() {
                       <span className={cn("text-xs font-semibold uppercase tracking-wide", cfg.cor)}>{cfg.label}</span>
                       <span className={cn("text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center", cfg.cor, "bg-white/60")}>{cards.length}</span>
                     </div>
-                    {totalEtapa > 0 && (
-                      <p className={cn("text-xs font-bold", cfg.cor)}>
-                        {totalEtapa.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </p>
-                    )}
+                    {totalEtapa > 0 && <p className={cn("text-xs font-bold", cfg.cor)}>{totalEtapa.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
                   </div>
                   <div className="flex flex-col gap-2">
                     {cards.map(lead => {
@@ -365,26 +582,13 @@ function CrmPage() {
                           className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
                           <p className="text-sm font-semibold text-gray-900 leading-tight">{lead.nome}</p>
                           {lead.empresa && <p className="mt-0.5 text-xs text-gray-400">{lead.empresa}</p>}
-                          {lead.valor_estimado && (
-                            <p className="mt-2 text-xs font-semibold text-[#1a6b2f]">
-                              {lead.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                            </p>
-                          )}
-                          {lead.prazo && (
-                            <p className={cn("mt-1 flex items-center gap-1 text-xs", vencido ? "text-red-500" : "text-gray-400")}>
-                              <Calendar className="h-3 w-3" />
-                              {vencido && "⚠ "}{new Date(lead.prazo + "T00:00:00").toLocaleDateString("pt-BR")}
-                            </p>
-                          )}
+                          {lead.valor_estimado && <p className="mt-2 text-xs font-semibold text-[#1a6b2f]">{lead.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
+                          {lead.prazo && <p className={cn("mt-1 flex items-center gap-1 text-xs", vencido ? "text-red-500" : "text-gray-400")}><Calendar className="h-3 w-3" />{vencido && "⚠ "}{new Date(lead.prazo + "T00:00:00").toLocaleDateString("pt-BR")}</p>}
                           {lead.telefone && <p className="mt-1 flex items-center gap-1 text-xs text-gray-400"><Phone className="h-3 w-3" />{lead.telefone}</p>}
                         </div>
                       );
                     })}
-                    {cards.length === 0 && (
-                      <div className="rounded-xl border-2 border-dashed border-gray-200 py-8 text-center text-xs text-gray-300">
-                        Nenhum lead
-                      </div>
-                    )}
+                    {cards.length === 0 && <div className="rounded-xl border-2 border-dashed border-gray-200 py-8 text-center text-xs text-gray-300">Nenhum lead</div>}
                   </div>
                 </div>
               );
@@ -393,10 +597,10 @@ function CrmPage() {
         )}
       </div>
 
-      {/* CARD DETALHADO (painel lateral) */}
+      {/* CARD DETALHADO */}
       {cardAberto && (
-        <div className="flex flex-col w-full md:w-[420px] border-l border-gray-200 bg-white">
-          {/* Header do card */}
+        <div className="flex flex-col w-full md:w-[460px] border-l border-gray-200 bg-white">
+          {/* Header */}
           <div className="flex items-start justify-between p-5 border-b border-gray-100">
             <div className="flex-1 min-w-0">
               <h2 className="text-base font-bold text-gray-900 truncate">{cardAberto.nome}</h2>
@@ -404,7 +608,7 @@ function CrmPage() {
               {cardAberto.cnpj && <p className="text-xs text-gray-400 font-mono">{formatCNPJ(cardAberto.cnpj)}</p>}
             </div>
             <div className="flex items-center gap-1 ml-3 flex-shrink-0">
-              <button onClick={() => { abrirModal(cardAberto); }} className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100"><Pencil className="h-4 w-4" /></button>
+              <button onClick={() => abrirModal(cardAberto)} className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100"><Pencil className="h-4 w-4" /></button>
               <button onClick={() => setCardAberto(null)} className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
             </div>
           </div>
@@ -419,14 +623,10 @@ function CrmPage() {
             ))}
           </div>
 
-          {/* Dados */}
-          <div className="px-5 py-4 border-b border-gray-100 grid grid-cols-2 gap-3 text-sm">
-            {cardAberto.telefone && (
-              <div className="flex items-center gap-2 text-gray-600"><Phone className="h-4 w-4 text-gray-300 flex-shrink-0" /><span className="truncate">{cardAberto.telefone}</span></div>
-            )}
-            {cardAberto.email && (
-              <div className="flex items-center gap-2 text-gray-600"><Mail className="h-4 w-4 text-gray-300 flex-shrink-0" /><span className="truncate">{cardAberto.email}</span></div>
-            )}
+          {/* Dados resumidos */}
+          <div className="px-5 py-3 border-b border-gray-100 grid grid-cols-2 gap-2 text-sm">
+            {cardAberto.telefone && <div className="flex items-center gap-2 text-gray-600"><Phone className="h-4 w-4 text-gray-300 flex-shrink-0" /><span className="truncate">{cardAberto.telefone}</span></div>}
+            {cardAberto.email && <div className="flex items-center gap-2 text-gray-600"><Mail className="h-4 w-4 text-gray-300 flex-shrink-0" /><span className="truncate">{cardAberto.email}</span></div>}
             {cardAberto.valor_estimado && (
               <div className="flex items-center gap-2 text-gray-600"><FileText className="h-4 w-4 text-gray-300 flex-shrink-0" />
                 <span className="font-semibold text-[#1a6b2f]">{cardAberto.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
@@ -445,19 +645,13 @@ function CrmPage() {
               {cardAberto.endereco_fiscal && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Endereço Fiscal</p>
-                  <p className="flex items-start gap-1.5 text-sm text-gray-600">
-                    <MapPin className="h-3.5 w-3.5 text-gray-300 mt-0.5 flex-shrink-0" />
-                    {cardAberto.endereco_fiscal}
-                  </p>
+                  <p className="flex items-start gap-1.5 text-sm text-gray-600"><MapPin className="h-3.5 w-3.5 text-gray-300 mt-0.5 flex-shrink-0" />{cardAberto.endereco_fiscal}</p>
                 </div>
               )}
               {cardAberto.endereco_atendimento && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Endereço de Atendimento</p>
-                  <p className="flex items-start gap-1.5 text-sm text-gray-600">
-                    <Navigation className="h-3.5 w-3.5 text-[#1a6b2f] mt-0.5 flex-shrink-0" />
-                    {cardAberto.endereco_atendimento}
-                  </p>
+                  <p className="flex items-start gap-1.5 text-sm text-gray-600"><Navigation className="h-3.5 w-3.5 text-[#1a6b2f] mt-0.5 flex-shrink-0" />{cardAberto.endereco_atendimento}</p>
                 </div>
               )}
             </div>
@@ -470,45 +664,58 @@ function CrmPage() {
             </div>
           )}
 
-          {/* Histórico de conversas */}
-          <div className="flex flex-col flex-1 min-h-0">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-gray-400" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Histórico</span>
-            </div>
-            <div ref={conversaRef} className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
-              {conversas.length === 0 ? (
-                <p className="text-center text-xs text-gray-300 py-4">Nenhuma conversa registrada</p>
-              ) : conversas.map(c => (
-                <div key={c.id} className="rounded-xl bg-gray-50 px-3.5 py-2.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-gray-700">{c.autor}</span>
-                    <span className="text-xs text-gray-400">{new Date(c.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-                  </div>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.texto}</p>
-                </div>
-              ))}
-            </div>
-            {/* Input de nova mensagem */}
-            <div className="p-4 border-t border-gray-100 flex gap-2">
-              <textarea
-                rows={2}
-                value={novaMsg}
-                onChange={e => setNovaMsg(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensagem(); }}}
-                placeholder="Registrar interação…"
-                className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20"
-              />
-              <button onClick={enviarMensagem} disabled={enviando || !novaMsg.trim()}
-                className="flex items-center justify-center rounded-lg bg-[#1a6b2f] px-3 text-white hover:bg-[#155824] disabled:opacity-40">
-                {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
-            </div>
+          {/* Abas Histórico / Orçamento */}
+          <div className="flex border-b border-gray-100">
+            <button onClick={() => setAbaCard("historico")}
+              className={cn("flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors",
+                abaCard === "historico" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-600")}>
+              <MessageSquare className="h-3.5 w-3.5" /> Histórico
+            </button>
+            <button onClick={() => setAbaCard("orcamento")}
+              className={cn("flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors",
+                abaCard === "orcamento" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-600")}>
+              <Calculator className="h-3.5 w-3.5" /> Orçamento
+            </button>
           </div>
+
+          {/* Conteúdo da aba */}
+          {abaCard === "historico" && (
+            <div className="flex flex-col flex-1 min-h-0">
+              <div ref={conversaRef} className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
+                {conversas.length === 0 ? (
+                  <p className="text-center text-xs text-gray-300 py-4">Nenhuma conversa registrada</p>
+                ) : conversas.map(c => (
+                  <div key={c.id} className="rounded-xl bg-gray-50 px-3.5 py-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-gray-700">{c.autor}</span>
+                      <span className="text-xs text-gray-400">{new Date(c.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.texto}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-gray-100 flex gap-2">
+                <textarea rows={2} value={novaMsg} onChange={e => setNovaMsg(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensagem(); }}}
+                  placeholder="Registrar interação…"
+                  className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+                <button onClick={enviarMensagem} disabled={enviando || !novaMsg.trim()}
+                  className="flex items-center justify-center rounded-lg bg-[#1a6b2f] px-3 text-white hover:bg-[#155824] disabled:opacity-40">
+                  {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {abaCard === "orcamento" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Modal novo/editar lead */}
+      {/* Modal lead */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModal(false)}>
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
@@ -517,24 +724,19 @@ function CrmPage() {
               <button onClick={() => setModal(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
             </div>
             <div className="space-y-4">
-              {/* CNPJ */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">CNPJ</label>
                 <div className="flex gap-2">
                   <input type="text" value={formatCNPJ(form.cnpj || "")}
                     onChange={e => { const v = e.target.value.replace(/\D/g, ""); setForm(f => ({ ...f, cnpj: v })); setErroCNPJ(""); }}
                     placeholder="00.000.000/0001-00"
-                    className="flex-1 rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20 font-mono" />
+                    className="flex-1 rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] font-mono" />
                   <button type="button" onClick={() => buscarCNPJ(form.cnpj || "")} disabled={buscandoCNPJ || (form.cnpj?.replace(/\D/g, "")?.length !== 14)}
                     className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-                    {buscandoCNPJ ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
-                    Buscar
+                    {buscandoCNPJ ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />} Buscar
                   </button>
                 </div>
                 {erroCNPJ && <p className="mt-1 text-xs text-red-500">{erroCNPJ}</p>}
-                {!erroCNPJ && form.cnpj?.replace(/\D/g, "").length === 14 && !buscandoCNPJ && (
-                  <p className="mt-1 text-xs text-gray-400">Digite 14 dígitos e clique em Buscar para preencher automaticamente</p>
-                )}
               </div>
 
               {[
@@ -548,7 +750,7 @@ function CrmPage() {
                   <input type={type} placeholder={placeholder}
                     value={(form as Record<string, unknown>)[field] as string || ""}
                     onChange={e => setForm({ ...form, [field]: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
               ))}
 
@@ -562,8 +764,7 @@ function CrmPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">Prazo</label>
-                  <input type="date" value={form.prazo || ""}
-                    onChange={e => setForm({ ...form, prazo: e.target.value || null })}
+                  <input type="date" value={form.prazo || ""} onChange={e => setForm({ ...form, prazo: e.target.value || null })}
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
               </div>
@@ -580,26 +781,23 @@ function CrmPage() {
                   <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-gray-400" /> Endereço Fiscal</span>
                   <span className="text-xs font-normal text-gray-400 ml-5">Preenchido automaticamente pelo CNPJ</span>
                 </label>
-                <input type="text" value={form.endereco_fiscal ?? ""}
-                  onChange={e => setForm({ ...form, endereco_fiscal: e.target.value })}
+                <input type="text" value={form.endereco_fiscal ?? ""} onChange={e => setForm({ ...form, endereco_fiscal: e.target.value })}
                   placeholder="Rua, Nº, Bairro, Cidade - UF, CEP"
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   <span className="flex items-center gap-1.5"><Navigation className="h-3.5 w-3.5 text-[#1a6b2f]" /> Endereço de Atendimento / Entrega</span>
                 </label>
-                <input type="text" value={form.endereco_atendimento ?? ""}
-                  onChange={e => setForm({ ...form, endereco_atendimento: e.target.value })}
+                <input type="text" value={form.endereco_atendimento ?? ""} onChange={e => setForm({ ...form, endereco_atendimento: e.target.value })}
                   placeholder="Local onde será feito o serviço ou entrega"
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Observações</label>
-                <textarea rows={3} value={form.observacoes ?? ""}
-                  onChange={e => setForm({ ...form, observacoes: e.target.value })}
+                <textarea rows={3} value={form.observacoes ?? ""} onChange={e => setForm({ ...form, observacoes: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] resize-none" />
               </div>
 
