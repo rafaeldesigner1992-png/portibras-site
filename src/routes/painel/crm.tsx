@@ -898,11 +898,11 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
             <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Pagamento</span>
-                <div className="flex gap-1 flex-1">
+                <div className="flex gap-1">
                   {([{ v: "avista", label: "À vista" }, { v: "parcelado", label: "Parcelado" }] as { v: "avista"|"parcelado"; label: string }[]).map(({ v, label }) => (
                     <button key={v} onClick={() => setPagamento(p => ({ ...p, tipo: v }))}
                       className={cn(
-                        "flex-1 rounded border px-2 py-0.5 text-[9px] font-semibold transition-colors",
+                        "rounded border px-2 py-0.5 text-[9px] font-semibold transition-colors whitespace-nowrap",
                         pagamento.tipo === v ? "border-[#1a6b2f] bg-[#1a6b2f] text-white" : "border-gray-200 text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
                       )}>{label}</button>
                   ))}
@@ -954,10 +954,10 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               placeholder="Observações…"
               className="w-full rounded border border-gray-200 px-2 py-1 text-[10px] resize-none outline-none focus:border-[#1a6b2f]" />
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 justify-end">
               <button onClick={salvarOrcamento} disabled={salvando || itens.length === 0}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 rounded px-3 py-1.5 text-xs font-semibold text-white transition-colors",
+                  "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-semibold text-white transition-colors",
                   salvo ? "bg-green-500" : "bg-[#1a6b2f] hover:bg-[#155824]",
                   (salvando || itens.length === 0) && "opacity-50 cursor-not-allowed"
                 )}>
@@ -966,7 +966,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               </button>
               <button onClick={gerarPdfOrcamento} disabled={gerandoPdfOrc || itens.length === 0}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors",
+                  "flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors",
                   pdfOrcSalvo ? "border-green-300 bg-green-50 text-green-700" : "border-[#1a6b2f] text-[#1a6b2f] hover:bg-green-50",
                   (gerandoPdfOrc || itens.length === 0) && "opacity-50 cursor-not-allowed"
                 )}>
