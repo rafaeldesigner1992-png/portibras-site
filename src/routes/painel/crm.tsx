@@ -35,6 +35,7 @@ interface Lead {
   email: string;
   etapa: Etapa;
   valor_estimado: number | null;
+  tipo_negocio: "orcamento" | "manutencao" | null;
   observacoes: string;
   prazo: string | null;
   endereco_fiscal: string;
@@ -2940,7 +2941,7 @@ function CrmPage() {
       }
     } else {
       setSelecionado(null);
-      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "", cliente_id: null });
+      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, tipo_negocio: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "", cliente_id: null });
     }
     setModal(true);
   }
@@ -3034,6 +3035,7 @@ function CrmPage() {
       email: form.email,
       etapa: form.etapa,
       valor_estimado: form.valor_estimado,
+      tipo_negocio: form.tipo_negocio,
       observacoes: form.observacoes,
       prazo: form.prazo,
       endereco_fiscal: form.endereco_fiscal,
@@ -3131,12 +3133,23 @@ function CrmPage() {
 
         <div className="mb-5 flex gap-2 flex-wrap">
           {ETAPA_ORDER.map(e => {
-            const total = porEtapa[e].reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+            const leads_etapa = porEtapa[e];
+            const totalOrc = leads_etapa.filter(l => l.tipo_negocio === "orcamento").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+            const totalMan = leads_etapa.filter(l => l.tipo_negocio === "manutencao").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+            const totalGeral = leads_etapa.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+            const temSeparacao = totalOrc > 0 && totalMan > 0;
             return (
               <button key={e} onClick={() => setFiltroEtapa(filtroEtapa === e ? "todas" : e)}
                 className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-opacity", ETAPAS[e].bg, ETAPAS[e].cor, filtroEtapa !== "todas" && filtroEtapa !== e && "opacity-40")}>
-                {ETAPAS[e].label} <span className="font-bold">({porEtapa[e].length})</span>
-                {total > 0 && <span className="opacity-80">· {total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>}
+                {ETAPAS[e].label} <span className="font-bold">({leads_etapa.length})</span>
+                {temSeparacao ? (
+                  <span className="opacity-80">
+                    · ORC {totalOrc.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    {" · "}MAN {totalMan.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                ) : totalGeral > 0 ? (
+                  <span className="opacity-80">· {totalGeral.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                ) : null}
               </button>
             );
           })}
@@ -3216,7 +3229,10 @@ function CrmPage() {
             {ETAPA_ORDER.map(etapa => {
               const cfg = ETAPAS[etapa];
               const cards = porEtapa[etapa];
-              const totalEtapa = cards.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+              const totalOrcK = cards.filter(l => l.tipo_negocio === "orcamento").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+              const totalManK = cards.filter(l => l.tipo_negocio === "manutencao").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+              const totalGeralK = cards.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+              const temSepK = totalOrcK > 0 && totalManK > 0;
               return (
                 <div key={etapa} className="flex-shrink-0 w-64">
                   <div className={cn("mb-3 rounded-lg px-3 py-2", cfg.bg)}>
@@ -3224,7 +3240,18 @@ function CrmPage() {
                       <span className={cn("text-xs font-semibold uppercase tracking-wide", cfg.cor)}>{cfg.label}</span>
                       <span className={cn("text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center", cfg.cor, "bg-white/60")}>{cards.length}</span>
                     </div>
-                    {totalEtapa > 0 && <p className={cn("text-xs font-bold", cfg.cor)}>{totalEtapa.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
+                    {temSepK ? (
+                      <div className="space-y-0.5">
+                        <p className={cn("text-xs font-semibold", cfg.cor)}>
+                          <span className="opacity-60">ORC </span>{totalOrcK.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                        <p className={cn("text-xs font-semibold", cfg.cor)}>
+                          <span className="opacity-60">12× </span>{totalManK.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                      </div>
+                    ) : totalGeralK > 0 ? (
+                      <p className={cn("text-xs font-bold", cfg.cor)}>{totalGeralK.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                    ) : null}
                   </div>
                   <div className="flex flex-col gap-2">
                     {cards.map(lead => {
@@ -3232,7 +3259,15 @@ function CrmPage() {
                       return (
                         <div key={lead.id} onClick={() => abrirCard(lead)}
                           className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
-                          <p className="text-sm font-semibold text-gray-900 leading-tight">{lead.nome}</p>
+                          <div className="flex items-start justify-between gap-1">
+                            <p className="text-sm font-semibold text-gray-900 leading-tight">{lead.nome}</p>
+                            {lead.tipo_negocio === "manutencao" && (
+                              <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-700 uppercase tracking-wide">12×</span>
+                            )}
+                            {lead.tipo_negocio === "orcamento" && (
+                              <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 uppercase tracking-wide">ORC</span>
+                            )}
+                          </div>
                           {lead.empresa && <p className="mt-0.5 text-xs text-gray-400">{lead.empresa}</p>}
                           {lead.valor_estimado && <p className="mt-2 text-xs font-semibold text-[#1a6b2f]">{lead.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
                           {lead.prazo && <p className={cn("mt-1 flex items-center gap-1 text-xs", vencido ? "text-red-500" : "text-gray-400")}><Calendar className="h-3 w-3" />{vencido && "⚠ "}{new Date(lead.prazo + "T00:00:00").toLocaleDateString("pt-BR")}</p>}
@@ -3533,11 +3568,22 @@ function CrmPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Valor estimado (R$)</label>
-                <input type="number" value={form.valor_estimado ?? ""}
-                  onChange={e => setForm({ ...form, valor_estimado: e.target.value ? Number(e.target.value) : null })}
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Valor estimado (R$)</label>
+                  <input type="number" value={form.valor_estimado ?? ""}
+                    onChange={e => setForm({ ...form, valor_estimado: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Tipo de negócio</label>
+                  <select value={form.tipo_negocio ?? ""} onChange={e => setForm({ ...form, tipo_negocio: (e.target.value || null) as "orcamento" | "manutencao" | null })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
+                    <option value="">— Não definido —</option>
+                    <option value="orcamento">Orçamento avulso</option>
+                    <option value="manutencao">Manutenção 12×</option>
+                  </select>
+                </div>
               </div>
 
               <div>
