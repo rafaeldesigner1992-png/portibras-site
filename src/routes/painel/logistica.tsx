@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Package, Plus, AlertTriangle, X, ShoppingCart,
   ExternalLink, Clock, Pencil, Trash2, AlertCircle,
-  Wrench, CalendarDays, Ticket, ChevronRight, MapPin, User, Users, HardHat
+  Wrench, CalendarDays, Ticket, ChevronRight, MapPin, User, Users, HardHat, Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -197,8 +197,26 @@ function LogisticaPage() {
     nome: "", especialidade: "", tipo_cobranca: "diaria", custo_diario: 0, custo_unitario: 0, ativo: true,
   });
 
+  // ── Valor de MO Padrão (para orçamentos CRM) ───────────────────────────────
+  const [moPadrao, setMoPadrao] = useState<number>(0);
+  const [salvandoMo, setSalvandoMo] = useState(false);
+  const [moSalvo, setMoSalvo] = useState(false);
+
+  async function carregarMoPadrao() {
+    const { data } = await supabase.from("configuracoes").select("valor").eq("chave", "mo_padrao_valor").single();
+    if (data) setMoPadrao(Number(data.valor) || 0);
+  }
+
+  async function salvarMoPadrao() {
+    setSalvandoMo(true);
+    await supabase.from("configuracoes").upsert({ chave: "mo_padrao_valor", valor: String(moPadrao) }, { onConflict: "chave" });
+    setSalvandoMo(false);
+    setMoSalvo(true);
+    setTimeout(() => setMoSalvo(false), 2500);
+  }
+
   useEffect(() => {
-    if (aba === "equipe") carregarProfissionais();
+    if (aba === "equipe") { carregarProfissionais(); carregarMoPadrao(); }
     if (aba === "suprimentos") { carregarSuprimentos(); carregarProfissionais(); }
   }, [aba]);
 
@@ -778,9 +796,47 @@ function LogisticaPage() {
             </div>
           )}
 
+          {/* Valor de MO Padrão */}
+          <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Valor de Mão de Obra para Orçamentos</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Valor padrão de MO que aparece pré-preenchido na calculadora do CRM (pode ser ajustado por orçamento)
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 max-w-xs">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">R$</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={moPadrao}
+                  onChange={e => setMoPadrao(Number(e.target.value))}
+                  className="w-full rounded-lg border border-gray-300 pl-9 pr-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-1 focus:ring-[#1a6b2f]/20"
+                  placeholder="0"
+                />
+              </div>
+              <button
+                onClick={salvarMoPadrao}
+                disabled={salvandoMo}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all",
+                  moSalvo
+                    ? "bg-green-100 text-green-700 border border-green-200"
+                    : "bg-[#1a6b2f] text-white hover:bg-[#155824] shadow-sm"
+                )}
+              >
+                {moSalvo ? <><Check className="h-4 w-4" /> Salvo</> : salvandoMo ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
+          </div>
+
           {/* Info sobre vinculação */}
           {profissionais.length > 0 && (
-            <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
                 <div>

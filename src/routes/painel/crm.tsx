@@ -289,16 +289,18 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       const [{ data: sups }, { data: orc }, { data: cfgs }, { data: profs }] = await Promise.all([
         supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario, tempo_instalacao_min, profissionais_ids").order("nome"),
         supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
-        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct"]),
+        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "mo_padrao_valor"]),
         supabase.from("logistica_profissionais").select("*").eq("ativo", true).order("nome"),
       ]);
       if (sups) setSuprimentos(sups as Suprimento[]);
       if (profs) setProfissionais(profs as Profissional[]);
+      let moPadraoValor = 0;
       if (cfgs) {
         for (const row of cfgs) {
           if (row.chave === "imposto_padrao_pct") setImpostoPct(Number(row.valor) || 10);
           if (row.chave === "margem_minima_pct") setMargemMin(Number(row.valor) || 25);
           if (row.chave === "margem_ideal_pct") setMargemIdeal(Number(row.valor) || 45);
+          if (row.chave === "mo_padrao_valor") moPadraoValor = Number(row.valor) || 0;
         }
       }
       if (orc && orc.length > 0) {
@@ -316,6 +318,11 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
         const impCfg = cfgs?.find(r => r.chave === "imposto_padrao_pct");
         setImpostoPct(o.imposto_pct ?? (impCfg ? Number(impCfg.valor) : 10));
         setObsOrc(o.observacoes || "");
+      }
+      // Pré-popula MO padrão se configurado e nenhuma MO manual já existir
+      if (moPadraoValor > 0) {
+        setMoManual([{ id: 1, descricao: "Mão de obra", valor: moPadraoValor }]);
+        setProximoMoId(2);
       }
       setCarregando(false);
     }
