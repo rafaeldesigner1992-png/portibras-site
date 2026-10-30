@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Building2, Plus, Search, Phone, Mail, MapPin, Users,
   ChevronRight, X, Check, Pencil, Trash2, AlertCircle,
-  FileText, Wrench, ChevronDown, ChevronUp, History,
+  FileText, Wrench, ChevronDown, ChevronUp, History, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +93,17 @@ const EMPTY_FORM = {
 
 type FormData = typeof EMPTY_FORM;
 
+// ── Busca CNPJ ────────────────────────────────────────────────────────────────
+
+function formatarCnpj(valor: string) {
+  const n = valor.replace(/\D/g, "").slice(0, 14);
+  return n
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d)/, "$1-$2");
+}
+
 function FormCliente({
   inicial, onSalvar, onCancelar, salvando,
 }: {
@@ -103,6 +114,47 @@ function FormCliente({
 }) {
   const [form, setForm] = useState<FormData>({ ...EMPTY_FORM, ...inicial });
   const set = (k: keyof FormData, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+  const [erroCnpj, setErroCnpj] = useState<string | null>(null);
+  const cnpjRef = useRef<HTMLInputElement>(null);
+
+  async function buscarCnpj(cnpjRaw: string) {
+    const digits = cnpjRaw.replace(/\D/g, "");
+    if (digits.length !== 14) return;
+    setBuscandoCnpj(true);
+    setErroCnpj(null);
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+      if (!res.ok) { setErroCnpj("CNPJ não encontrado na Receita Federal"); return; }
+      const d = await res.json();
+
+      // Monta endereço
+      const logradouro = [d.logradouro, d.numero].filter(Boolean).join(", ");
+      const complemento = d.complemento ? ` ${d.complemento}` : "";
+
+      setForm(f => ({
+        ...f,
+        nome: f.nome || (d.razao_social ?? ""),
+        cnpj: formatarCnpj(digits),
+        endereco: logradouro + complemento || f.endereco,
+        bairro: d.bairro || f.bairro,
+        cep: d.cep ? d.cep.replace(/\D/g, "").replace(/(\d{5})(\d{3})/, "$1-$2") : f.cep,
+        cidade: d.municipio || f.cidade,
+        uf: d.uf || f.uf,
+        email: f.email || (d.email ?? ""),
+      }));
+    } catch {
+      setErroCnpj("Erro ao consultar Receita Federal");
+    } finally {
+      setBuscandoCnpj(false);
+    }
+  }
+
+  function handleCnpjChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const formatado = formatarCnpj(e.target.value);
+    set("cnpj", formatado);
+    if (formatado.replace(/\D/g, "").length === 14) buscarCnpj(formatado);
+  }
 
   return (
     <div className="space-y-5">
@@ -115,8 +167,22 @@ function FormCliente({
             <input className="input-field" value={form.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex: Condomínio Edifício Alpha" />
           </div>
           <div>
-            <label className="label-field">CNPJ</label>
-            <input className="input-field" value={form.cnpj} onChange={e => set("cnpj", e.target.value)} placeholder="00.000.000/0001-00" />
+            <label className="label-field flex items-center gap-1.5">
+              CNPJ
+              {buscandoCnpj && <Loader2 className="h-3 w-3 animate-spin text-[#1a6b2f]" />}
+              {!buscandoCnpj && erroCnpj && <span className="text-xs font-normal text-red-500">{erroCnpj}</span>}
+              {!buscandoCnpj && !erroCnpj && form.cnpj.replace(/\D/g, "").length === 14 && (
+                <span className="text-xs font-normal text-green-600 flex items-center gap-0.5"><Check className="h-3 w-3" />preenchido</span>
+              )}
+            </label>
+            <input
+              ref={cnpjRef}
+              className="input-field"
+              value={form.cnpj}
+              onChange={handleCnpjChange}
+              placeholder="00.000.000/0001-00"
+              maxLength={18}
+            />
           </div>
           <div>
             <label className="label-field">Tipo de Edificação</label>
