@@ -73,19 +73,24 @@ function PessoasPage() {
         setErro("Senha deve ter pelo menos 6 caracteres.");
         return;
       }
-      // Cria usuário no Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      // Cria usuário no Supabase Auth via signUp
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email,
         password: form.senha,
-        email_confirm: true,
+        options: { data: { nome: form.nome } },
       });
       if (authError) {
         setErro("Erro ao criar usuário: " + authError.message);
         return;
       }
+      const userId = authData.user?.id;
+      if (!userId) {
+        setErro("Erro ao obter ID do usuário criado.");
+        return;
+      }
       // Insere na tabela usuarios
       const { error: dbError } = await supabase.from("usuarios").insert({
-        id: authData.user.id,
+        id: userId,
         email: form.email,
         nome: form.nome,
         perfil: form.perfil,
