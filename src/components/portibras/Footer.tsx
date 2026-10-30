@@ -36,16 +36,16 @@ export function Footer() {
         </div>
       </div>
       <div className="border-t border-white/10">
-        <div className="mx-auto max-w-7xl px-6 py-5 text-xs text-white/50 flex flex-col sm:flex-row justify-between gap-2">
+        <div className="mx-auto max-w-7xl px-6 py-5 text-xs text-white/50 flex flex-col sm:flex-row items-center justify-between gap-4">
           <span>© {new Date().getFullYear()} PORTIBRAS. Todos os direitos reservados.</span>
-          <span>Segurança que se vê. Conformidade que se comprova.</span>
           <Link
             to="/acesso"
-            className="flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors"
           >
-            <Lock className="h-3 w-3" />
+            <Lock className="h-4 w-4" />
             Área de Membros
           </Link>
+          <span className="hidden sm:block">Segurança que se vê. Conformidade que se comprova.</span>
         </div>
       </div>
     </footer>
