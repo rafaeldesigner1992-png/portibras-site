@@ -950,7 +950,230 @@ function PropostaDetalhe({
         : `${valorTotal.toLocaleString("pt-BR")} reais`;
       const diaExtenso = diaVencimento === 5 ? "cinco" : diaVencimento === 10 ? "dez" : diaVencimento === 15 ? "quinze" : diaVencimento === 20 ? "vinte" : "vinte e cinco";
 
-      const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contrato ${numContrato}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;font-size:11pt;line-height:1.55}@media print{body{font-size:9.5pt}@page{size:A4;margin:20mm 18mm 22mm 18mm}.no-print{display:none!important}}.ct-page{max-width:800px;margin:0 auto;padding:36px 48px 56px}.btn-print{display:block;margin:0 auto 28px;padding:10px 28px;background:#1a6b2f;color:#fff;border:none;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;font-weight:600;cursor:pointer}.ct-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}.ct-logo-nome{font-size:20pt;font-weight:900;letter-spacing:3px;color:#1a6b2f;font-family:Arial,sans-serif}.ct-logo-sub{font-size:7pt;color:#6b7280;text-transform:uppercase;margin-top:3px;font-family:Arial,sans-serif}.ct-logo-cnpj{font-size:7.5pt;color:#6b7280;margin-top:3px;font-family:Arial,sans-serif}.ct-header-right{text-align:right;font-family:Arial,sans-serif}.ct-titulo-doc{font-size:8pt;font-weight:700;color:#1a6b2f;text-transform:uppercase}.ct-num-doc{font-size:8.5pt;color:#374151;margin-top:3px}.ct-data-doc{font-size:7.5pt;color:#6b7280;margin-top:2px}.ct-divider-green{border:none;border-top:2px solid #1a6b2f;margin:10px 0 8px}.ct-subtitulo{text-align:center;font-size:8.5pt;font-weight:700;color:#374151;text-transform:uppercase;margin-bottom:6px;font-family:Arial,sans-serif}.ct-divider{border:none;border-top:1px solid #d1d5db;margin:6px 0}.ct-section-title{font-size:7.5pt;font-weight:700;color:#1a6b2f;text-transform:uppercase;margin:16px 0 10px;font-family:Arial,sans-serif;border-bottom:1px solid #d1fae5;padding-bottom:4px}.ct-partes{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:10px}.ct-parte-label{font-size:6.5pt;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:5px;font-family:Arial,sans-serif}.ct-parte-nome{font-size:10pt;font-weight:700;color:#1f2937;font-family:Arial,sans-serif}.ct-parte-info{font-size:8.5pt;color:#374151;line-height:1.7;margin-top:3px}.ct-clausula{margin-top:14px}.ct-clausula-titulo{font-size:8.5pt;font-weight:700;color:#1f2937;margin-bottom:5px;font-family:Arial,sans-serif;text-transform:uppercase}.ct-clausula-corpo{font-size:9.5pt;color:#374151;line-height:1.65;text-align:justify}.ct-clausula-corpo p{margin-top:6px}.ct-sig-section{margin-top:36px}.ct-sig-divider{border:none;border-top:1px solid #d1d5db;margin:28px 0 18px}.ct-local-data{font-size:9.5pt;color:#374151;margin-bottom:36px}.ct-assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-bottom:36px}.ct-assinatura-espaco{height:48px}.ct-assinatura-linha{border-top:1px solid #374151;padding-top:7px}.ct-assinatura-nome{font-size:9pt;color:#1f2937;font-weight:600}.ct-assinatura-cargo{font-size:8pt;color:#6b7280;margin-top:2px}.ct-assinatura-label{font-size:7pt;font-weight:700;color:#6b7280;text-transform:uppercase;font-family:Arial,sans-serif}.ct-testemunhas{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:8px}.ct-testemunha-espaco{height:36px}.ct-testemunha-linha{border-top:1px solid #9ca3af;padding-top:5px}.ct-testemunha-label{font-size:8pt;color:#6b7280;font-family:Arial,sans-serif}.ct-testemunha-sub{font-size:7.5pt;color:#9ca3af;font-family:Arial,sans-serif}.ct-rodape{margin-top:40px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:7pt;color:#9ca3af;font-family:Arial,sans-serif;display:flex;justify-content:space-between}</style></head><body><div class="ct-page"><button class="btn-print no-print" onclick="window.print()">⬇ Salvar como PDF / Imprimir</button><div class="ct-header"><div><div class="ct-logo-nome">PORTIBRAS</div><div class="ct-logo-sub">Soluções em Portas Corta-Fogo · NBR 11.742</div><div class="ct-logo-cnpj">CNPJ: 47.594.074/0001-10 · Rio de Janeiro – RJ</div></div><div class="ct-header-right"><div class="ct-titulo-doc">Contrato de Prestação de Serviços</div><div class="ct-num-doc">Nº ${numContrato}</div><div class="ct-data-doc">Emitido em: ${dataHoje}</div></div></div><hr class="ct-divider-green"><div class="ct-subtitulo">Manutenção Preventiva de Portas Corta-Fogo — Plano Anual 12×</div><hr class="ct-divider"><div class="ct-section-title">Identificação das Partes</div><div class="ct-partes"><div><div class="ct-parte-label">Contratante</div><div class="ct-parte-nome">${contratante}</div><div class="ct-parte-info">CNPJ: ${cnpjContratante}<br>Endereço: ${enderecoContratante}<br>Representante legal: ${responsavel}</div></div><div><div class="ct-parte-label">Contratada</div><div class="ct-parte-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div><div class="ct-parte-info">CNPJ: 47.594.074/0001-10<br>Rio de Janeiro – RJ<br>vendas@portibras.com.br · (22) 99104-8162</div></div></div><hr class="ct-divider"><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 1ª — Objeto do Contrato</div><div class="ct-clausula-corpo">A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de Portas Corta-Fogo nas instalações da CONTRATANTE, em conformidade com as normas técnicas ABNT NBR 11.742:2018 e NBR 11.785:1997.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 2ª — Escopo dos Serviços</div><div class="ct-clausula-corpo">Os Serviços compreendem, para cada uma das ${c.portas} (${c.portas}) portas corta-fogo:<p>(a) 2 roteiros completos de manutenção preventiva por ano;</p><p>(b) inspeção visual, ajuste de mola, lubrificação e regulagem;</p><p>(c) registro fotográfico e emissão de Laudo Técnico DTS;</p><p>(d) atendimento prioritário em emergências sem custo adicional.</p></div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 3ª — Prazo e Vigência</div><div class="ct-clausula-corpo">O contrato vigorará pelo prazo de 12 (doze) meses, com início em ${dataInicioFmt} e término em ${dataFim}, renovando-se automaticamente salvo manifestação escrita com 30 dias de antecedência.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 4ª — Valor e Forma de Pagamento</div><div class="ct-clausula-corpo">O valor global é de ${fmt(valorTotal)} (${valorExtenso}), parcelado em 12 parcelas de ${fmt(c.parcela)}, com vencimento no dia ${diaVencimento} (${diaExtenso}) de cada mês, mediante boleto bancário.<p>O atraso sujeitará multa de 2%, juros de 1% ao mês e correção pelo IPCA.</p></div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 5ª — Garantia</div><div class="ct-clausula-corpo">A CONTRATADA garante os serviços por 6 meses contados de cada visita técnica.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 6ª — Rescisão</div><div class="ct-clausula-corpo">Rescisão por qualquer parte com 30 dias de aviso prévio, ou imediatamente em caso de inadimplência superior a 30 dias.</div></div><div class="ct-clausula"><div class="ct-clausula-titulo">Cláusula 7ª — Foro</div><div class="ct-clausula-corpo">As partes elegem o Foro da Comarca da Capital do Estado do Rio de Janeiro – RJ.</div></div><div class="ct-sig-section"><div class="ct-sig-divider"></div><div class="ct-local-data">Rio de Janeiro, ${dataHoje}</div><div class="ct-assinaturas"><div><div class="ct-assinatura-espaco"></div><div class="ct-assinatura-linha"></div><div class="ct-assinatura-nome">${contratante}</div><div class="ct-assinatura-cargo">${responsavel} — Representante Legal</div><div class="ct-assinatura-label">Contratante</div></div><div><div class="ct-assinatura-espaco"></div><div class="ct-assinatura-linha"></div><div class="ct-assinatura-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div><div class="ct-assinatura-cargo">CNPJ: 47.594.074/0001-10</div><div class="ct-assinatura-label">Contratada</div></div></div><div class="ct-testemunhas"><div><div class="ct-testemunha-espaco"></div><div class="ct-testemunha-linha"></div><div class="ct-testemunha-label">Testemunha 1</div><div class="ct-testemunha-sub">Nome completo / CPF</div></div><div><div class="ct-testemunha-espaco"></div><div class="ct-testemunha-linha"></div><div class="ct-testemunha-label">Testemunha 2</div><div class="ct-testemunha-sub">Nome completo / CPF</div></div></div></div><div class="ct-rodape"><span>${contratante} · PORTIBRAS</span><span>Contrato ${numContrato} · ${dataHoje}</span></div></div></body></html>`;
+      const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Contrato ${numContrato}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;font-size:11pt;line-height:1.65}
+@media print{body{font-size:10pt}@page{size:A4;margin:22mm 20mm 24mm 20mm}.no-print{display:none!important}}
+.ct-page{max-width:780px;margin:0 auto;padding:32px 44px 60px}
+.btn-print{display:block;margin:0 auto 28px;padding:10px 28px;background:#1a6b2f;color:#fff;border:none;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.3px}
+.ct-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.ct-logo-nome{font-size:22pt;font-weight:900;letter-spacing:4px;color:#1a6b2f;font-family:Arial,sans-serif}
+.ct-logo-sub{font-size:7pt;color:#6b7280;text-transform:uppercase;margin-top:3px;font-family:Arial,sans-serif;letter-spacing:.5px}
+.ct-logo-cnpj{font-size:7.5pt;color:#6b7280;margin-top:4px;font-family:Arial,sans-serif}
+.ct-logo-contato{font-size:7.5pt;color:#6b7280;margin-top:2px;font-family:Arial,sans-serif}
+.ct-header-right{text-align:right;font-family:Arial,sans-serif}
+.ct-titulo-doc{font-size:8pt;font-weight:700;color:#1a6b2f;text-transform:uppercase;letter-spacing:.5px}
+.ct-num-doc{font-size:9pt;color:#374151;margin-top:3px;font-weight:600}
+.ct-data-doc{font-size:7.5pt;color:#6b7280;margin-top:2px}
+.ct-divider-green{border:none;border-top:2.5px solid #1a6b2f;margin:10px 0 10px}
+.ct-preambulo{font-size:9.5pt;color:#374151;line-height:1.7;text-align:justify;margin-bottom:14px;font-style:italic}
+.ct-section-title{font-size:7.5pt;font-weight:700;color:#1a6b2f;text-transform:uppercase;margin:16px 0 8px;font-family:Arial,sans-serif;border-bottom:1.5px solid #d1fae5;padding-bottom:4px;letter-spacing:.5px}
+.ct-partes{margin-bottom:10px}
+.ct-parte{margin-bottom:10px}
+.ct-parte-label{font-size:7pt;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:3px;font-family:Arial,sans-serif;letter-spacing:.5px}
+.ct-parte-bloco{font-size:9.5pt;color:#374151;line-height:1.7;text-align:justify}
+.ct-parte-bloco strong{color:#1f2937}
+.ct-divider{border:none;border-top:1px solid #d1d5db;margin:8px 0}
+.ct-clausula{margin-top:14px}
+.ct-clausula-titulo{font-size:9pt;font-weight:700;color:#1f2937;margin-bottom:5px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.2px}
+.ct-clausula-corpo{font-size:9.5pt;color:#374151;line-height:1.7;text-align:justify}
+.ct-clausula-corpo p{margin-top:6px}
+.ct-clausula-corpo ul{margin:6px 0 0 18px}
+.ct-clausula-corpo li{margin-bottom:3px}
+.ct-sig-section{margin-top:40px}
+.ct-sig-divider{border:none;border-top:1px solid #d1d5db;margin:24px 0 16px}
+.ct-local-data{font-size:9.5pt;color:#374151;margin-bottom:40px}
+.ct-assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-bottom:32px}
+.ct-assinatura-espaco{height:52px}
+.ct-assinatura-linha{border-top:1px solid #374151;padding-top:6px}
+.ct-assinatura-nome{font-size:9pt;color:#1f2937;font-weight:700}
+.ct-assinatura-cargo{font-size:8pt;color:#6b7280;margin-top:2px}
+.ct-assinatura-label{font-size:7pt;font-weight:700;color:#6b7280;text-transform:uppercase;font-family:Arial,sans-serif;margin-top:2px;letter-spacing:.3px}
+.ct-testemunhas{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:8px}
+.ct-testemunha-espaco{height:40px}
+.ct-testemunha-linha{border-top:1px solid #9ca3af;padding-top:5px}
+.ct-testemunha-label{font-size:8.5pt;color:#6b7280;font-family:Arial,sans-serif}
+.ct-testemunha-sub{font-size:7.5pt;color:#9ca3af;font-family:Arial,sans-serif;margin-top:2px}
+.ct-rodape{margin-top:36px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:7pt;color:#9ca3af;font-family:Arial,sans-serif;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="ct-page">
+<button class="btn-print no-print" onclick="window.print()">⬇ Salvar como PDF / Imprimir</button>
+
+<div class="ct-header">
+  <div>
+    <div class="ct-logo-nome">PORTIBRAS</div>
+    <div class="ct-logo-sub">Serviços Especializados em Portas Corta-Fogo · NBR 11.742</div>
+    <div class="ct-logo-cnpj">CNPJ: 47.594.074/0001-10 · Rio de Janeiro – RJ</div>
+    <div class="ct-logo-contato">(22) 99104-8162 · vendas@portibras.com.br</div>
+  </div>
+  <div class="ct-header-right">
+    <div class="ct-titulo-doc">Instrumento de Manutenção Parcelada</div>
+    <div class="ct-num-doc">Nº ${numContrato}</div>
+    <div class="ct-data-doc">Emitido em: ${dataHoje}</div>
+  </div>
+</div>
+
+<hr class="ct-divider-green">
+
+<div class="ct-preambulo">
+  Pelo presente instrumento particular de prestação de serviços de manutenção parcelada, as partes a seguir qualificadas têm entre si justo e contratado o seguinte:
+</div>
+
+<div class="ct-section-title">Preâmbulo e Qualificação das Partes</div>
+<div class="ct-partes">
+  <div class="ct-parte">
+    <div class="ct-parte-label">Contratada</div>
+    <div class="ct-parte-bloco">
+      <strong>PORTIBRAS SERVIÇOS ESPECIALIZADOS LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 47.594.074/0001-10, com sede em Rio de Janeiro – RJ, neste ato representada por seu administrador <strong>Rafael Moraes</strong>, doravante denominada simplesmente <strong>CONTRATADA</strong>.
+    </div>
+  </div>
+  <div class="ct-parte">
+    <div class="ct-parte-label">Contratante</div>
+    <div class="ct-parte-bloco">
+      <strong>${contratante}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${cnpjContratante}, com sede em ${enderecoContratante}, neste ato representada por seu síndico/representante legal <strong>${responsavel}</strong>, doravante denominada simplesmente <strong>CONTRATANTE</strong>.
+    </div>
+  </div>
+</div>
+
+<hr class="ct-divider">
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 1ª — Objeto</div>
+  <div class="ct-clausula-corpo">
+    A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de portas corta-fogo no imóvel situado em ${enderecoContratante}, de acordo com as normas técnicas ABNT NBR 11.742/2018 e demais normas vigentes. Os serviços abrangem inspeção técnica periódica (DTS) e execução de manutenção porta a porta (DTE), com emissão de laudos normativos.
+    <p>A CONTRATADA cobrará exclusivamente a mão de obra referente aos serviços executados. Os materiais e peças de reposição eventualmente necessários serão adquiridos diretamente pelo CONTRATANTE, podendo a CONTRATADA indicar fornecedores homologados para garantia da qualidade técnica.</p>
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 2ª — Valor e Forma de Pagamento</div>
+  <div class="ct-clausula-corpo">
+    O valor total dos serviços é de <strong>${fmt(valorTotal)}</strong>, a ser pago em <strong>12 (doze) parcelas mensais e iguais de ${fmt(c.parcela)}</strong>, vencendo todo dia <strong>${diaVencimento} (${diaExtenso})</strong> de cada mês, via Boleto bancário, a partir do mês de início do contrato.
+    <p>O não pagamento no vencimento sujeitará o CONTRATANTE a multa de 2% (dois por cento) sobre o valor da parcela, acrescida de juros de mora de 1% (um por cento) ao mês, calculados pro rata die. Em caso de inadimplência superior a 30 (trinta) dias, a CONTRATADA poderá suspender a prestação dos serviços até a regularização do débito.</p>
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 3ª — Prazo e Vigência</div>
+  <div class="ct-clausula-corpo">
+    O presente instrumento terá vigência de 12 (doze) meses, com início em <strong>${dataInicioFmt}</strong> e término em <strong>${dataFim}</strong>.
+    <p>O instrumento será renovado automaticamente por períodos iguais e sucessivos, salvo manifestação contrária de qualquer das partes mediante aviso prévio por escrito com no mínimo 30 (trinta) dias de antecedência do término do período vigente.</p>
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 4ª — Garantia</div>
+  <div class="ct-clausula-corpo">
+    A CONTRATADA garante os serviços executados pelo prazo de 1 (um) ano, contado da data de realização de cada serviço, cobrindo vícios e defeitos decorrentes da execução.
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 5ª — Perda da Garantia</div>
+  <div class="ct-clausula-corpo">
+    A garantia prevista na Cláusula 4ª não se aplicará nos seguintes casos:
+    <ul>
+      <li>a) Intervenção ou modificação nas portas por terceiros não autorizados pela CONTRATADA;</li>
+      <li>b) Uso de calços, cunhas ou qualquer objeto para manter a porta em posição aberta;</li>
+      <li>c) Acionamento das partes móveis além do curso normal de operação, incluindo impactos, batidas fortes ou uso de força excessiva;</li>
+      <li>d) Suspensão de objetos, cargas ou equipamentos nas portas ou dobradiças;</li>
+      <li>e) Obstrução do vão de passagem que impeça o fechamento automático;</li>
+      <li>f) Desativação, remoção ou adulteração do sistema de mola ou dispositivo de fechamento automático;</li>
+      <li>g) Aplicação de pintura, revestimento ou adesivos sem autorização técnica prévia;</li>
+      <li>h) Danos causados por vandalismo, acidentes, incêndio ou força maior;</li>
+      <li>i) Substituição de peças por componentes não homologados;</li>
+      <li>j) Inadimplência no período em que o dano ocorreu.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 6ª — Obrigações da Contratada</div>
+  <div class="ct-clausula-corpo">
+    A CONTRATADA obriga-se a: prestar os serviços com técnicos habilitados e equipamentos adequados; observar as normas técnicas ABNT aplicáveis; emitir laudos e relatórios técnicos (DTS e DTE) após cada atendimento; comunicar previamente o agendamento das visitas; e manter sigilo sobre as informações do imóvel.
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 7ª — Obrigações do Contratante</div>
+  <div class="ct-clausula-corpo">
+    O CONTRATANTE obriga-se a: garantir acesso da equipe técnica nas datas agendadas; comunicar à CONTRATADA, com antecedência mínima de 48 horas, eventual impossibilidade de atendimento; efetuar os pagamentos nas condições estabelecidas; e não contratar terceiros para intervenção nas portas sem prévia comunicação à CONTRATADA.
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 8ª — Rescisão</div>
+  <div class="ct-clausula-corpo">
+    O presente instrumento poderá ser rescindido por qualquer das partes mediante aviso prévio por escrito de 30 (trinta) dias. Em caso de rescisão antecipada pelo CONTRATANTE sem justa causa, este ficará obrigado ao pagamento de multa equivalente a 20% (vinte por cento) do valor remanescente das parcelas não vencidas.
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 9ª — Recomendações ao Contratante</div>
+  <div class="ct-clausula-corpo">
+    <p><strong>Comunicação:</strong> Entrar em contato imediatamente ao identificar qualquer problema, anormalidade ou dano nas portas, via WhatsApp (22) 99104-8162 ou e-mail vendas@portibras.com.br. Registrar e fotografar o problema antes de qualquer intervenção.</p>
+    <p><strong>Uso e conservação:</strong> Manter as portas sempre livres de obstruções no vão de passagem. Não permitir que funcionários, moradores ou terceiros realizem ajustes nas portas. Comunicar imediatamente qualquer intervenção de terceiros nas portas, mesmo que não autorizada pela CONTRATADA.</p>
+    <p><strong>Emergências:</strong> Nunca travar ou bloquear as portas corta-fogo em posição aberta. Acionar os serviços de emergência e comunicar a CONTRATADA logo após o ocorrido.</p>
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 10ª — Disposições Gerais</div>
+  <div class="ct-clausula-corpo">
+    Este instrumento é celebrado em caráter de exclusividade para o imóvel descrito, não gerando vínculo empregatício entre as partes. Rege-se pelas leis brasileiras, especialmente pelo Código Civil (Lei nº 10.406/2002) e pelo Código de Defesa do Consumidor (Lei nº 8.078/1990), quando aplicável.
+    <p>As partes elegem o foro da comarca de Rio de Janeiro para dirimir quaisquer dúvidas ou litígios, com renúncia a qualquer outro, por mais privilegiado que seja. O presente instrumento é assinado em 2 (duas) vias de igual teor e forma, perante 2 (duas) testemunhas.</p>
+  </div>
+</div>
+
+<div class="ct-sig-section">
+  <div class="ct-sig-divider"></div>
+  <div class="ct-local-data">Rio de Janeiro, ${dataHoje}</div>
+  <div class="ct-assinaturas">
+    <div>
+      <div class="ct-assinatura-espaco"></div>
+      <div class="ct-assinatura-linha"></div>
+      <div class="ct-assinatura-nome">${contratante}</div>
+      <div class="ct-assinatura-cargo">${responsavel} — Síndico / Representante Legal</div>
+      <div class="ct-assinatura-label">Contratante</div>
+    </div>
+    <div>
+      <div class="ct-assinatura-espaco"></div>
+      <div class="ct-assinatura-linha"></div>
+      <div class="ct-assinatura-nome">PORTIBRAS SERVIÇOS ESPECIALIZADOS LTDA</div>
+      <div class="ct-assinatura-cargo">Rafael Moraes — Administrador</div>
+      <div class="ct-assinatura-label">Contratada</div>
+    </div>
+  </div>
+  <div class="ct-testemunhas">
+    <div>
+      <div class="ct-testemunha-espaco"></div>
+      <div class="ct-testemunha-linha"></div>
+      <div class="ct-testemunha-label">Testemunha 1</div>
+      <div class="ct-testemunha-sub">Nome completo / CPF</div>
+    </div>
+    <div>
+      <div class="ct-testemunha-espaco"></div>
+      <div class="ct-testemunha-linha"></div>
+      <div class="ct-testemunha-label">Testemunha 2</div>
+      <div class="ct-testemunha-sub">Nome completo / CPF</div>
+    </div>
+  </div>
+</div>
+
+<div class="ct-rodape">
+  <span>${contratante} · PORTIBRAS SERVIÇOS ESPECIALIZADOS LTDA</span>
+  <span>${numContrato} · Emitido em ${dataHoje}</span>
+</div>
+</div>
+</body>
+</html>`;
 
       const janela = window.open("", "_blank", "width=900,height=700");
       if (!janela) return alert("Permita pop-ups para gerar o contrato.");
