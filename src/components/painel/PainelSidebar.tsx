@@ -11,6 +11,7 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  BookOpen,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,6 +26,7 @@ const MENU = [
   { modulo: "logistica",  label: "Logística",         href: "/painel/logistica",  icon: Package },
   { modulo: "financeiro", label: "Financeiro",        href: "/painel/financeiro", icon: DollarSign },
   { modulo: "pessoas",    label: "Gestão de Pessoas", href: "/painel/pessoas",    icon: UserCog },
+  { modulo: "crm",       label: "Script de Vendas",  href: "/painel/script-vendas", icon: BookOpen },
 ];
 
 const STORAGE_KEY = "portibras_sidebar_collapsed";
