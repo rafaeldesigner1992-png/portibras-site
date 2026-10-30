@@ -40,6 +40,15 @@ interface Lead {
   endereco_fiscal: string;
   endereco_atendimento: string;
   criado_em: string;
+  cliente_id: string | null;
+}
+
+interface ClienteVinculado {
+  id: string;
+  nome: string;
+  cnpj: string | null;
+  telefone: string | null;
+  email: string | null;
 }
 
 interface Conversa {
@@ -2856,6 +2865,9 @@ function CrmPage() {
   const [form, setForm] = useState<Partial<Lead>>({});
   const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
   const [erroCNPJ, setErroCNPJ] = useState("");
+  const [clienteVinculado, setClienteVinculado] = useState<ClienteVinculado | null>(null);
+  const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
+  const [clienteNaoEncontrado, setClienteNaoEncontrado] = useState(false);
 
   const [cardAberto, setCardAberto] = useState<Lead | null>(null);
   const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao" | "propostas">("historico");
@@ -2910,10 +2922,26 @@ function CrmPage() {
     carregarPropostas(lead.id);
   }
 
-  function abrirModal(lead?: Lead) {
-    if (lead) { setSelecionado(lead); setForm({ ...lead }); }
-    else { setSelecionado(null); setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "" }); }
+  async function abrirModal(lead?: Lead) {
+    setClienteVinculado(null);
+    setClienteNaoEncontrado(false);
     setErroCNPJ("");
+    if (lead) {
+      setSelecionado(lead);
+      setForm({ ...lead });
+      // Se já tem cliente_id, buscar dados do cliente
+      if (lead.cliente_id) {
+        const { data } = await supabase
+          .from("clientes")
+          .select("id, nome, cnpj, telefone, email")
+          .eq("id", lead.cliente_id)
+          .maybeSingle();
+        if (data) setClienteVinculado(data as ClienteVinculado);
+      }
+    } else {
+      setSelecionado(null);
+      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "", cliente_id: null });
+    }
     setModal(true);
   }
 
@@ -2922,7 +2950,10 @@ function CrmPage() {
     if (digits.length !== 14) return;
     setBuscandoCNPJ(true);
     setErroCNPJ("");
+    setClienteVinculado(null);
+    setClienteNaoEncontrado(false);
     try {
+      // 1. Buscar na Receita Federal
       const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
       if (!res.ok) throw new Error("não encontrado");
       const d = await res.json();
@@ -2939,13 +2970,64 @@ function CrmPage() {
         telefone: d.ddd_telefone_1 ? d.ddd_telefone_1.replace(/\D/g, "").replace(/(\d{2})(\d{4,5})(\d{4})/, "($1) $2-$3") : f.telefone,
         endereco_fiscal: partes.join(", ") || f.endereco_fiscal,
       }));
+
+      // 2. Buscar cliente no banco de dados
+      const { data: clienteDb } = await supabase
+        .from("clientes")
+        .select("id, nome, cnpj, telefone, email")
+        .eq("cnpj", digits)
+        .maybeSingle();
+
+      if (clienteDb) {
+        setClienteVinculado(clienteDb as ClienteVinculado);
+        setForm(f => ({ ...f, cliente_id: clienteDb.id }));
+        setClienteNaoEncontrado(false);
+      } else {
+        setClienteNaoEncontrado(true);
+        setForm(f => ({ ...f, cliente_id: null }));
+      }
     } catch { setErroCNPJ("CNPJ não encontrado na Receita Federal."); }
     finally { setBuscandoCNPJ(false); }
   }
 
+  async function cadastrarClienteSimplificado() {
+    const digits = (form.cnpj || "").replace(/\D/g, "");
+    if (!form.empresa && !form.nome) return;
+    setCadastrandoCliente(true);
+    try {
+      const { data: novoCliente, error } = await supabase
+        .from("clientes")
+        .insert({
+          nome: form.empresa || form.nome || "",
+          cnpj: digits,
+          telefone: form.telefone || null,
+          email: form.email || null,
+          endereco: form.endereco_fiscal || null,
+          status: "prospect",
+        })
+        .select("id, nome, cnpj, telefone, email")
+        .single();
+
+      if (error) throw error;
+      if (novoCliente) {
+        setClienteVinculado(novoCliente as ClienteVinculado);
+        setForm(f => ({ ...f, cliente_id: novoCliente.id }));
+        setClienteNaoEncontrado(false);
+      }
+    } catch (e) {
+      console.error("Erro ao cadastrar cliente:", e);
+    } finally {
+      setCadastrandoCliente(false);
+    }
+  }
+
   async function salvar() {
     if (!form.nome?.trim()) return;
-    const payload = { ...form, cnpj: form.cnpj?.replace(/\D/g, "") || "" };
+    const payload = {
+      ...form,
+      cnpj: form.cnpj?.replace(/\D/g, "") || "",
+      cliente_id: form.cliente_id || null,
+    };
     if (selecionado) await supabase.from("crm_leads").update(payload).eq("id", selecionado.id);
     else await supabase.from("crm_leads").insert(payload);
     setModal(false);
@@ -3378,6 +3460,30 @@ function CrmPage() {
                   </button>
                 </div>
                 {erroCNPJ && <p className="mt-1 text-xs text-red-500">{erroCNPJ}</p>}
+
+                {/* Cliente vinculado ou botão de cadastro */}
+                {clienteVinculado && (
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
+                    <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-green-800">Cliente vinculado</p>
+                      <p className="text-xs text-green-600 truncate">{clienteVinculado.nome}</p>
+                    </div>
+                    <button type="button" onClick={() => { setClienteVinculado(null); setClienteNaoEncontrado(true); setForm(f => ({ ...f, cliente_id: null })); }}
+                      className="text-green-500 hover:text-green-700 flex-shrink-0"><X className="h-3.5 w-3.5" /></button>
+                  </div>
+                )}
+
+                {clienteNaoEncontrado && !clienteVinculado && (
+                  <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+                    <p className="text-xs text-amber-700 mb-2">Cliente não encontrado no Banco de Clientes.</p>
+                    <button type="button" onClick={cadastrarClienteSimplificado} disabled={cadastrandoCliente}
+                      className="flex items-center gap-1.5 rounded-md bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+                      {cadastrandoCliente ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      Cadastrar no Banco de Clientes
+                    </button>
+                  </div>
+                )}
               </div>
 
               {[
