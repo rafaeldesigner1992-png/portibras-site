@@ -5,7 +5,7 @@ import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
   Loader2, Send, Pencil, Trash2, MapPin, Navigation,
-  Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download
+  Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download, Eye
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +80,65 @@ interface Orcamento {
   criado_em?: string;
 }
 
+interface PropostaSalva {
+  id: string;
+  lead_id: string;
+  tipo: "orcamento" | "manutencao";
+  nome_arquivo: string;
+  storage_path: string;
+  criado_em: string;
+}
+
+// Carrega pdfmake do CDN (singleton)
+async function carregarPdfMake() {
+  if ((window as Record<string, unknown>).pdfMake) return;
+  await new Promise<void>((resolve, reject) => {
+    const s1 = document.createElement("script");
+    s1.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js";
+    s1.onload = () => {
+      const s2 = document.createElement("script");
+      s2.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.min.js";
+      s2.onload = () => resolve();
+      s2.onerror = reject;
+      document.head.appendChild(s2);
+    };
+    s1.onerror = reject;
+    document.head.appendChild(s1);
+  });
+}
+
+// Salva o PDF no Supabase Storage e registra metadados na tabela
+async function salvarPropostaStorage(
+  leadId: string,
+  tipo: "orcamento" | "manutencao",
+  nomeArquivo: string,
+  docDef: unknown,
+): Promise<void> {
+  const pm = (window as Record<string, unknown>).pdfMake as {
+    createPdf: (def: unknown) => {
+      download: (name: string) => void;
+      getBlob: (cb: (blob: Blob) => void) => void;
+    };
+  };
+
+  // Gera o PDF como Blob
+  const blob = await new Promise<Blob>((resolve) => pm.createPdf(docDef).getBlob(resolve));
+
+  const storagePath = `${leadId}/${tipo}/${Date.now()}_${nomeArquivo}`;
+  const { error: upErr } = await supabase.storage
+    .from("propostas")
+    .upload(storagePath, blob, { contentType: "application/pdf", upsert: false });
+
+  if (upErr) throw new Error(`Upload falhou: ${upErr.message}`);
+
+  await supabase.from("crm_propostas").insert({
+    lead_id: leadId,
+    tipo,
+    nome_arquivo: nomeArquivo,
+    storage_path: storagePath,
+  });
+}
+
 const ETAPAS: Record<Etapa, { label: string; cor: string; bg: string; border: string }> = {
   prospecto:  { label: "Prospecto",   cor: "text-gray-600",   bg: "bg-gray-100",   border: "border-gray-300" },
   contato:    { label: "Em Contato",  cor: "text-blue-700",   bg: "bg-blue-100",   border: "border-blue-300" },
@@ -114,8 +173,11 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [obsOrc, setObsOrc] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const [gerandoPdfOrc, setGerandoPdfOrc] = useState(false);
+  const [pdfOrcSalvo, setPdfOrcSalvo] = useState(false);
   const [orcamentoExistente, setOrcamentoExistente] = useState<Orcamento | null>(null);
   const [busca, setBusca] = useState("");
+  const numPropostaOrc = useRef(`ORC-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`);
 
   // Configs globais de margem (carregadas do banco)
   const [margemMin, setMargemMin] = useState(25);
@@ -282,6 +344,153 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   // Margem real sobre preço de venda (para o semáforo)
   // margem_real = (precoFinal - custoTotal - valorImposto) / precoFinal * 100
   const margemRealPct = precoFinal > 0 ? ((precoFinal - custoTotal - valorImposto) / precoFinal) * 100 : 0;
+
+  async function gerarPdfOrcamento() {
+    setGerandoPdfOrc(true);
+    setPdfOrcSalvo(false);
+    try {
+      await carregarPdfMake();
+      const pm = (window as Record<string, unknown>).pdfMake as {
+        createPdf: (def: unknown) => { download: (name: string) => void; getBlob: (cb: (b: Blob) => void) => void };
+      };
+
+      const verde = "#1a6b2f";
+      const laranja = "#C94500";
+      const cinza = "#6b7280";
+      const dataHoje = new Date().toLocaleDateString("pt-BR");
+      const empresa = lead.empresa || lead.nome || "Cliente";
+      const nomeArquivo = `${numPropostaOrc.current}_${empresa.replace(/\s+/g, "_")}.pdf`;
+
+      const linhasItens = itens.map(i => [
+        { text: i.nome, fontSize: 9, color: "#374151" },
+        { text: i.quantidade.toString(), fontSize: 9, color: cinza, alignment: "center" },
+        { text: i.custo_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 9, color: cinza, alignment: "right" },
+        { text: (i.custo_unitario * i.quantidade).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), fontSize: 9, bold: true, color: "#374151", alignment: "right" },
+      ]);
+
+      const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+      const docDef = {
+        pageSize: "A4",
+        pageMargins: [48, 48, 48, 48],
+        defaultStyle: { font: "Roboto" },
+        content: [
+          // Header
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "PORTIBRAS", fontSize: 16, bold: true, color: "#1f2937", characterSpacing: 1 },
+                  { text: "SOLUÇÕES EM PORTAS CORTA-FOGO · NBR 11.742", fontSize: 7, color: cinza, characterSpacing: 0.5, margin: [0, 2, 0, 0] },
+                  { text: `Proposta nº ${numPropostaOrc.current}`, fontSize: 9, color: laranja, bold: true, margin: [0, 4, 0, 0] },
+                ],
+              },
+              {
+                stack: [
+                  { text: `Para: ${empresa}`, fontSize: 8, color: "#374151", alignment: "right" },
+                  { text: `Responsável: ${lead.nome || "—"}`, fontSize: 8, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
+                  { text: `Data: ${dataHoje}`, fontSize: 8, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
+                ],
+              },
+            ],
+            margin: [0, 0, 0, 12],
+          },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 1.5, lineColor: laranja }], margin: [0, 0, 0, 16] },
+
+          { text: "ORÇAMENTO DE MATERIAIS E SERVIÇOS", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 8] },
+
+          // Tabela de itens
+          {
+            table: {
+              headerRows: 1,
+              widths: ["*", 50, 80, 80],
+              body: [
+                [
+                  { text: "Item", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", border: [false, false, false, true] },
+                  { text: "Qtd", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "center", border: [false, false, false, true] },
+                  { text: "Custo unit.", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
+                  { text: "Total", fontSize: 8, bold: true, color: cinza, fillColor: "#f9fafb", alignment: "right", border: [false, false, false, true] },
+                ],
+                ...linhasItens,
+              ],
+            },
+            layout: { defaultBorder: false, hLineColor: () => "#f3f4f6", vLineColor: () => "transparent", paddingTop: () => 6, paddingBottom: () => 6 },
+            margin: [0, 0, 0, 16],
+          },
+
+          // Resumo financeiro
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
+          {
+            columns: [
+              { text: "", width: "*" },
+              {
+                stack: [
+                  { text: `Custo total: ${fmt(custoTotal)}`, fontSize: 9, color: cinza, margin: [0, 0, 0, 3] },
+                  { text: `Margem (${margemPct}%): ${fmt(valorMargem)}`, fontSize: 9, color: cinza, margin: [0, 0, 0, 3] },
+                  { text: `Impostos (${impostoPct}%): ${fmt(valorImposto)}`, fontSize: 9, color: cinza, margin: [0, 0, 0, 8] },
+                  {
+                    table: {
+                      widths: ["*"],
+                      body: [[{
+                        text: `PREÇO FINAL: ${fmt(precoFinal)}`,
+                        fontSize: 12, bold: true, color: "#ffffff",
+                        fillColor: verde, alignment: "right",
+                        margin: [12, 6, 12, 6], border: [false, false, false, false],
+                      }]],
+                    },
+                    layout: "noBorders",
+                  },
+                ],
+                width: 220,
+              },
+            ],
+            margin: [0, 0, 0, 16],
+          },
+
+          ...(obsOrc ? [
+            { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
+            { text: "OBSERVAÇÕES", fontSize: 8, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 4] },
+            { text: obsOrc, fontSize: 9, color: "#374151", lineHeight: 1.5, margin: [0, 0, 0, 16] },
+          ] : []),
+
+          // Rodapé
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 499, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 10] },
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "PORTIBRAS", fontSize: 9, bold: true, color: "#1f2937" },
+                  { text: "(22) 99104-8162", fontSize: 8, color: cinza },
+                  { text: "vendas@portibras.com.br", fontSize: 8, color: cinza },
+                ],
+              },
+              {
+                table: {
+                  widths: ["*"],
+                  body: [[{ text: "Aprovar Orçamento", color: "#ffffff", bold: true, fontSize: 9, alignment: "center", margin: [12, 6, 12, 6], fillColor: verde, border: [false, false, false, false] }]],
+                },
+                alignment: "right",
+              },
+            ],
+          },
+        ],
+      };
+
+      pm.createPdf(docDef).download(nomeArquivo);
+      try {
+        await salvarPropostaStorage(lead.id, "orcamento", nomeArquivo, docDef);
+        setPdfOrcSalvo(true);
+        setTimeout(() => setPdfOrcSalvo(false), 4000);
+      } catch (storageErr) {
+        console.warn("Não foi possível salvar orçamento no histórico:", storageErr);
+      }
+    } catch (err) {
+      console.error("Erro ao gerar PDF do orçamento:", err);
+      alert("Não foi possível gerar o PDF. Tente novamente.");
+    } finally {
+      setGerandoPdfOrc(false);
+    }
+  }
 
   async function salvarOrcamento() {
     setSalvando(true);
@@ -539,6 +748,19 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               {salvo ? "Orçamento salvo!" : salvando ? "Salvando…" : "Salvar orçamento no card"}
             </button>
 
+            {/* Exportar PDF do orçamento */}
+            <button onClick={gerarPdfOrcamento} disabled={gerandoPdfOrc || itens.length === 0}
+              className={cn(
+                "w-full flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors",
+                pdfOrcSalvo
+                  ? "border-green-300 bg-green-50 text-green-700"
+                  : "border-[#1a6b2f] text-[#1a6b2f] hover:bg-green-50",
+                (gerandoPdfOrc || itens.length === 0) && "opacity-50 cursor-not-allowed"
+              )}>
+              {gerandoPdfOrc ? <Loader2 className="h-4 w-4 animate-spin" /> : pdfOrcSalvo ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+              {gerandoPdfOrc ? "Gerando PDF…" : pdfOrcSalvo ? "PDF salvo no histórico!" : "Baixar PDF do orçamento"}
+            </button>
+
             {itens.length === 0 && (
               <p className="text-center text-[10px] text-gray-400 flex items-center justify-center gap-1">
                 <AlertCircle className="h-3 w-3" /> Adicione ao menos um item para salvar
@@ -546,6 +768,106 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Item de Proposta Salva ────────────────────────────────────────────────────
+function PropostaItem({ proposta }: { proposta: PropostaSalva }) {
+  const [baixando, setBaixando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+
+  const tipoLabel = proposta.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento";
+  const tipoCorBg = proposta.tipo === "manutencao" ? "bg-orange-50 text-[#C94500] border-orange-200" : "bg-green-50 text-[#1a6b2f] border-green-200";
+  const dataFormatada = new Date(proposta.criado_em).toLocaleString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  async function baixar() {
+    setBaixando(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from("propostas")
+        .download(proposta.storage_path);
+      if (error || !data) throw error;
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = proposta.nome_arquivo;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Não foi possível baixar o arquivo.");
+    } finally {
+      setBaixando(false);
+    }
+  }
+
+  async function visualizar() {
+    setBaixando(true);
+    try {
+      const { data } = await supabase.storage
+        .from("propostas")
+        .createSignedUrl(proposta.storage_path, 300); // URL válida por 5 min
+      if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+    } catch {
+      alert("Não foi possível abrir o arquivo.");
+    } finally {
+      setBaixando(false);
+    }
+  }
+
+  async function excluir() {
+    if (!confirm(`Excluir "${proposta.nome_arquivo}"?`)) return;
+    setExcluindo(true);
+    await supabase.storage.from("propostas").remove([proposta.storage_path]);
+    await supabase.from("crm_propostas").delete().eq("id", proposta.id);
+    // Recarrega via window event para comunicar ao parent
+    window.dispatchEvent(new CustomEvent("proposta-excluida", { detail: proposta.id }));
+    setExcluindo(false);
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-gray-200 transition-colors">
+      <div className="flex-shrink-0 rounded-lg bg-gray-50 p-2.5">
+        <FileText className="h-5 w-5 text-gray-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-800 truncate">{proposta.nome_arquivo}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold", tipoCorBg)}>
+            {tipoLabel}
+          </span>
+          <span className="text-[10px] text-gray-400">{dataFormatada}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          onClick={visualizar}
+          disabled={baixando}
+          title="Visualizar no navegador"
+          className="rounded-lg p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40"
+        >
+          {baixando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+        </button>
+        <button
+          onClick={baixar}
+          disabled={baixando}
+          title="Baixar PDF"
+          className="rounded-lg p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50 transition-colors disabled:opacity-40"
+        >
+          <Download className="h-4 w-4" />
+        </button>
+        <button
+          onClick={excluir}
+          disabled={excluindo}
+          title="Excluir proposta"
+          className="rounded-lg p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+        >
+          {excluindo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+        </button>
       </div>
     </div>
   );
@@ -560,6 +882,7 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [copiado, setCopiado] = useState<"texto" | "zap" | null>(null);
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [propostaSalva, setPropostaSalva] = useState(false);
 
   // Número de proposta único por sessão
   const numProposta = useRef(`PB-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`);
@@ -591,26 +914,12 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
 
   async function gerarPDF() {
     setGerandoPdf(true);
+    setPropostaSalva(false);
     try {
-      // Carrega pdfmake dinamicamente se ainda não estiver presente
-      if (!(window as Record<string, unknown>).pdfMake) {
-        await new Promise<void>((resolve, reject) => {
-          const s1 = document.createElement("script");
-          s1.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js";
-          s1.onload = () => {
-            const s2 = document.createElement("script");
-            s2.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.min.js";
-            s2.onload = () => resolve();
-            s2.onerror = reject;
-            document.head.appendChild(s2);
-          };
-          s1.onerror = reject;
-          document.head.appendChild(s1);
-        });
-      }
+      await carregarPdfMake();
 
       const pm = (window as Record<string, unknown>).pdfMake as {
-        createPdf: (def: unknown) => { download: (name: string) => void };
+        createPdf: (def: unknown) => { download: (name: string) => void; getBlob: (cb: (b: Blob) => void) => void };
       };
 
       const verde = "#1a6b2f";
@@ -799,7 +1108,15 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
         ],
       };
 
+      // Faz download e salva no Storage em paralelo
       pm.createPdf(docDef).download(nomeArquivo);
+      try {
+        await salvarPropostaStorage(lead.id, "manutencao", nomeArquivo, docDef);
+        setPropostaSalva(true);
+        setTimeout(() => setPropostaSalva(false), 4000);
+      } catch (storageErr) {
+        console.warn("Não foi possível salvar proposta no histórico:", storageErr);
+      }
     } catch (err) {
       console.error("Erro ao gerar PDF:", err);
       alert("Não foi possível gerar o PDF. Tente novamente.");
@@ -1115,10 +1432,15 @@ function OrcamentoManutencao({ lead }: { lead: Lead }) {
         <button
           onClick={gerarPDF}
           disabled={gerandoPdf}
-          className="flex items-center gap-1.5 rounded-lg border border-[#C94500] px-4 py-2.5 text-sm font-medium text-[#C94500] hover:bg-orange-50 disabled:opacity-50 transition-colors"
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50",
+            propostaSalva
+              ? "border-green-300 bg-green-50 text-green-700"
+              : "border-[#C94500] text-[#C94500] hover:bg-orange-50"
+          )}
         >
-          {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          {gerandoPdf ? "Gerando PDF…" : "Baixar PDF"}
+          {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : propostaSalva ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+          {gerandoPdf ? "Gerando PDF…" : propostaSalva ? "Salvo no histórico!" : "Baixar PDF"}
         </button>
       </div>
     </div>
@@ -1141,7 +1463,9 @@ function CrmPage() {
   const [erroCNPJ, setErroCNPJ] = useState("");
 
   const [cardAberto, setCardAberto] = useState<Lead | null>(null);
-  const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao">("historico");
+  const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao" | "propostas">("historico");
+  const [propostas, setPropostas] = useState<PropostaSalva[]>([]);
+  const [carregandoPropostas, setCarregandoPropostas] = useState(false);
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [novaMsg, setNovaMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -1162,10 +1486,33 @@ function CrmPage() {
     setTimeout(() => conversaRef.current?.scrollTo({ top: 9999, behavior: "smooth" }), 100);
   }
 
+  async function carregarPropostas(leadId: string) {
+    setCarregandoPropostas(true);
+    const { data } = await supabase
+      .from("crm_propostas")
+      .select("*")
+      .eq("lead_id", leadId)
+      .order("criado_em", { ascending: false });
+    if (data) setPropostas(data as PropostaSalva[]);
+    setCarregandoPropostas(false);
+  }
+
+  // Escuta exclusão de proposta feita dentro do PropostaItem
+  useEffect(() => {
+    function onExcluida(e: Event) {
+      const id = (e as CustomEvent<string>).detail;
+      setPropostas(prev => prev.filter(p => p.id !== id));
+    }
+    window.addEventListener("proposta-excluida", onExcluida);
+    return () => window.removeEventListener("proposta-excluida", onExcluida);
+  }, []);
+
   function abrirCard(lead: Lead) {
     setCardAberto(lead);
     setAbaCard("historico");
+    setPropostas([]);
     carregarConversas(lead.id);
+    carregarPropostas(lead.id);
   }
 
   function abrirModal(lead?: Lead) {
@@ -1537,6 +1884,16 @@ function CrmPage() {
                     abaCard === "manutencao" ? "border-[#C94500] text-[#C94500]" : "border-transparent text-gray-400 hover:text-gray-600")}>
                   <FileText className="h-4 w-4" /> Manutenção 12×
                 </button>
+                <button onClick={() => { setAbaCard("propostas"); carregarPropostas(cardAberto.id); }}
+                  className={cn("flex items-center gap-1.5 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors relative",
+                    abaCard === "propostas" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-400 hover:text-gray-600")}>
+                  <Download className="h-4 w-4" /> Propostas
+                  {propostas.length > 0 && (
+                    <span className="absolute top-2 right-1 rounded-full bg-blue-500 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center">
+                      {propostas.length > 9 ? "9+" : propostas.length}
+                    </span>
+                  )}
+                </button>
               </div>
 
               {/* Conteúdo da aba */}
@@ -1580,6 +1937,45 @@ function CrmPage() {
               {abaCard === "manutencao" && (
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <OrcamentoManutencao lead={cardAberto} />
+                </div>
+              )}
+
+              {abaCard === "propostas" && (
+                <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Propostas geradas</p>
+                      <p className="text-xs text-gray-400">PDFs gerados e salvos automaticamente ao baixar</p>
+                    </div>
+                    <button
+                      onClick={() => carregarPropostas(cardAberto.id)}
+                      className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 rounded-lg px-2 py-1.5 hover:bg-gray-50"
+                    >
+                      <Loader2 className={cn("h-3.5 w-3.5", carregandoPropostas && "animate-spin")} />
+                      Atualizar
+                    </button>
+                  </div>
+
+                  {carregandoPropostas ? (
+                    <div className="flex items-center justify-center py-12 text-gray-300">
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                      <span className="text-sm">Carregando…</span>
+                    </div>
+                  ) : propostas.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-gray-300">
+                      <FileText className="h-10 w-10 mb-3 opacity-30" />
+                      <p className="text-sm font-medium text-gray-400">Nenhuma proposta gerada</p>
+                      <p className="text-xs text-gray-300 mt-1 text-center max-w-xs">
+                        Vá até a aba "Orçamento" ou "Manutenção 12×" e clique em "Baixar PDF" — o arquivo é salvo aqui automaticamente.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {propostas.map(p => (
+                        <PropostaItem key={p.id} proposta={p} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
