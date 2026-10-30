@@ -4,7 +4,8 @@ import { supabase } from "@/lib/supabase";
 import {
   Package, Plus, AlertTriangle, X, ShoppingCart,
   ExternalLink, Clock, Pencil, Trash2, AlertCircle,
-  Wrench, CalendarDays, Ticket, ChevronRight, MapPin, User, Users, HardHat, Check
+  Wrench, CalendarDays as CalendarIcon, Ticket, ChevronRight, MapPin, User, Users, HardHat, Check,
+  ClipboardList, ShoppingBag, Building2, ChevronDown, ChevronUp, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -100,8 +101,87 @@ const PRIORIDADE_CORES: Record<string, string> = {
   urgente:"bg-red-100 text-red-700",
 };
 
+// ─── Atendimentos ─────────────────────────────────────────────────────────────
+interface Atendimento {
+  id: string;
+  cliente_id: string | null;
+  proposta_id: string | null;
+  titulo: string;
+  classificacao: "Serviço" | "Vistoria" | "Retorno" | "Operacional" | "Terceirizados";
+  status: "Programado" | "Em andamento" | "Concluído" | "Cancelado";
+  data_agendada: string | null;
+  hora_inicio: string | null;
+  hora_fim: string | null;
+  responsaveis: string[];
+  endereco: string | null;
+  atividade: string | null;
+  descricao: string | null;
+  agendado_com_cliente: boolean;
+  em_sistema: boolean;
+  relatorio_campo: string | null;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+interface Material {
+  id: string;
+  atendimento_id: string;
+  descricao: string;
+  codigo: string | null;
+  quantidade: number;
+  unidade: string;
+  valor_unitario: number | null;
+  valor_total: number | null;
+  fornecedor: string | null;
+  link_compra: string | null;
+  status: "Solicitado" | "Comprado" | "Chegou no escritório" | "Enviado ao campo" | "Instalado";
+  data_solicitacao: string | null;
+  data_compra: string | null;
+  data_chegada: string | null;
+  data_envio: string | null;
+  observacoes: string | null;
+}
+
+const STATUS_ATEND_COR: Record<string, string> = {
+  "Programado":   "bg-blue-50 text-blue-700 border-blue-200",
+  "Em andamento": "bg-yellow-50 text-yellow-700 border-yellow-200",
+  "Concluído":    "bg-green-50 text-green-700 border-green-200",
+  "Cancelado":    "bg-gray-100 text-gray-500 border-gray-200",
+};
+
+const CLASS_COR: Record<string, string> = {
+  "Serviço":       "bg-emerald-50 text-emerald-700",
+  "Vistoria":      "bg-purple-50 text-purple-700",
+  "Retorno":       "bg-sky-50 text-sky-700",
+  "Operacional":   "bg-orange-50 text-orange-700",
+  "Terceirizados": "bg-pink-50 text-pink-700",
+};
+
+const STATUS_MAT_COR: Record<string, string> = {
+  "Solicitado":           "bg-gray-100 text-gray-500",
+  "Comprado":             "bg-blue-50 text-blue-700",
+  "Chegou no escritório": "bg-yellow-50 text-yellow-700",
+  "Enviado ao campo":     "bg-purple-50 text-purple-700",
+  "Instalado":            "bg-green-50 text-green-700",
+};
+
+const RESPONSAVEIS_OPCOES = ["Rafael Nunes", "Matheus Alves", "Dinho", "Marco", "Ajudante"];
+
+const EMPTY_ATEND = {
+  titulo: "", classificacao: "Serviço" as const, status: "Programado" as const,
+  data_agendada: "", hora_inicio: "", hora_fim: "",
+  responsaveis: [] as string[], endereco: "", atividade: "", descricao: "",
+  agendado_com_cliente: false, em_sistema: false,
+};
+
+const EMPTY_MAT = {
+  descricao: "", codigo: "", quantidade: 1, unidade: "un",
+  valor_unitario: "", fornecedor: "", link_compra: "",
+  status: "Solicitado" as const, observacoes: "",
+};
+
 function LogisticaPage() {
-  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico">("estoque");
+  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras">("atendimentos");
 
   // ── Estoque ────────────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemEstoque[]>([]);
@@ -112,6 +192,135 @@ function LogisticaPage() {
     nome: "", codigo: "", categoria: "", quantidade: 0,
     estoque_minimo: 0, unidade: "un", localizacao: "",
   });
+
+  // ── Atendimentos ──────────────────────────────────────────────────────────
+  const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
+  const [carregandoAtend, setCarregandoAtend] = useState(false);
+  const [modalAtend, setModalAtend] = useState(false);
+  const [selAtend, setSelAtend] = useState<Atendimento | null>(null);
+  const [formAtend, setFormAtend] = useState<typeof EMPTY_ATEND>({ ...EMPTY_ATEND });
+  const [salvandoAtend, setSalvandoAtend] = useState(false);
+  const [filtroStatusAtend, setFiltroStatusAtend] = useState<string>("todos");
+  const [atendAberto, setAtendAberto] = useState<string | null>(null);
+
+  // ── Materiais (Compras) ────────────────────────────────────────────────────
+  const [materiais, setMateriais] = useState<Material[]>([]);
+  const [carregandoMat, setCarregandoMat] = useState(false);
+  const [modalMat, setModalMat] = useState<{ aberto: boolean; atendimentoId: string | null }>({ aberto: false, atendimentoId: null });
+  const [formMat, setFormMat] = useState<typeof EMPTY_MAT>({ ...EMPTY_MAT });
+  const [salvandoMat, setSalvandoMat] = useState(false);
+  const [atendFiltroCompras, setAtendFiltroCompras] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (aba === "atendimentos") carregarAtendimentos();
+    if (aba === "compras") { carregarAtendimentos(); carregarMateriais(); }
+    if (aba === "estoque") carregarEstoque();
+    if (aba === "suprimentos" || aba === "equipe") { carregarSuprimentos(); carregarProfissionais(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aba]);
+
+  async function carregarAtendimentos() {
+    setCarregandoAtend(true);
+    const { data } = await supabase.from("atendimentos").select("*").order("data_agendada", { ascending: false });
+    if (data) setAtendimentos(data as Atendimento[]);
+    setCarregandoAtend(false);
+  }
+
+  async function carregarMateriais() {
+    setCarregandoMat(true);
+    const { data } = await supabase.from("atendimentos_materiais").select("*").order("criado_em", { ascending: false });
+    if (data) setMateriais(data as Material[]);
+    setCarregandoMat(false);
+  }
+
+  function abrirModalAtend(atend?: Atendimento) {
+    if (atend) {
+      setSelAtend(atend);
+      setFormAtend({
+        titulo: atend.titulo, classificacao: atend.classificacao, status: atend.status,
+        data_agendada: atend.data_agendada || "", hora_inicio: atend.hora_inicio || "",
+        hora_fim: atend.hora_fim || "", responsaveis: atend.responsaveis || [],
+        endereco: atend.endereco || "", atividade: atend.atividade || "",
+        descricao: atend.descricao || "", agendado_com_cliente: atend.agendado_com_cliente,
+        em_sistema: atend.em_sistema,
+      });
+    } else {
+      setSelAtend(null);
+      setFormAtend({ ...EMPTY_ATEND });
+    }
+    setModalAtend(true);
+  }
+
+  async function salvarAtend() {
+    if (!formAtend.titulo.trim()) return;
+    setSalvandoAtend(true);
+    const payload = {
+      titulo: formAtend.titulo.trim(),
+      classificacao: formAtend.classificacao,
+      status: formAtend.status,
+      data_agendada: formAtend.data_agendada || null,
+      hora_inicio: formAtend.hora_inicio || null,
+      hora_fim: formAtend.hora_fim || null,
+      responsaveis: formAtend.responsaveis,
+      endereco: formAtend.endereco || null,
+      atividade: formAtend.atividade || null,
+      descricao: formAtend.descricao || null,
+      agendado_com_cliente: formAtend.agendado_com_cliente,
+      em_sistema: formAtend.em_sistema,
+    };
+    if (selAtend) await supabase.from("atendimentos").update(payload).eq("id", selAtend.id);
+    else await supabase.from("atendimentos").insert(payload);
+    setModalAtend(false);
+    await carregarAtendimentos();
+    setSalvandoAtend(false);
+  }
+
+  async function excluirAtend(id: string) {
+    if (!confirm("Excluir este atendimento e todos os seus materiais?")) return;
+    await supabase.from("atendimentos").delete().eq("id", id);
+    await carregarAtendimentos();
+  }
+
+  async function atualizarStatusAtend(id: string, status: Atendimento["status"]) {
+    await supabase.from("atendimentos").update({ status }).eq("id", id);
+    setAtendimentos(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+  }
+
+  function abrirModalMat(atendimentoId: string) {
+    setFormMat({ ...EMPTY_MAT });
+    setModalMat({ aberto: true, atendimentoId });
+  }
+
+  async function salvarMat() {
+    if (!formMat.descricao.trim() || !modalMat.atendimentoId) return;
+    setSalvandoMat(true);
+    await supabase.from("atendimentos_materiais").insert({
+      atendimento_id: modalMat.atendimentoId,
+      descricao: formMat.descricao.trim(),
+      codigo: formMat.codigo || null,
+      quantidade: Number(formMat.quantidade) || 1,
+      unidade: formMat.unidade,
+      valor_unitario: formMat.valor_unitario ? Number(formMat.valor_unitario) : null,
+      fornecedor: formMat.fornecedor || null,
+      link_compra: formMat.link_compra || null,
+      status: formMat.status,
+      observacoes: formMat.observacoes || null,
+    });
+    setModalMat({ aberto: false, atendimentoId: null });
+    await carregarMateriais();
+    setSalvandoMat(false);
+  }
+
+  async function atualizarStatusMat(id: string, status: Material["status"]) {
+    await supabase.from("atendimentos_materiais").update({ status }).eq("id", id);
+    setMateriais(prev => prev.map(m => m.id === id ? { ...m, status } : m));
+  }
+
+  async function excluirMat(id: string) {
+    if (!confirm("Excluir este material?")) return;
+    await supabase.from("atendimentos_materiais").delete().eq("id", id);
+    await carregarMateriais();
+  }
 
   useEffect(() => { carregarEstoque(); }, []);
 
@@ -291,10 +500,12 @@ function LogisticaPage() {
       {/* Abas */}
       <div className="mb-6 flex gap-1 border-b border-gray-200">
         {([
-          { key: "estoque",     label: "Estoque",             icon: Package },
-          { key: "suprimentos", label: "Catálogo",            icon: ShoppingCart },
+          { key: "atendimentos", label: "Atendimentos",           icon: ClipboardList },
+          { key: "compras",     label: "Compras",               icon: ShoppingBag },
+          { key: "estoque",     label: "Estoque",               icon: Package },
+          { key: "suprimentos", label: "Catálogo",              icon: ShoppingCart },
           { key: "equipe",      label: "Equipe / Terceirizados", icon: HardHat },
-          { key: "tecnico",     label: "Área Técnica",        icon: Wrench },
+          { key: "tecnico",     label: "Área Técnica",          icon: Wrench },
         ] as const).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setAba(key)}
             className={cn(
@@ -311,12 +522,430 @@ function LogisticaPage() {
             {key === "suprimentos" && precosDesatualizados.length > 0 && (
               <span className="ml-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{precosDesatualizados.length}</span>
             )}
+            {key === "atendimentos" && atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length > 0 && (
+              <span className="ml-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                {atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length}
+              </span>
+            )}
             {key === "tecnico" && ticketsAbertos.length > 0 && (
               <span className="ml-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{ticketsAbertos.length}</span>
             )}
           </button>
         ))}
       </div>
+
+      {/* ═══════ ABA ATENDIMENTOS ═══════ */}
+      {aba === "atendimentos" && (
+        <>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex gap-2">
+              {["todos", "Programado", "Em andamento", "Concluído", "Cancelado"].map(s => (
+                <button key={s} onClick={() => setFiltroStatusAtend(s)}
+                  className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                    filtroStatusAtend === s ? "bg-[#1a6b2f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
+                  {s === "todos" ? "Todos" : s}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => abrirModalAtend()}
+              className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
+              <Plus className="h-4 w-4" /> Novo Atendimento
+            </button>
+          </div>
+
+          {carregandoAtend ? (
+            <div className="flex items-center gap-2 text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
+          ) : (
+            <div className="space-y-3">
+              {atendimentos
+                .filter(a => filtroStatusAtend === "todos" || a.status === filtroStatusAtend)
+                .map(atend => (
+                  <div key={atend.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between p-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-gray-900 text-sm">{atend.titulo}</span>
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold border", STATUS_ATEND_COR[atend.status])}>
+                              {atend.status}
+                            </span>
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[atend.classificacao])}>
+                              {atend.classificacao}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                            {atend.data_agendada && (
+                              <span className="flex items-center gap-1">
+                                <CalendarIcon className="h-3 w-3" />
+                                {new Date(atend.data_agendada + "T00:00:00").toLocaleDateString("pt-BR")}
+                                {atend.hora_inicio && ` ${atend.hora_inicio}`}
+                              </span>
+                            )}
+                            {atend.responsaveis?.length > 0 && (
+                              <span className="flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                {atend.responsaveis.join(", ")}
+                              </span>
+                            )}
+                            {atend.endereco && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                {atend.endereco}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => setAtendAberto(atendAberto === atend.id ? null : atend.id)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+                          {atendAberto === atend.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </button>
+                        <button onClick={() => abrirModalAtend(atend)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => excluirAtend(atend.id)}
+                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {atendAberto === atend.id && (
+                      <div className="border-t border-gray-100 px-4 pb-4 pt-3">
+                        {/* Status rápido */}
+                        <div className="mb-3 flex gap-2 flex-wrap">
+                          {(["Programado", "Em andamento", "Concluído", "Cancelado"] as Atendimento["status"][]).map(s => (
+                            <button key={s} onClick={() => atualizarStatusAtend(atend.id, s)}
+                              className={cn("rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                                atend.status === s ? STATUS_ATEND_COR[s] : "border-gray-200 text-gray-500 hover:border-gray-300")}>
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Flags */}
+                        <div className="mb-3 flex gap-4 text-xs text-gray-500">
+                          <span className={cn("flex items-center gap-1", atend.agendado_com_cliente ? "text-green-600 font-medium" : "")}>
+                            {atend.agendado_com_cliente ? <Check className="h-3 w-3" /> : <span className="h-3 w-3 inline-block rounded-full border border-gray-300" />}
+                            Agendado com cliente
+                          </span>
+                          <span className={cn("flex items-center gap-1", atend.em_sistema ? "text-green-600 font-medium" : "")}>
+                            {atend.em_sistema ? <Check className="h-3 w-3" /> : <span className="h-3 w-3 inline-block rounded-full border border-gray-300" />}
+                            Em sistema
+                          </span>
+                        </div>
+                        {atend.atividade && <p className="mb-1 text-xs text-gray-600"><span className="font-medium">Atividade:</span> {atend.atividade}</p>}
+                        {atend.descricao && <p className="text-xs text-gray-600"><span className="font-medium">Descrição:</span> {atend.descricao}</p>}
+                        {/* Materiais deste atendimento */}
+                        <div className="mt-3 border-t border-gray-100 pt-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-700">Materiais</span>
+                            <button onClick={() => abrirModalMat(atend.id)}
+                              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-[#1a6b2f] hover:bg-green-50">
+                              <Plus className="h-3 w-3" /> Adicionar
+                            </button>
+                          </div>
+                          {materiais.filter(m => m.atendimento_id === atend.id).length === 0 ? (
+                            <p className="text-xs text-gray-400">Nenhum material cadastrado</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {materiais.filter(m => m.atendimento_id === atend.id).map(mat => (
+                                <div key={mat.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                                  <div>
+                                    <span className="text-xs font-medium text-gray-800">{mat.descricao}</span>
+                                    <span className="ml-2 text-xs text-gray-500">{mat.quantidade} {mat.unidade}</span>
+                                    {mat.fornecedor && <span className="ml-2 text-xs text-gray-400">— {mat.fornecedor}</span>}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", STATUS_MAT_COR[mat.status])}>
+                                      {mat.status}
+                                    </span>
+                                    <button onClick={() => excluirMat(mat.id)} className="text-red-400 hover:text-red-600">
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              {atendimentos.filter(a => filtroStatusAtend === "todos" || a.status === filtroStatusAtend).length === 0 && (
+                <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">
+                  Nenhum atendimento encontrado
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Modal Atendimento */}
+          {modalAtend && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalAtend(false)}>
+              <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                  <h3 className="font-semibold text-gray-900">{selAtend ? "Editar Atendimento" : "Novo Atendimento"}</h3>
+                  <button onClick={() => setModalAtend(false)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="max-h-[70vh] overflow-y-auto p-6 space-y-4">
+                  <div>
+                    <label className="label-field">Título *</label>
+                    <input className="input-field" value={formAtend.titulo} onChange={e => setFormAtend(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Portão automático — Empresa ABC" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label-field">Classificação</label>
+                      <select className="input-field" value={formAtend.classificacao} onChange={e => setFormAtend(f => ({ ...f, classificacao: e.target.value as Atendimento["classificacao"] }))}>
+                        {["Serviço", "Vistoria", "Retorno", "Operacional", "Terceirizados"].map(c => <option key={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label-field">Status</label>
+                      <select className="input-field" value={formAtend.status} onChange={e => setFormAtend(f => ({ ...f, status: e.target.value as Atendimento["status"] }))}>
+                        {["Programado", "Em andamento", "Concluído", "Cancelado"].map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="label-field">Data</label>
+                      <input type="date" className="input-field" value={formAtend.data_agendada} onChange={e => setFormAtend(f => ({ ...f, data_agendada: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label-field">Hora início</label>
+                      <input type="time" className="input-field" value={formAtend.hora_inicio} onChange={e => setFormAtend(f => ({ ...f, hora_inicio: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label-field">Hora fim</label>
+                      <input type="time" className="input-field" value={formAtend.hora_fim} onChange={e => setFormAtend(f => ({ ...f, hora_fim: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label-field">Responsáveis</label>
+                    <div className="flex flex-wrap gap-2">
+                      {RESPONSAVEIS_OPCOES.map(r => (
+                        <button key={r} type="button"
+                          onClick={() => setFormAtend(f => ({ ...f, responsaveis: f.responsaveis.includes(r) ? f.responsaveis.filter(x => x !== r) : [...f.responsaveis, r] }))}
+                          className={cn("rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                            formAtend.responsaveis.includes(r) ? "bg-[#1a6b2f] text-white border-[#1a6b2f]" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label-field">Endereço</label>
+                    <input className="input-field" value={formAtend.endereco} onChange={e => setFormAtend(f => ({ ...f, endereco: e.target.value }))} placeholder="Rua, número, cidade" />
+                  </div>
+                  <div>
+                    <label className="label-field">Atividade</label>
+                    <input className="input-field" value={formAtend.atividade} onChange={e => setFormAtend(f => ({ ...f, atividade: e.target.value }))} placeholder="O que será feito?" />
+                  </div>
+                  <div>
+                    <label className="label-field">Descrição / Observações</label>
+                    <textarea className="input-field" rows={3} value={formAtend.descricao} onChange={e => setFormAtend(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhes adicionais..." />
+                  </div>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={formAtend.agendado_com_cliente} onChange={e => setFormAtend(f => ({ ...f, agendado_com_cliente: e.target.checked }))} className="rounded" />
+                      <span className="text-sm text-gray-700">Agendado com cliente</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={formAtend.em_sistema} onChange={e => setFormAtend(f => ({ ...f, em_sistema: e.target.checked }))} className="rounded" />
+                      <span className="text-sm text-gray-700">Em sistema</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+                  <button onClick={() => setModalAtend(false)} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                  <button onClick={salvarAtend} disabled={salvandoAtend || !formAtend.titulo.trim()}
+                    className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+                    {salvandoAtend ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : "Salvar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Material */}
+          {modalMat.aberto && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalMat({ aberto: false, atendimentoId: null })}>
+              <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                  <h3 className="font-semibold text-gray-900">Adicionar Material</h3>
+                  <button onClick={() => setModalMat({ aberto: false, atendimentoId: null })} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="label-field">Descrição *</label>
+                    <input className="input-field" value={formMat.descricao} onChange={e => setFormMat(f => ({ ...f, descricao: e.target.value }))} placeholder="Nome do material" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">Quantidade</label>
+                      <input type="number" className="input-field" value={formMat.quantidade} onChange={e => setFormMat(f => ({ ...f, quantidade: Number(e.target.value) }))} min={1} />
+                    </div>
+                    <div>
+                      <label className="label-field">Unidade</label>
+                      <select className="input-field" value={formMat.unidade} onChange={e => setFormMat(f => ({ ...f, unidade: e.target.value }))}>
+                        {["un", "m", "m²", "m³", "kg", "L", "cx", "pç", "par", "rolo"].map(u => <option key={u}>{u}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label-field">Fornecedor</label>
+                    <input className="input-field" value={formMat.fornecedor} onChange={e => setFormMat(f => ({ ...f, fornecedor: e.target.value }))} placeholder="Nome do fornecedor" />
+                  </div>
+                  <div>
+                    <label className="label-field">Status</label>
+                    <select className="input-field" value={formMat.status} onChange={e => setFormMat(f => ({ ...f, status: e.target.value as Material["status"] }))}>
+                      {["Solicitado", "Comprado", "Chegou no escritório", "Enviado ao campo", "Instalado"].map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label-field">Observações</label>
+                    <textarea className="input-field" rows={2} value={formMat.observacoes} onChange={e => setFormMat(f => ({ ...f, observacoes: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+                  <button onClick={() => setModalMat({ aberto: false, atendimentoId: null })} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                  <button onClick={salvarMat} disabled={salvandoMat || !formMat.descricao.trim()}
+                    className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+                    {salvandoMat ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : "Adicionar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ═══════ ABA COMPRAS ═══════ */}
+      {aba === "compras" && (
+        <>
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm text-gray-500">Materiais agrupados por atendimento</p>
+            <div className="flex items-center gap-2">
+              <select className="input-field w-auto" value={atendFiltroCompras ?? ""} onChange={e => setAtendFiltroCompras(e.target.value || null)}>
+                <option value="">Todos os atendimentos</option>
+                {atendimentos.map(a => <option key={a.id} value={a.id}>{a.titulo}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {carregandoMat ? (
+            <div className="flex items-center gap-2 text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
+          ) : (
+            <div className="space-y-4">
+              {atendimentos
+                .filter(a => !atendFiltroCompras || a.id === atendFiltroCompras)
+                .filter(a => materiais.some(m => m.atendimento_id === a.id))
+                .map(atend => {
+                  const mats = materiais.filter(m => m.atendimento_id === atend.id);
+                  return (
+                    <div key={atend.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-gray-900">{atend.titulo}</span>
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[atend.classificacao])}>{atend.classificacao}</span>
+                        </div>
+                        <button onClick={() => abrirModalMat(atend.id)}
+                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-[#1a6b2f] hover:bg-green-50">
+                          <Plus className="h-3 w-3" /> Material
+                        </button>
+                      </div>
+                      <div className="divide-y divide-gray-50">
+                        {mats.map(mat => (
+                          <div key={mat.id} className="flex items-center gap-3 px-4 py-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-800">{mat.descricao}</span>
+                                {mat.codigo && <span className="text-xs text-gray-400">#{mat.codigo}</span>}
+                              </div>
+                              <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500">
+                                <span>{mat.quantidade} {mat.unidade}</span>
+                                {mat.fornecedor && <span>— {mat.fornecedor}</span>}
+                                {mat.valor_total && <span className="font-medium text-gray-700">R$ {mat.valor_total.toFixed(2)}</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <select value={mat.status} onChange={e => atualizarStatusMat(mat.id, e.target.value as Material["status"])}
+                                className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium cursor-pointer focus:outline-none", STATUS_MAT_COR[mat.status])}>
+                                {["Solicitado", "Comprado", "Chegou no escritório", "Enviado ao campo", "Instalado"].map(s => <option key={s}>{s}</option>)}
+                              </select>
+                              <button onClick={() => excluirMat(mat.id)} className="text-red-400 hover:text-red-600">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              {atendimentos.filter(a => materiais.some(m => m.atendimento_id === a.id)).length === 0 && (
+                <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">
+                  Nenhum material cadastrado. Adicione materiais na aba Atendimentos.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Modal Material */}
+          {modalMat.aberto && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalMat({ aberto: false, atendimentoId: null })}>
+              <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                  <h3 className="font-semibold text-gray-900">Adicionar Material</h3>
+                  <button onClick={() => setModalMat({ aberto: false, atendimentoId: null })} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="label-field">Descrição *</label>
+                    <input className="input-field" value={formMat.descricao} onChange={e => setFormMat(f => ({ ...f, descricao: e.target.value }))} placeholder="Nome do material" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">Quantidade</label>
+                      <input type="number" className="input-field" value={formMat.quantidade} onChange={e => setFormMat(f => ({ ...f, quantidade: Number(e.target.value) }))} min={1} />
+                    </div>
+                    <div>
+                      <label className="label-field">Unidade</label>
+                      <select className="input-field" value={formMat.unidade} onChange={e => setFormMat(f => ({ ...f, unidade: e.target.value }))}>
+                        {["un", "m", "m²", "m³", "kg", "L", "cx", "pç", "par", "rolo"].map(u => <option key={u}>{u}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label-field">Fornecedor</label>
+                    <input className="input-field" value={formMat.fornecedor} onChange={e => setFormMat(f => ({ ...f, fornecedor: e.target.value }))} placeholder="Nome do fornecedor" />
+                  </div>
+                  <div>
+                    <label className="label-field">Status</label>
+                    <select className="input-field" value={formMat.status} onChange={e => setFormMat(f => ({ ...f, status: e.target.value as Material["status"] }))}>
+                      {["Solicitado", "Comprado", "Chegou no escritório", "Enviado ao campo", "Instalado"].map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label-field">Observações</label>
+                    <textarea className="input-field" rows={2} value={formMat.observacoes} onChange={e => setFormMat(f => ({ ...f, observacoes: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+                  <button onClick={() => setModalMat({ aberto: false, atendimentoId: null })} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                  <button onClick={salvarMat} disabled={salvandoMat || !formMat.descricao.trim()}
+                    className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+                    {salvandoMat ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : "Adicionar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* ═══════ ABA ESTOQUE ═══════ */}
       {aba === "estoque" && (

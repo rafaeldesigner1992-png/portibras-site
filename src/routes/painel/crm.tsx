@@ -111,6 +111,10 @@ interface PropostaSalva {
   conteudo: ConteudoProposta | null;
   criado_em: string;
   atualizado_em: string | null;
+  cliente_id: string | null;
+  enviado_logistica: boolean;
+  enviado_logistica_em: string | null;
+  atendimento_id: string | null;
 }
 
 // Carrega pdfmake do CDN (singleton)
@@ -1102,6 +1106,8 @@ function PropostaDetalhe({
   const [statusAtual, setStatusAtual] = useState<StatusProposta>(proposta.status);
   const [excluindo, setExcluindo] = useState(false);
   const [dataAtualizacaoLocal, setDataAtualizacaoLocal] = useState<string | null>(proposta.atualizado_em ?? null);
+  const [enviadoLogistica, setEnviadoLogistica] = useState(proposta.enviado_logistica ?? false);
+  const [enviandoLogistica, setEnviandoLogistica] = useState(false);
 
   // Sincroniza se o pai atualizar o objeto proposta (ex: ao navegar entre propostas)
   useEffect(() => {
@@ -1188,6 +1194,43 @@ function PropostaDetalhe({
     await supabase.storage.from("propostas").remove([proposta.storage_path]);
     await supabase.from("crm_propostas").delete().eq("id", proposta.id);
     onVoltar();
+  }
+
+  async function enviarParaLogistica() {
+    if (!confirm("Criar atendimento na Logística para este lead?")) return;
+    setEnviandoLogistica(true);
+    try {
+      // Cria o atendimento vinculado ao lead (proposta_id) com título do lead
+      const { data: atend, error: errAtend } = await supabase
+        .from("atendimentos")
+        .insert({
+          proposta_id: proposta.id,
+          titulo: `${lead.nome}${lead.empresa ? " — " + lead.empresa : ""}`,
+          classificacao: "Serviço",
+          status: "Programado",
+          endereco: lead.endereco_atendimento || lead.endereco_fiscal || null,
+          responsaveis: [],
+        })
+        .select("id")
+        .single();
+
+      if (errAtend || !atend) throw errAtend ?? new Error("Sem retorno");
+
+      // Marca a proposta como enviada para logística
+      await supabase.from("crm_propostas").update({
+        enviado_logistica: true,
+        enviado_logistica_em: new Date().toISOString(),
+        atendimento_id: atend.id,
+      }).eq("id", proposta.id);
+
+      setEnviadoLogistica(true);
+      alert("✅ Atendimento criado na Logística com sucesso!");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`Erro ao criar atendimento: ${msg}`);
+    } finally {
+      setEnviandoLogistica(false);
+    }
   }
 
   async function gerarPdfProposta() {
@@ -1689,6 +1732,29 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
             ))}
           </div>
         </div>
+
+        {/* Botão Enviar para Logística — aparece quando fechado */}
+        {statusAtual === "fechado" && (
+          <div className="pt-1 border-t border-gray-100">
+            {enviadoLogistica ? (
+              <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+                <Check className="h-4 w-4 shrink-0" />
+                <span className="font-medium">Enviado para Logística</span>
+              </div>
+            ) : (
+              <button
+                onClick={enviarParaLogistica}
+                disabled={enviandoLogistica}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1a6b2f] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#155a27] disabled:opacity-50 transition-colors"
+              >
+                {enviandoLogistica
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Criando atendimento...</>
+                  : <><Package className="h-4 w-4" /> Enviar para Logística</>
+                }
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Dados da proposta */}
