@@ -110,7 +110,7 @@ interface PropostaSalva {
   status: StatusProposta;
   conteudo: ConteudoProposta | null;
   criado_em: string;
-  atualizado_em: string;
+  atualizado_em: string | null;
 }
 
 // Carrega pdfmake do CDN (singleton)
@@ -1013,9 +1013,13 @@ function PropostaDetalhe({
   const [gerandoPdfProposta, setGerandoPdfProposta] = useState(false);
   const [statusAtual, setStatusAtual] = useState<StatusProposta>(proposta.status);
   const [excluindo, setExcluindo] = useState(false);
+  const [dataAtualizacaoLocal, setDataAtualizacaoLocal] = useState<string | null>(proposta.atualizado_em ?? null);
 
   // Sincroniza se o pai atualizar o objeto proposta (ex: ao navegar entre propostas)
-  useEffect(() => { setStatusAtual(proposta.status); }, [proposta.status]);
+  useEffect(() => {
+    setStatusAtual(proposta.status);
+    setDataAtualizacaoLocal(proposta.atualizado_em ?? null);
+  }, [proposta.status, proposta.atualizado_em]);
 
   const c = proposta.conteudo;
   const tipoLabel = proposta.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento";
@@ -1023,13 +1027,18 @@ function PropostaDetalhe({
 
   async function alterarStatus(novoStatus: StatusProposta) {
     setAlterandoStatus(true);
+    const agora = new Date().toISOString();
     const { error } = await supabase
       .from("crm_propostas")
-      .update({ status: novoStatus })
+      .update({ status: novoStatus, atualizado_em: agora })
       .eq("id", proposta.id);
     if (!error) {
       setStatusAtual(novoStatus);
+      setDataAtualizacaoLocal(agora);
       onStatusAtualizado(novoStatus);
+    } else {
+      console.error("Erro ao atualizar status:", error);
+      alert("Não foi possível atualizar o status. Tente novamente.");
     }
     setAlterandoStatus(false);
   }
@@ -1059,57 +1068,154 @@ function PropostaDetalhe({
       const economiaAnual = economia * 12;
       const data = new Date().toLocaleDateString("pt-BR");
 
+      const portas = c.portas;
+      const parcela = c.parcela;
+      const custoCorretivo = c.custoCorretivo;
+      const corrAnual2 = custoCorretivo * (c.frequencia ?? 2);
+      const economia2 = corrAnual2 / 12 - parcela;
+      const economiaAnual2 = economia2 * 12;
+
       const docDef = {
         pageSize: "A4",
-        pageMargins: [36, 28, 36, 28],
+        pageMargins: [36, 24, 36, 24],
         defaultStyle: { font: "Roboto", fontSize: 9, color: "#1f2937" },
         content: [
+          // Header
           {
             columns: [
-              { stack: [
-                { image: LOGO_PORTIBRAS_B64, width: 150, margin: [0, 0, 0, 2] },
-              ]},
-              { stack: [
-                { text: `Para: ${lead.empresa || lead.nome || "—"}`, fontSize: 8.5, bold: true, alignment: "right" },
-                { text: `Proposta nº ${c.numProposta}`, fontSize: 7.5, color: cinza, alignment: "right", margin: [0, 2, 0, 0] },
-                { text: `Data: ${data}`, fontSize: 7.5, color: cinza, alignment: "right", margin: [0, 1, 0, 0] },
-                { text: `CNPJ: 63.823.452/0001-93`, fontSize: 7, color: cinza, alignment: "right", margin: [0, 1, 0, 0] },
-              ]},
+              { image: LOGO_PORTIBRAS_B64, width: 130, margin: [0, 0, 0, 0] },
+              {
+                stack: [
+                  { text: `Para: ${lead.empresa || lead.nome || "—"}`, fontSize: 8, bold: true, alignment: "right", color: "#1f2937" },
+                  { text: `Responsável: ${lead.nome || "—"}`, fontSize: 7.5, color: "#1f2937", alignment: "right" },
+                  { text: `Data: ${data}`, fontSize: 7.5, color: "#1f2937", alignment: "right" },
+                  { text: `Proposta nº ${c.numProposta}`, fontSize: 7.5, bold: true, color: laranja, alignment: "right", margin: [0, 2, 0, 0] },
+                ],
+              },
             ],
-            margin: [0, 0, 0, 10],
+            margin: [0, 0, 0, 6],
           },
-          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1.5, lineColor: verde }], margin: [0, 0, 0, 10] },
-          { text: "MANUTENÇÃO PREVENTIVA DE PORTAS CORTA-FOGO", fontSize: 10, bold: true, color: laranja, characterSpacing: 0.5, alignment: "center", margin: [0, 0, 0, 4] },
-          { text: `Plano Anual Parcelado em 12× — ${c.portas} porta${c.portas > 1 ? "s" : ""}`, fontSize: 8, color: cinza, alignment: "center", margin: [0, 0, 0, 10] },
+          { canvas: [{ type: "line", x1: 0, y1: 4, x2: 523, y2: 4, lineWidth: 1.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 8] },
+
+          // A SITUAÇÃO ATUAL
+          { text: "A SITUAÇÃO ATUAL", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 3] },
+          { text: "Portas corta-fogo são equipamentos críticos de segurança, exigidos pela NBR 11.742:2018 e fiscalizados pelo Corpo de Bombeiros. Sem manutenção preventiva, elas degradam silenciosamente — e podem falhar quando mais importam.", fontSize: 8, color: "#374151", lineHeight: 1.35, margin: [0, 0, 0, 3] },
+          { text: "Manutenção corretiva parece econômica, mas soma rápido: custo de visita emergencial, peças fora de programa e porta inoperante. Sem laudo DTS atualizado, o condomínio fica exposto a multas e responsabilidade civil.", fontSize: 8, color: "#374151", lineHeight: 1.35, margin: [0, 0, 0, 7] },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 7] },
+
+          // NOSSA PROPOSTA
+          { text: "NOSSA PROPOSTA", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 3] },
+          {
+            text: [
+              { text: "Plano de Manutenção Preventiva Parcelado em 12× ", bold: true },
+              { text: "— sem fidelidade oculta, sem surpresas. São " },
+              { text: "2 roteiros completos de manutenção por ano", bold: true },
+              { text: " (a cada 6 meses), com laudo técnico DTS incluído em cada visita." },
+            ],
+            fontSize: 8, color: "#374151", lineHeight: 1.35, margin: [0, 0, 0, 7],
+          },
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 7] },
+
+          // O QUE ESTÁ INCLUÍDO
+          { text: "O QUE ESTÁ INCLUÍDO", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 3] },
+          {
+            ul: [
+              `2 roteiros completos de manutenção/ano (a cada 6 meses) nas ${portas} portas`,
+              "Ajustes de mola, lubrificação de dobradiças e regulagem de batentes",
+              "Laudo técnico DTS em cada roteiro de manutenção (NBR 11.742:2018)",
+              "Registro fotográfico antes e depois de cada serviço",
+              "Atendimento prioritário em emergências — incluído no plano",
+              "Conformidade plena com a NBR 11.742:2018",
+            ],
+            fontSize: 8, color: "#374151", lineHeight: 1.35, margin: [0, 0, 0, 7],
+          },
+
+          // Box 12 PARCELAS
           {
             table: { widths: ["*"], body: [[{
               stack: [
-                { text: "12 PARCELAS MENSAIS DE", fontSize: 7, bold: true, color: laranja, characterSpacing: 0.8, alignment: "center" },
-                { text: fmtBRL(c.parcela), fontSize: 26, bold: true, color: laranja, alignment: "center" },
-                { text: `${c.portas} portas · ${fmtBRL(porPorta)}/porta/mês · ${fmtBRL(porDia)}/dia total`, fontSize: 7.5, color: cinza, alignment: "center", margin: [0, 3, 0, 0] },
+                { text: "12 PARCELAS MENSAIS DE", fontSize: 7, bold: true, color: laranja, alignment: "center", characterSpacing: 1, margin: [0, 0, 0, 2] },
+                { text: fmtBRL(parcela), fontSize: 24, bold: true, color: laranja, alignment: "center" },
+                { text: `${portas} portas · ${fmtBRL(porPorta)}/porta/mês · ${fmtBRL(porDia)}/dia total`, fontSize: 7.5, color: cinza, alignment: "center", margin: [0, 2, 0, 0] },
               ],
-              border: [true, true, true, true], borderColor: [laranja, laranja, laranja, laranja], margin: [16, 10, 16, 10],
+              border: [true, true, true, true], borderColor: [laranja, laranja, laranja, laranja], margin: [16, 8, 16, 8],
             }]]},
-            margin: [0, 0, 0, 10],
+            margin: [0, 0, 0, 7],
           },
-          ...(economia > 0 ? [{
+
+          // COMPARATIVO
+          { text: "COMPARATIVO", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 3] },
+          {
+            table: {
+              widths: ["*", "auto", "auto"],
+              headerRows: 1,
+              body: [
+                [
+                  { text: "", border: [false, false, false, true] },
+                  { text: "Sem Plano", bold: true, color: cinza, fontSize: 7.5, alignment: "right", border: [false, false, false, true] },
+                  { text: "Com PORTIBRAS", bold: true, color: laranja, fontSize: 7.5, alignment: "right", border: [false, false, false, true] },
+                ],
+                [
+                  { text: "Custo mensal", fontSize: 8, border: [false, false, false, false] },
+                  { text: "R$ 0*", color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                  { text: fmtBRL(parcela), color: laranja, bold: true, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                ],
+                [
+                  { text: "Visita emergencial", fontSize: 8, border: [false, false, false, false] },
+                  { text: `${fmtBRL(custoCorretivo)}+`, color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                  { text: "Incluída", color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                ],
+                [
+                  { text: "Laudo técnico DTS", fontSize: 8, border: [false, false, false, false] },
+                  { text: "Separado", color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                  { text: "Incluído", color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                ],
+                [
+                  { text: "Conformidade NBR", fontSize: 8, border: [false, false, false, false] },
+                  { text: "Risco", color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                  { text: "Garantida", color: laranja, fontSize: 8, alignment: "right", border: [false, false, false, false] },
+                ],
+              ],
+            },
+            layout: { hLineColor: "#e5e7eb", vLineColor: "#ffffff", hLineWidth: () => 0.5 },
+            margin: [0, 0, 0, 2],
+          },
+          { text: `* Até a primeira emergência — custo estimado de ${fmtBRL(corrAnual2)}/ano sem plano`, fontSize: 6.5, color: cinza, margin: [0, 1, 0, 7] },
+
+          // Bloco economia
+          ...(economia2 > 0 ? [{
             columns: [
-              { stack: [
-                { text: "ECONOMIA ESTIMADA/MÊS", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
-                { text: fmtBRL(economia), fontSize: 17, bold: true, color: verde, margin: [0, 2, 0, 0] },
-              ], margin: [10, 7, 10, 7] },
-              { stack: [
-                { text: "ECONOMIA ESTIMADA/ANO", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
-                { text: fmtBRL(economiaAnual), fontSize: 17, bold: true, color: verde, margin: [0, 2, 0, 0] },
-              ], margin: [10, 7, 10, 7] },
+              {
+                stack: [
+                  { text: "ECONOMIA ESTIMADA/MÊS", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
+                  { text: fmtBRL(economia2), fontSize: 15, bold: true, color: verde, margin: [0, 2, 0, 0] },
+                ],
+                margin: [10, 6, 10, 6],
+              },
+              {
+                stack: [
+                  { text: "ECONOMIA ESTIMADA/ANO", fontSize: 6.5, bold: true, color: verde, characterSpacing: 0.5 },
+                  { text: fmtBRL(economiaAnual2), fontSize: 15, bold: true, color: verde, margin: [0, 2, 0, 0] },
+                ],
+                margin: [10, 6, 10, 6],
+              },
             ],
-            margin: [0, 0, 0, 10],
+            margin: [0, 0, 0, 7],
           }] : []),
+
+          // PRÓXIMO PASSO
           { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 6] },
-          { stack: [
-            { image: LOGO_PORTIBRAS_B64, width: 80, margin: [0, 0, 0, 2] },
-            { text: "63.823.452/0001-93  ·  (22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 7, color: cinza, margin: [0, 1, 0, 0] },
-          ]},
+          { text: "PRÓXIMO PASSO", fontSize: 7.5, bold: true, color: laranja, characterSpacing: 1, margin: [0, 0, 0, 3] },
+          { text: "Entre em contato e confirme os valores com nossa equipe — por telefone, WhatsApp ou e-mail. Apresentamos o plano completo e respondemos todas as dúvidas sem compromisso.", fontSize: 8, color: "#374151", lineHeight: 1.35, margin: [0, 0, 0, 7] },
+
+          // Rodapé
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 0.5, lineColor: "#e5e7eb" }], margin: [0, 0, 0, 5] },
+          {
+            stack: [
+              { image: LOGO_PORTIBRAS_B64, width: 75, margin: [0, 0, 0, 2] },
+              { text: "63.823.452/0001-93  ·  (22) 99104-8162  ·  vendas@portibras.com.br", fontSize: 7, color: cinza, margin: [0, 1, 0, 0] },
+            ],
+          },
         ],
       };
       pm.createPdf(docDef).download(`${c.numProposta}_proposta.pdf`);
@@ -1372,12 +1478,16 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
     }
   }
 
-  const dataCriacao = new Date(proposta.criado_em).toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-  const dataAtualizacao = new Date(proposta.atualizado_em).toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
+  const dataCriacao = proposta.criado_em
+    ? new Date(proposta.criado_em).toLocaleString("pt-BR", {
+        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+      })
+    : "—";
+  const dataAtualizacao = dataAtualizacaoLocal
+    ? new Date(dataAtualizacaoLocal).toLocaleString("pt-BR", {
+        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+      })
+    : "—";
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-6 py-5 space-y-5">
