@@ -2922,6 +2922,23 @@ function ProximoContatoInline({ lead, onSave }: { lead: Lead; onSave: (data: str
   );
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function ToastMsg({ msg, tipo, onClose }: { msg: string; tipo: "sucesso" | "erro"; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+  return (
+    <div className={cn(
+      "fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg text-sm font-medium",
+      tipo === "sucesso" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+    )}>
+      <span>{msg}</span>
+      <button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100 text-base leading-none">✕</button>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 function CrmPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -2954,6 +2971,7 @@ function CrmPage() {
 
   const [cardAberto, setCardAberto] = useState<Lead | null>(null);
   const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao" | "propostas">("historico");
+  const [toast, setToast] = useState<{ msg: string; tipo: "sucesso" | "erro" } | null>(null);
   const [propostas, setPropostas] = useState<PropostaSalva[]>([]);
   const [carregandoPropostas, setCarregandoPropostas] = useState(false);
   const [conversas, setConversas] = useState<Conversa[]>([]);
@@ -3193,10 +3211,12 @@ function CrmPage() {
       // Atualiza etapa do lead para "vistoria"
       await supabase.from("crm_leads").update({ etapa: "vistoria" as any }).eq("id", lead.id);
       setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, etapa: "vistoria" as any } : l));
-      if (cardAberto?.id === lead.id) setCardAberto({ ...cardAberto, etapa: "vistoria" as any });
 
-      // Dispara email de notificação
-      await supabase.functions.invoke("notify-vistoria", {
+      // Fecha o card e volta ao kanban
+      setCardAberto(null);
+
+      // Dispara email de notificação em background
+      supabase.functions.invoke("notify-vistoria", {
         body: {
           evento: "enviada",
           vistoria: {
@@ -3210,9 +3230,10 @@ function CrmPage() {
         },
       });
 
-      alert(`✅ "${lead.nome}" enviado para vistoria!\nRafael receberá um email para agendar.`);
+      // Toast de sucesso
+      setToast({ msg: `✅ "${lead.nome}" enviado para vistoria! Rafael receberá um email.`, tipo: "sucesso" });
     } catch (e: any) {
-      alert(`Erro ao enviar para vistoria: ${e.message}`);
+      setToast({ msg: `Erro ao enviar para vistoria: ${e.message}`, tipo: "erro" });
     }
   }
 
@@ -3253,6 +3274,11 @@ function CrmPage() {
 
   return (
     <div className="flex h-full">
+      {/* Toast de notificação */}
+      {toast && (
+        <ToastMsg msg={toast.msg} tipo={toast.tipo} onClose={() => setToast(null)} />
+      )}
+
       {/* Painel principal */}
       <div className="flex flex-col flex-1 min-w-0 p-6 overflow-auto">
         <div className="mb-5 flex items-center justify-between gap-4 flex-wrap">
