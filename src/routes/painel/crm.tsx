@@ -3771,8 +3771,8 @@ function CrmPage() {
                       <tr key={lead.id} className="hover:bg-gray-50/60 cursor-pointer" onClick={() => abrirCard(lead)}>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
-                            {leadsEmLogistica.has(lead.id) && (
-                              <img src="/selo-vistoria.png" alt="Em Vistoria" className="w-12 h-auto flex-shrink-0" />
+                            {(lead.etapa as any) === "vistoria" && (
+                              <span title="Em Vistoria" className="flex-shrink-0 w-3 h-3 rounded-full bg-yellow-400 ring-2 ring-yellow-200" />
                             )}
                             <div>
                               <p className="text-sm font-semibold text-gray-900">{lead.nome}</p>
@@ -3865,9 +3865,8 @@ function CrmPage() {
                       return (
                         <div key={lead.id} onClick={() => abrirCard(lead)}
                           className="relative rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
-                          {leadsEmLogistica.has(lead.id) && (
-                            <img src="/selo-vistoria.png" alt="Em Vistoria"
-                              className="absolute -top-2 -left-2 w-20 h-auto pointer-events-none z-10" />
+                          {(lead.etapa as any) === "vistoria" && (
+                            <span title="Em Vistoria" className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-yellow-400 ring-2 ring-yellow-200 z-10" />
                           )}
                           <div className="flex items-start justify-between gap-1">
                             <p className="text-sm font-semibold text-gray-900 leading-tight">{lead.nome}</p>
