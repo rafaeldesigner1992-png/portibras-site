@@ -4065,6 +4065,34 @@ function CrmPage() {
                 </div>
               )}
 
+              {/* Datas de maturação */}
+              <div className="px-5 py-4 border-b border-gray-100 space-y-2">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Lead criado em</p>
+                  <p className="text-sm text-gray-600">
+                    {new Date(cardAberto.data_inicio ?? cardAberto.criado_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+                {cardAberto.data_fechamento && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+                      {cardAberto.etapa === "perdido" ? "Perdido em" : "Fechado em"}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {new Date(cardAberto.data_fechamento).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {(() => {
+                        const inicio = new Date(cardAberto.data_inicio ?? cardAberto.criado_em);
+                        const fim = new Date(cardAberto.data_fechamento!);
+                        const dias = Math.round((fim.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+                        return dias === 0 ? "Mesmo dia" : dias === 1 ? "1 dia de maturação" : `${dias} dias de maturação`;
+                      })()}
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Observações */}
               {cardAberto.observacoes && (
                 <div className="px-5 py-4">
