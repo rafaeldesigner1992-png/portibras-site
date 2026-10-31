@@ -77,14 +77,16 @@ function ContaAzulCallback() {
   }
 
   function iniciarAuth() {
-    // Monta a URL manualmente para evitar double-encoding do Conta Azul
     const params = [
       "response_type=code",
       `client_id=${CLIENT_ID}`,
       `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
       "scope=sales%20receivables%20contracts",
     ].join("&");
-    window.location.href = `${AUTH_URL}?${params}`;
+    const fullUrl = `${AUTH_URL}?${params}`;
+    console.log("CA AUTH URL:", fullUrl);
+    setMsg("URL gerada: " + fullUrl);
+    setStatus("error"); // mostra na tela para debug
   }
 
   return (
