@@ -1,12 +1,61 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   DollarSign, Plus, TrendingUp, TrendingDown, X, Settings2, Check,
   Loader2, Car, Building2, AlertTriangle, Trash2, Pencil,
-  BarChart3, Target, Gauge, CreditCard, ChevronDown, ChevronUp, Info
+  BarChart3, Target, Gauge, CreditCard, ChevronDown, ChevronUp, Info,
+  RefreshCw, ExternalLink, Clock, CheckCircle2, XCircle, AlertCircle,
+  FileText, Repeat
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// ─── Interfaces Conta Azul ────────────────────────────────────────────────────
+interface CaVenda {
+  id: string;
+  numero: string | null;
+  cliente_nome: string;
+  valor_total: number;
+  status: string;
+  data_emissao: string | null;
+  data_vencimento: string | null;
+  observacao: string | null;
+  sincronizado_em: string;
+}
+
+interface CaCobranca {
+  id: string;
+  descricao: string;
+  cliente_nome: string | null;
+  valor: number;
+  vencimento: string | null;
+  status: string;
+  pago_em: string | null;
+  valor_pago: number;
+  tipo: string;
+  sincronizado_em: string;
+}
+
+interface CaContrato {
+  id: string;
+  nome: string;
+  cliente_nome: string;
+  cliente_documento: string | null;
+  valor: number;
+  periodicidade: string | null;
+  status: string;
+  data_inicio: string | null;
+  data_fim: string | null;
+  sincronizado_em: string;
+}
+
+interface CrmContrato {
+  id: string;
+  nome_arquivo: string;
+  status: string;
+  conteudo: { parcela?: number } | null;
+  lead?: { nome_empresa: string; contato: string };
+}
 
 export const Route = createFileRoute("/painel/financeiro")({
   component: FinanceiroPage,
@@ -107,6 +156,19 @@ function FinanceiroPage() {
 
   // ── UI state ──
   const [secaoAberta, setSecaoAberta] = useState<"config" | "custos" | "dividas" | "saude" | null>("saude");
+  const [abaAtiva, setAbaAtiva] = useState<"interno" | "conta-azul">("interno");
+
+  // ── Conta Azul state ──
+  const [caVendas, setCaVendas] = useState<CaVenda[]>([]);
+  const [caCobrancas, setCaCobrancas] = useState<CaCobranca[]>([]);
+  const [caContratos, setCaContratos] = useState<CaContrato[]>([]);
+  const [crmContratos, setCrmContratos] = useState<CrmContrato[]>([]);
+  const [carregandoCA, setCarregandoCA] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [ultimoSync, setUltimoSync] = useState<string | null>(null);
+  const [caConectado, setCaConectado] = useState(false);
+  const [filtroMeses, setFiltroMeses] = useState<1 | 2 | 3>(1);
+  const [horizonteFuturo, setHorizonteFuturo] = useState<30 | 60 | 90>(30);
 
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -114,7 +176,57 @@ function FinanceiroPage() {
     carregarConfig();
     carregarCustosFixos();
     carregarDividas();
+    verificarCA();
   }, []);
+
+  useEffect(() => {
+    if (abaAtiva === "conta-azul" && caConectado) {
+      carregarDadosCA();
+    }
+  }, [abaAtiva, caConectado]);
+
+  async function verificarCA() {
+    const { data } = await supabase
+      .from("configuracoes")
+      .select("valor")
+      .eq("chave", "ca_access_token")
+      .single();
+    setCaConectado(!!data?.valor);
+
+    const { data: sync } = await supabase
+      .from("configuracoes")
+      .select("valor")
+      .eq("chave", "ca_ultimo_sync")
+      .single();
+    if (sync?.valor) setUltimoSync(sync.valor);
+  }
+
+  const carregarDadosCA = useCallback(async () => {
+    setCarregandoCA(true);
+    const [v, c, ct, crm] = await Promise.all([
+      supabase.from("ca_vendas").select("*").order("data_emissao", { ascending: false }).limit(200),
+      supabase.from("ca_cobrancas").select("*").order("vencimento", { ascending: true }).limit(200),
+      supabase.from("ca_contratos").select("*").order("cliente_nome").limit(200),
+      supabase.from("crm_propostas").select("*, lead:crm_leads(nome_empresa, contato)").eq("status", "fechado").limit(200),
+    ]);
+    if (v.data) setCaVendas(v.data as CaVenda[]);
+    if (c.data) setCaCobrancas(c.data as CaCobranca[]);
+    if (ct.data) setCaContratos(ct.data as CaContrato[]);
+    if (crm.data) setCrmContratos(crm.data as CrmContrato[]);
+    setCarregandoCA(false);
+  }, []);
+
+  async function sincronizarCA() {
+    setSincronizando(true);
+    try {
+      await supabase.functions.invoke("sync-conta-azul");
+      await carregarDadosCA();
+      await verificarCA();
+    } catch (e) {
+      console.error("Erro ao sincronizar:", e);
+    }
+    setSincronizando(false);
+  }
 
   async function carregar() {
     setCarregando(true);
@@ -306,13 +418,67 @@ function FinanceiroPage() {
           <h1 className="text-2xl font-bold text-gray-900">Financeiro</h1>
           <p className="mt-1 text-sm text-gray-500 capitalize">{mes}</p>
         </div>
-        <button
-          onClick={() => { setForm({ descricao: "", tipo: "receita", valor: 0, categoria: "", data: new Date().toISOString().slice(0, 10), pago: false }); setModal(true); }}
-          className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]"
-        >
-          <Plus className="h-4 w-4" /> Lançamento
-        </button>
+        <div className="flex items-center gap-2">
+          {abaAtiva === "conta-azul" && caConectado && (
+            <button
+              onClick={sincronizarCA}
+              disabled={sincronizando}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-4 w-4", sincronizando && "animate-spin")} />
+              {sincronizando ? "Sincronizando…" : "Sincronizar"}
+            </button>
+          )}
+          {abaAtiva === "interno" && (
+            <button
+              onClick={() => { setForm({ descricao: "", tipo: "receita", valor: 0, categoria: "", data: new Date().toISOString().slice(0, 10), pago: false }); setModal(true); }}
+              className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]"
+            >
+              <Plus className="h-4 w-4" /> Lançamento
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Abas */}
+      <div className="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 w-fit">
+        {([
+          { key: "interno", label: "Lançamentos internos" },
+          { key: "conta-azul", label: "💙 Conta Azul" },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setAbaAtiva(key)}
+            className={cn(
+              "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+              abaAtiva === key
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ══════════ ABA CONTA AZUL ══════════ */}
+      {abaAtiva === "conta-azul" && (
+        <ContaAzulView
+          conectado={caConectado}
+          carregando={carregandoCA}
+          vendas={caVendas}
+          cobrancas={caCobrancas}
+          contratos={caContratos}
+          crmContratos={crmContratos}
+          ultimoSync={ultimoSync}
+          filtroMeses={filtroMeses}
+          setFiltroMeses={setFiltroMeses}
+          horizonteFuturo={horizonteFuturo}
+          setHorizonteFuturo={setHorizonteFuturo}
+        />
+      )}
+
+      {abaAtiva === "interno" && (<>
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -635,6 +801,8 @@ function FinanceiroPage() {
         )}
       </div>
 
+      </>)}
+
       {/* ══ Modal Lançamento ══ */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && setModal(false)}>
@@ -859,6 +1027,296 @@ function Indicador({ label, valor, status, desc }: { label: string; valor: strin
         <span className="text-lg font-bold">{valor}</span>
       </div>
       <p className="text-[11px] opacity-70">{desc}</p>
+    </div>
+  );
+}
+
+// ─── ContaAzulView ────────────────────────────────────────────────────────────
+function ContaAzulView({
+  conectado, carregando, vendas, cobrancas, contratos, crmContratos,
+  ultimoSync, filtroMeses, setFiltroMeses, horizonteFuturo, setHorizonteFuturo,
+}: {
+  conectado: boolean;
+  carregando: boolean;
+  vendas: CaVenda[];
+  cobrancas: CaCobranca[];
+  contratos: CaContrato[];
+  crmContratos: CrmContrato[];
+  ultimoSync: string | null;
+  filtroMeses: 1 | 2 | 3;
+  setFiltroMeses: (v: 1 | 2 | 3) => void;
+  horizonteFuturo: 30 | 60 | 90;
+  setHorizonteFuturo: (v: 30 | 60 | 90) => void;
+}) {
+  if (!conectado) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-6 py-20 text-center">
+        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-blue-50">
+          <span className="text-4xl">💙</span>
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Conta Azul não conectado</h2>
+          <p className="mt-1 text-sm text-gray-500">Conecte sua conta para sincronizar vendas, cobranças e contratos.</p>
+        </div>
+        <Link
+          to="/painel/auth/conta-azul"
+          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Conectar Conta Azul
+        </Link>
+      </div>
+    );
+  }
+
+  if (carregando) {
+    return (
+      <div className="flex items-center justify-center gap-3 py-20 text-gray-500">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+        <span className="text-sm">Carregando dados do Conta Azul…</span>
+      </div>
+    );
+  }
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const hoje = new Date();
+  const horizonte = new Date(hoje.getTime() + horizonteFuturo * 24 * 60 * 60 * 1000);
+
+  const totalFaturado = vendas.reduce((s, v) => s + v.valor_total, 0);
+  const totalRecebido = cobrancas.filter(c => c.status === "RECEIVED" || c.status === "PAID").reduce((s, c) => s + c.valor_pago, 0);
+  const aReceber = cobrancas.filter(c => {
+    if (c.status === "RECEIVED" || c.status === "PAID") return false;
+    if (!c.vencimento) return false;
+    const venc = new Date(c.vencimento);
+    return venc >= hoje && venc <= horizonte;
+  }).reduce((s, c) => s + c.valor, 0);
+  const emAtraso = cobrancas.filter(c => {
+    if (c.status === "RECEIVED" || c.status === "PAID") return false;
+    if (!c.vencimento) return false;
+    return new Date(c.vencimento) < hoje;
+  }).reduce((s, c) => s + c.valor, 0);
+
+  // ── Conciliação: contratos CRM sem contrato ativo no CA ───────────────────
+  const nomesCA = contratos
+    .filter(c => c.status === "ACTIVE" || c.status === "active")
+    .map(c => c.cliente_nome.toLowerCase().trim());
+
+  const contratosSemCA = crmContratos.filter(crm => {
+    const nomeCrm = (crm.lead?.nome_empresa ?? "").toLowerCase().trim();
+    return nomeCrm && !nomesCA.some(n => n.includes(nomeCrm) || nomeCrm.includes(n));
+  });
+
+  const statusBadge = (status: string) => {
+    const s = status.toUpperCase();
+    if (s === "RECEIVED" || s === "PAID" || s === "ACTIVE") return "bg-green-100 text-green-700";
+    if (s === "OVERDUE" || s === "LATE") return "bg-red-100 text-red-700";
+    if (s === "PENDING" || s === "AWAITING") return "bg-yellow-100 text-yellow-700";
+    if (s === "CANCELED" || s === "CANCELLED") return "bg-gray-100 text-gray-500";
+    return "bg-blue-100 text-blue-700";
+  };
+
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── KPIs ── */}
+      <div className="grid gap-4 sm:grid-cols-4">
+        {[
+          { label: "Faturado (período)", valor: fmt(totalFaturado), icon: FileText, cor: "bg-blue-50 text-blue-600" },
+          { label: "Recebido", valor: fmt(totalRecebido), icon: CheckCircle2, cor: "bg-green-50 text-green-600" },
+          { label: `A receber (${horizonteFuturo}d)`, valor: fmt(aReceber), icon: Clock, cor: "bg-yellow-50 text-yellow-600" },
+          { label: "Em atraso", valor: fmt(emAtraso), icon: AlertCircle, cor: emAtraso > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-400" },
+        ].map(kpi => (
+          <div key={kpi.label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className={cn("mb-2 flex h-9 w-9 items-center justify-center rounded-lg", kpi.cor)}>
+              <kpi.icon className="h-4 w-4" />
+            </div>
+            <p className="text-xs text-gray-500">{kpi.label}</p>
+            <p className="mt-0.5 text-xl font-bold text-gray-900">{kpi.valor}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Boletos / Recebíveis ── */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-blue-500" />
+            <span className="text-sm font-semibold text-gray-800">Boletos &amp; Recebíveis</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Horizonte futuro:</span>
+            {([30, 60, 90] as const).map(d => (
+              <button
+                key={d}
+                onClick={() => setHorizonteFuturo(d)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  horizonteFuturo === d ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}
+              >{d}d</button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500">
+                <th className="px-5 py-3">Descrição</th>
+                <th className="px-4 py-3">Cliente</th>
+                <th className="px-4 py-3">Vencimento</th>
+                <th className="px-4 py-3 text-right">Valor</th>
+                <th className="px-4 py-3 text-right">Pago</th>
+                <th className="px-4 py-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {cobrancas.length === 0 ? (
+                <tr><td colSpan={6} className="px-5 py-8 text-center text-xs text-gray-400">Nenhuma cobrança encontrada</td></tr>
+              ) : cobrancas.map(c => (
+                <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[180px] truncate">{c.descricao}</td>
+                  <td className="px-4 py-3.5 text-gray-600 max-w-[160px] truncate">{c.cliente_nome ?? "—"}</td>
+                  <td className="px-4 py-3.5 text-gray-600">{fmtDate(c.vencimento)}</td>
+                  <td className="px-4 py-3.5 text-right font-medium text-gray-900">{fmt(c.valor)}</td>
+                  <td className="px-4 py-3.5 text-right text-gray-600">{c.valor_pago > 0 ? fmt(c.valor_pago) : "—"}</td>
+                  <td className="px-4 py-3.5 text-center">
+                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(c.status))}>
+                      {c.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Vendas / Faturamento ── */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-blue-500" />
+            <span className="text-sm font-semibold text-gray-800">Vendas Emitidas</span>
+            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{vendas.length}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Período:</span>
+            {([1, 2, 3] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setFiltroMeses(m)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  filtroMeses === m ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}
+              >{m}m</button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500">
+                <th className="px-5 py-3">Nº</th>
+                <th className="px-4 py-3">Cliente</th>
+                <th className="px-4 py-3">Emissão</th>
+                <th className="px-4 py-3">Vencimento</th>
+                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {vendas.length === 0 ? (
+                <tr><td colSpan={6} className="px-5 py-8 text-center text-xs text-gray-400">Nenhuma venda encontrada</td></tr>
+              ) : vendas.map(v => (
+                <tr key={v.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-5 py-3.5 text-xs text-gray-500 font-mono">{v.numero ?? v.id.slice(0, 8)}</td>
+                  <td className="px-4 py-3.5 font-medium text-gray-900 max-w-[200px] truncate">{v.cliente_nome}</td>
+                  <td className="px-4 py-3.5 text-gray-600">{fmtDate(v.data_emissao)}</td>
+                  <td className="px-4 py-3.5 text-gray-600">{fmtDate(v.data_vencimento)}</td>
+                  <td className="px-4 py-3.5 text-right font-semibold text-gray-900">{fmt(v.valor_total)}</td>
+                  <td className="px-4 py-3.5 text-center">
+                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(v.status))}>
+                      {v.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Conciliação de Contratos ── */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
+          <Repeat className="h-4 w-4 text-blue-500" />
+          <span className="text-sm font-semibold text-gray-800">Conciliação de Contratos</span>
+          {contratosSemCA.length > 0 && (
+            <span className="ml-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">
+              ⚠ {contratosSemCA.length} sem faturamento
+            </span>
+          )}
+        </div>
+
+        {/* Contratos CA */}
+        <div className="px-5 py-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Contratos ativos no Conta Azul ({contratos.filter(c => c.status === "ACTIVE" || c.status === "active").length})</p>
+          {contratos.filter(c => c.status === "ACTIVE" || c.status === "active").length === 0 ? (
+            <p className="text-xs text-gray-400">Nenhum contrato ativo encontrado no Conta Azul.</p>
+          ) : (
+            <div className="space-y-2">
+              {contratos.filter(c => c.status === "ACTIVE" || c.status === "active").map(c => (
+                <div key={c.id} className="flex items-center justify-between rounded-lg bg-green-50 px-4 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{c.cliente_nome}</p>
+                    <p className="text-xs text-gray-500">{c.nome} · {c.periodicidade ?? "mensal"}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-900">{fmt(c.valor)}</p>
+                    <p className="text-xs text-gray-500">{fmtDate(c.data_inicio)} → {fmtDate(c.data_fim)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Alertas: contratos CRM sem CA */}
+        {contratosSemCA.length > 0 && (
+          <div className="border-t border-gray-100 px-5 py-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-red-500">Contratos fechados no CRM sem faturamento no Conta Azul</p>
+            <div className="space-y-2">
+              {contratosSemCA.map(crm => (
+                <div key={crm.id} className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{crm.lead?.nome_empresa ?? crm.nome_arquivo}</p>
+                    <p className="text-xs text-gray-500">Proposta fechada · sem contrato ativo no Conta Azul</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {contratosSemCA.length === 0 && contratos.length > 0 && (
+          <div className="border-t border-gray-100 px-5 py-3">
+            <p className="flex items-center gap-2 text-xs text-green-600">
+              <CheckCircle2 className="h-4 w-4" />
+              Todos os contratos CRM estão conciliados com o Conta Azul.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {ultimoSync && (
+        <p className="text-center text-xs text-gray-400">
+          Última sincronização: {new Date(ultimoSync).toLocaleString("pt-BR")}
+        </p>
+      )}
     </div>
   );
 }
