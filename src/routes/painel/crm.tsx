@@ -47,6 +47,8 @@ interface Lead {
   endereco_atendimento: string;
   criado_em: string;
   cliente_id: string | null;
+  data_inicio: string | null;
+  data_fechamento: string | null;
 }
 
 interface ClienteVinculado {
@@ -3433,7 +3435,7 @@ function CrmPage() {
     if (selecionado) {
       await supabase.from("crm_leads").update({ ...payload, cliente_id: clienteId }).eq("id", selecionado.id);
     } else {
-      const { data: novo } = await supabase.from("crm_leads").insert(payload).select("id").single();
+      const { data: novo } = await supabase.from("crm_leads").insert({ ...payload, data_inicio: new Date().toISOString() }).select("id").single();
       if (novo?.id && clienteId) {
         await supabase.from("crm_leads").update({ cliente_id: clienteId }).eq("id", novo.id);
       }
@@ -3502,9 +3504,15 @@ function CrmPage() {
   }
 
   async function mudarEtapa(lead: Lead, etapa: Etapa) {
-    await supabase.from("crm_leads").update({ etapa }).eq("id", lead.id);
-    if (cardAberto?.id === lead.id) setCardAberto({ ...cardAberto, etapa });
-    setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, etapa } : l));
+    const agora = new Date().toISOString();
+    const updates: Record<string, unknown> = { etapa };
+    if ((etapa === "fechado" || etapa === "perdido") && !lead.data_fechamento) {
+      updates.data_fechamento = agora;
+    }
+    await supabase.from("crm_leads").update(updates).eq("id", lead.id);
+    const updatedLead = { ...lead, etapa, ...(updates.data_fechamento ? { data_fechamento: agora } : {}) };
+    if (cardAberto?.id === lead.id) setCardAberto(updatedLead);
+    setLeads(ls => ls.map(l => l.id === lead.id ? updatedLead : l));
   }
 
   async function enviarMensagem() {
