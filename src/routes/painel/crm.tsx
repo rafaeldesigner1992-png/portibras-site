@@ -3632,6 +3632,12 @@ function CrmPage() {
     return acc;
   }, {} as Record<Etapa, Lead[]>);
 
+  // Contagem total por etapa (ignora filtros — usada nos cards de resumo)
+  const totalPorEtapa = ETAPA_ORDER.reduce((acc, e) => {
+    acc[e] = leads.filter(l => l.etapa === e);
+    return acc;
+  }, {} as Record<Etapa, Lead[]>);
+
   return (
     <div className="flex h-full">
       {/* Toast de notificação */}
@@ -3756,7 +3762,8 @@ function CrmPage() {
         {/* Resumo de etapas — apenas desktop */}
         <div className="mb-5 hidden md:grid grid-cols-3 lg:grid-cols-6 gap-2">
           {ETAPA_ORDER.map(e => {
-            const leads_etapa = porEtapa[e];
+            // Sempre usa totais reais (ignora filtro de etapa)
+            const leads_etapa = totalPorEtapa[e];
             const totalOrc = leads_etapa.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "orcamento").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
             const totalMan = leads_etapa.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "manutencao").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
             const totalGeral = leads_etapa.reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
