@@ -3469,6 +3469,13 @@ function CrmPage() {
       await supabase.from("crm_leads").update({ etapa: "vistoria" as any }).eq("id", lead.id);
       setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, etapa: "vistoria" as any } : l));
 
+      // Registra no histórico do lead
+      await supabase.from("crm_conversas").insert({
+        lead_id: lead.id,
+        texto: `🔍 **Enviado para Vistoria**\nLead encaminhado para vistoria técnica. Aguardando agendamento.`,
+        autor: "Sistema",
+      });
+
       // Fecha o card e volta ao kanban
       setCardAberto(null);
 
