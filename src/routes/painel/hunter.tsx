@@ -95,6 +95,76 @@ function getBairros(cidade: string): string[] {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
+// ─── Hook: uso Apify ─────────────────────────────────────────────────────────
+
+function useApifyUsage() {
+  const [usadoUsd, setUsadoUsd]   = useState<number | null>(null);
+  const [limiteUsd, setLimiteUsd] = useState<number>(5);
+  const [cicloFim, setCicloFim]   = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    supabase.functions.invoke("hunter-usage")
+      .then(({ data }) => {
+        if (data && !data.error) {
+          setUsadoUsd(data.usadoUsd);
+          setLimiteUsd(data.limiteUsd);
+          setCicloFim(data.cicloFim);
+        }
+      })
+      .finally(() => setCarregando(false));
+  }, []);
+
+  return { usadoUsd, limiteUsd, cicloFim, carregando };
+}
+
+// ─── Componente: badge de uso ─────────────────────────────────────────────────
+
+function ApifyUsageBadge() {
+  const { usadoUsd, limiteUsd, cicloFim, carregando } = useApifyUsage();
+
+  if (carregando) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200">
+        <Loader2 className="h-3 w-3 animate-spin" /> Apify…
+      </div>
+    );
+  }
+
+  if (usadoUsd === null) return null;
+
+  const pct       = Math.min((usadoUsd / limiteUsd) * 100, 100);
+  const restante  = Math.max(limiteUsd - usadoUsd, 0);
+  const critico   = pct >= 80;
+  const atencao   = pct >= 50;
+
+  const fimCiclo = cicloFim
+    ? new Date(cicloFim).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+    : null;
+
+  return (
+    <div className={cn(
+      "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border",
+      critico ? "bg-red-50 border-red-200 text-red-700"
+              : atencao ? "bg-amber-50 border-amber-200 text-amber-700"
+                        : "bg-gray-50 border-gray-200 text-gray-600"
+    )}>
+      {/* Barra de progresso circular simplificada */}
+      <span className={cn("h-2 w-2 rounded-full",
+        critico ? "bg-red-500" : atencao ? "bg-amber-400" : "bg-green-500"
+      )} />
+      <span className="font-medium">
+        ${usadoUsd.toFixed(2)} / ${limiteUsd.toFixed(2)}
+      </span>
+      <span className="opacity-60">Apify</span>
+      {fimCiclo && <span className="opacity-50">· renova {fimCiclo}</span>}
+      {critico && <span className="font-semibold">⚠ Quase no limite</span>}
+    </div>
+  );
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
+
 export default function HunterPage() {
   const [aba, setAba] = useState<"buscar" | "campanhas">("buscar");
 
@@ -318,6 +388,7 @@ export default function HunterPage() {
           <h1 className="text-xl font-bold text-gray-900">Hunter</h1>
           <p className="text-sm text-gray-500">Prospecção inteligente via Google Maps</p>
         </div>
+        <ApifyUsageBadge />
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
           <button onClick={() => setAba("buscar")}
             className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
