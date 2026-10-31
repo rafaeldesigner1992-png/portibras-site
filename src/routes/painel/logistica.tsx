@@ -922,7 +922,31 @@ function LogisticaPage() {
   const [agendaveis, setAgendaveis] = useState<ItemAgendavel[]>([]);
   const [carregandoAgenda, setCarregandoAgenda] = useState(false);
 
-  useEffect(() => { if (aba === "tecnico") { carregarTickets(); carregarAgendaveis(); } }, [aba]);
+  // Google Calendar
+  interface EventoGoogle {
+    id: string;
+    titulo: string;
+    inicio: string;
+    fim: string;
+    local: string | null;
+    descricao: string | null;
+    link: string;
+    dia_todo: boolean;
+  }
+  const [eventosGoogle, setEventosGoogle] = useState<EventoGoogle[]>([]);
+  const [carregandoGoogle, setCarregandoGoogle] = useState(false);
+  const [googleConectado, setGoogleConectado] = useState<boolean | null>(null);
+
+  useEffect(() => { if (aba === "tecnico") { carregarTickets(); carregarAgendaveis(); carregarEventosGoogle(); } }, [aba]);
+
+  // Detecta redirect de conexão bem-sucedida
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google_connected") === "true") {
+      window.history.replaceState({}, "", window.location.pathname);
+      carregarEventosGoogle();
+    }
+  }, []);
 
   async function carregarTickets() {
     setCarregandoTickets(true);
@@ -1030,6 +1054,36 @@ function LogisticaPage() {
     const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
     const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${fmt(base)}/${fmt(fim)}&location=${local}&details=${detalhe}`;
     window.open(url, "_blank");
+  }
+
+  async function carregarEventosGoogle() {
+    setCarregandoGoogle(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-proxy`,
+        { headers: { Authorization: `Bearer ${session?.access_token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY } }
+      );
+      const json = await res.json();
+      if (json.error === "not_connected" || json.error === "token_expired") {
+        setGoogleConectado(false);
+        setEventosGoogle([]);
+      } else if (json.eventos) {
+        setGoogleConectado(true);
+        setEventosGoogle(json.eventos);
+      }
+    } catch {
+      setGoogleConectado(false);
+    }
+    setCarregandoGoogle(false);
+  }
+
+  function iniciarConexaoGoogle() {
+    const clientId = "740070288777-1093sn92agd0i4dpi6d9kie0ni8aomln.apps.googleusercontent.com";
+    const redirectUri = encodeURIComponent("https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/google-calendar-callback");
+    const scope = encodeURIComponent("https://www.googleapis.com/auth/calendar.readonly");
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
+    window.location.href = url;
   }
 
   const ticketsFiltrados = tickets.filter(t =>
@@ -2071,6 +2125,113 @@ function LogisticaPage() {
                   <ExternalLink className="h-4 w-4 flex-shrink-0 opacity-50" />
                 </a>
               ))}
+            </div>
+          </div>
+
+          {/* Google Calendar */}
+          <div className="mb-6">
+            <div className="mb-3 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-emerald-600" />
+                <h2 className="text-sm font-semibold text-gray-700">Google Agenda</h2>
+                {googleConectado && eventosGoogle.length > 0 && (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    {eventosGoogle.length} evento{eventosGoogle.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              {googleConectado ? (
+                <button onClick={carregarEventosGoogle}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
+                  <Loader2 className={cn("h-3 w-3", carregandoGoogle && "animate-spin")} /> Atualizar
+                </button>
+              ) : (
+                <button onClick={iniciarConexaoGoogle}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+                  <CalendarIcon className="h-3.5 w-3.5" /> Conectar Google Agenda
+                </button>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+              {carregandoGoogle ? (
+                <div className="py-10 text-center text-sm text-gray-400">Carregando agenda…</div>
+              ) : googleConectado === false ? (
+                <div className="flex flex-col items-center py-10 text-gray-400">
+                  <CalendarIcon className="mb-3 h-8 w-8 opacity-30" />
+                  <p className="text-sm font-medium">Google Agenda não conectada</p>
+                  <p className="mt-1 text-xs text-gray-300">Clique em "Conectar" para ver os eventos da empresa</p>
+                  <button onClick={iniciarConexaoGoogle}
+                    className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                    <CalendarIcon className="h-4 w-4" /> Conectar Google Agenda
+                  </button>
+                </div>
+              ) : eventosGoogle.length === 0 ? (
+                <div className="py-10 text-center text-sm text-gray-400">Nenhum evento nos próximos 30 dias</div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {eventosGoogle.map((ev) => {
+                    const dataInicio = new Date(ev.inicio);
+                    const dataFim = new Date(ev.fim);
+                    const hoje = new Date();
+                    const amanha = new Date(hoje); amanha.setDate(amanha.getDate() + 1);
+                    const isHoje = dataInicio.toDateString() === hoje.toDateString();
+                    const isAmanha = dataInicio.toDateString() === amanha.toDateString();
+                    return (
+                      <a key={ev.id} href={ev.link} target="_blank" rel="noopener noreferrer"
+                        className="flex items-start gap-4 px-5 py-4 hover:bg-gray-50/60 transition-colors group">
+                        {/* Data */}
+                        <div className={cn(
+                          "flex-shrink-0 w-14 text-center rounded-lg py-1.5",
+                          isHoje ? "bg-emerald-50" : "bg-gray-50"
+                        )}>
+                          <p className={cn("text-lg font-bold leading-none", isHoje ? "text-emerald-700" : "text-gray-800")}>
+                            {dataInicio.getDate()}
+                          </p>
+                          <p className="text-[10px] uppercase text-gray-400 font-medium mt-0.5">
+                            {dataInicio.toLocaleDateString("pt-BR", { month: "short" })}
+                          </p>
+                          {!ev.dia_todo && (
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {dataInicio.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex-shrink-0 w-px self-stretch bg-gray-100 mx-1" />
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{ev.titulo}</p>
+                            {isHoje && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">Hoje</span>
+                            )}
+                            {isAmanha && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 uppercase">Amanhã</span>
+                            )}
+                          </div>
+                          {ev.local && (
+                            <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
+                              <MapPin className="h-3 w-3 flex-shrink-0" /> {ev.local}
+                            </p>
+                          )}
+                          {ev.descricao && (
+                            <p className="mt-0.5 text-xs text-gray-400 line-clamp-1">{ev.descricao}</p>
+                          )}
+                          {!ev.dia_todo && (
+                            <p className="mt-0.5 text-xs text-gray-300">
+                              até {dataFim.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          )}
+                        </div>
+
+                        <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 text-gray-300 group-hover:text-gray-500 mt-1" />
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
