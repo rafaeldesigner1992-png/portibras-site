@@ -7,7 +7,8 @@ import {
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
   Loader2, Send, Pencil, Trash2, MapPin, Navigation, Bell,
   Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download, Eye,
-  ChevronDown, Package, ArrowLeft, ClipboardCheck, Upload
+  ChevronDown, Package, ArrowLeft, ClipboardCheck, Upload,
+  Target, TrendingUp, Bot, ChevronUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -3258,6 +3259,56 @@ function CrmPage() {
   const dteInputRef = useRef<HTMLInputElement>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // ── BPO Meta de Vendas ────────────────────────────────────────────────────
+  interface MetaBPO {
+    totalCustos: number; totalDividas: number; pontoEquilibrio: number;
+    margemPct: number; metaVendas: number; receitaAtual: number;
+  }
+  const [metaBPO, setMetaBPO] = useState<MetaBPO | null>(null);
+  const [carregandoMeta, setCarregandoMeta] = useState(false);
+  const [chatBPOAberto, setChatBPOAberto] = useState(false);
+  const [mensagemBPO, setMensagemBPO] = useState("");
+  const [historicoBPO, setHistoricoBPO] = useState<{role: string; content: string}[]>([]);
+  const [enviandoBPO, setEnviandoBPO] = useState(false);
+  const chatBPORef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function buscarMeta() {
+      setCarregandoMeta(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("bpo-chat", {
+          body: { mode: "meta" },
+        });
+        if (!error && data) setMetaBPO(data as MetaBPO);
+      } catch { /* silencioso */ }
+      finally { setCarregandoMeta(false); }
+    }
+    buscarMeta();
+  }, []);
+
+  useEffect(() => {
+    if (chatBPORef.current) chatBPORef.current.scrollTop = chatBPORef.current.scrollHeight;
+  }, [historicoBPO, enviandoBPO]);
+
+  async function enviarMensagemBPO() {
+    const msg = mensagemBPO.trim();
+    if (!msg || enviandoBPO) return;
+    setMensagemBPO("");
+    const novoHistorico = [...historicoBPO, { role: "user", content: msg }];
+    setHistoricoBPO(novoHistorico);
+    setEnviandoBPO(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("bpo-chat", {
+        body: { mode: "chat", mensagem: msg, historico: historicoBPO },
+      });
+      if (!error && data?.resposta) {
+        setHistoricoBPO(prev => [...prev, { role: "assistant", content: data.resposta }]);
+      }
+    } catch { /* silencioso */ }
+    finally { setEnviandoBPO(false); }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Mapa leadId → { tipo, valor } derivado das propostas/orçamentos reais
   const [valoresPorLead, setValoresPorLead] = useState<Record<string, { tipo: "orcamento" | "manutencao"; valor: number }>>({});
   // Set de lead_ids que têm pelo menos uma proposta enviada para logística (mostra selo de vistoria)
@@ -3731,6 +3782,134 @@ function CrmPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Banner BPO Meta de Vendas ─────────────────────────────── */}
+        {(metaBPO || carregandoMeta) && (
+          <div className="mb-4 rounded-xl border border-[#1a6b2f]/20 bg-gradient-to-r from-[#1a6b2f]/5 to-emerald-50 p-4">
+            {carregandoMeta ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" /> Carregando meta de vendas…
+              </div>
+            ) : metaBPO ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {/* Números */}
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-5 w-5 text-[#1a6b2f] shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Meta do mês</p>
+                      <p className="text-lg font-bold text-[#1a6b2f]">
+                        {metaBPO.metaVendas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Realizado</p>
+                      <p className="text-lg font-bold text-emerald-700">
+                        {metaBPO.receitaAtual.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 w-5 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-orange-500">%</span>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Progresso</p>
+                      <p className="text-lg font-bold text-gray-800">
+                        {Math.min(Math.round((metaBPO.receitaAtual / metaBPO.metaVendas) * 100), 100)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {/* Barra + botão */}
+                <div className="flex flex-col gap-2 sm:min-w-[260px]">
+                  <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[#1a6b2f] transition-all"
+                      style={{ width: `${Math.min((metaBPO.receitaAtual / metaBPO.metaVendas) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">
+                      Faltam {Math.max(metaBPO.metaVendas - metaBPO.receitaAtual, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                    <button
+                      onClick={() => setChatBPOAberto(v => !v)}
+                      className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824]"
+                    >
+                      <Bot className="h-3.5 w-3.5" />
+                      Consultar BPO
+                      {chatBPOAberto ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Chat BPO inline */}
+            {chatBPOAberto && (
+              <div className="mt-3 border-t border-[#1a6b2f]/20 pt-3">
+                <div
+                  ref={chatBPORef}
+                  className="mb-2 max-h-56 overflow-y-auto rounded-lg bg-white p-3 space-y-2"
+                >
+                  {historicoBPO.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-4">
+                      Olá! Sou o BPO da PORTIBRAS. Pergunte sobre metas, estratégias ou desempenho de vendas.
+                    </p>
+                  )}
+                  {historicoBPO.map((m, i) => (
+                    <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                      <div className={cn(
+                        "max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+                        m.role === "user"
+                          ? "bg-[#1a6b2f] text-white"
+                          : "bg-gray-100 text-gray-800"
+                      )}>
+                        {m.role === "assistant" && (
+                          <div className="flex items-center gap-1 mb-1">
+                            <Bot className="h-3 w-3 text-[#1a6b2f]" />
+                            <span className="text-[10px] font-medium text-[#1a6b2f]">BPO</span>
+                          </div>
+                        )}
+                        {m.content}
+                      </div>
+                    </div>
+                  ))}
+                  {enviandoBPO && (
+                    <div className="flex justify-start">
+                      <div className="bg-gray-100 rounded-lg px-3 py-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={mensagemBPO}
+                    onChange={e => setMensagemBPO(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && !e.shiftKey && enviarMensagemBPO()}
+                    placeholder="Pergunte ao BPO…"
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20"
+                    disabled={enviandoBPO}
+                  />
+                  <button
+                    onClick={enviarMensagemBPO}
+                    disabled={!mensagemBPO.trim() || enviandoBPO}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-medium text-white hover:bg-[#155824] disabled:opacity-50"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {/* ─────────────────────────────────────────────────────────────── */}
 
         {/* Barra de busca + gavetas */}
         <div className="mb-3 flex gap-2">

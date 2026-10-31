@@ -151,6 +151,7 @@ function FinanceiroPage() {
   const [configId, setConfigId] = useState<string | null>(null);
   const [margemMinInput, setMargemMinInput] = useState("25");
   const [margemIdealInput, setMargemIdealInput] = useState("45");
+  const [margemMetaInput, setMargemMetaInput] = useState("20");
   const [salvandoMargem, setSalvandoMargem] = useState(false);
   const [margemSalva, setMargemSalva] = useState(false);
 
@@ -268,13 +269,14 @@ function FinanceiroPage() {
 
   async function carregarConfig() {
     const { data } = await supabase.from("configuracoes").select("*")
-      .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct",
+      .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "margem_meta_pct",
         "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km"]);
     if (data) {
       for (const row of data) {
         if (row.chave === "imposto_padrao_pct") { setAliquota(Number(row.valor)); setAliquotaInput(String(Number(row.valor))); setConfigId(row.id); }
         if (row.chave === "margem_minima_pct") setMargemMinInput(String(Number(row.valor)));
         if (row.chave === "margem_ideal_pct") setMargemIdealInput(String(Number(row.valor)));
+        if (row.chave === "margem_meta_pct") setMargemMetaInput(String(Number(row.valor)));
         if (row.chave === "veiculo_preco_combustivel") setPrecoCombInput(String(Number(row.valor)));
         if (row.chave === "veiculo_consumo_km_l") setConsumoKmInput(String(Number(row.valor)));
         if (row.chave === "veiculo_custo_manut_km") setCustoManutInput(String(Number(row.valor)));
@@ -319,6 +321,7 @@ function FinanceiroPage() {
     const configs = [
       { chave: "margem_minima_pct", valor: margemMinInput, descricao: "Margem de lucro mínima aceitável nos orçamentos (%)" },
       { chave: "margem_ideal_pct", valor: margemIdealInput, descricao: "Margem de lucro ideal nos orçamentos (%)" },
+      { chave: "margem_meta_pct", valor: margemMetaInput, descricao: "Margem sobre o ponto de equilíbrio para definir a meta de vendas do BPO (%)" },
     ];
     for (const cfg of configs) {
       await supabase.from("configuracoes").upsert({ ...cfg, atualizado_em: new Date().toISOString() }, { onConflict: "chave" });
@@ -750,6 +753,14 @@ function FinanceiroPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Ideal (%) <span className="text-green-600">● verde</span></label>
                 <input type="number" min={0} max={100} step={0.5} value={margemIdealInput} onChange={e => setMargemIdealInput(e.target.value)}
+                  className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div className="border-t border-gray-200 pt-2.5 mt-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Meta BPO (%) <span className="text-blue-500">● CRM</span>
+                </label>
+                <p className="text-[10px] text-gray-400 mb-1.5">Margem sobre o ponto de equilíbrio para definir a meta de vendas</p>
+                <input type="number" min={0} max={200} step={1} value={margemMetaInput} onChange={e => setMargemMetaInput(e.target.value)}
                   className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-center outline-none focus:border-[#1a6b2f]" />
               </div>
             </div>
