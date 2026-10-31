@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase, PERFIS } from "@/lib/supabase";
 import type { Usuario, Perfil } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,6 +21,7 @@ function PessoasPage() {
   const [modal, setModal] = useState<ModalMode>(null);
   const [selecionado, setSelecionado] = useState<Usuario | null>(null);
   const [menuAberto, setMenuAberto] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
 
@@ -223,33 +225,18 @@ function PessoasPage() {
                   </td>
                   {podeGerenciar && (
                     <td className="px-6 py-4">
-                      <div className="relative flex justify-end">
+                      <div className="flex justify-end">
                         <button
-                          onClick={(e) => { e.stopPropagation(); setMenuAberto(menuAberto === u.id ? null : u.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                            setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                            setMenuAberto(menuAberto === u.id ? null : u.id);
+                          }}
                           className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
-                        {menuAberto === u.id && (
-                          <div className="absolute right-0 top-9 z-[60] w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-xl">
-                            <button
-                              onClick={() => abrirEditar(u)}
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              ✏️ Editar usuário
-                            </button>
-                            <button
-                              onClick={() => alternarAtivo(u)}
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50"
-                            >
-                              {u.ativo ? (
-                                <span className="text-red-600">🔴 Desativar</span>
-                              ) : (
-                                <span className="text-green-600">🟢 Ativar</span>
-                              )}
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </td>
                   )}
@@ -360,9 +347,37 @@ function PessoasPage() {
         </div>
       )}
 
-      {/* Overlay para fechar menu */}
-      {menuAberto && (
-        <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(null)} />
+      {/* Dropdown menu via portal — escapa do overflow:hidden da tabela */}
+      {menuAberto && createPortal(
+        <>
+          {/* Overlay invisível para fechar ao clicar fora */}
+          <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(null)} />
+          {/* Menu posicionado com fixed nas coords reais do botão */}
+          <div
+            className="fixed z-50 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-xl"
+            style={{ top: menuPos.top, right: menuPos.right }}
+          >
+            {filtrados.filter(u => u.id === menuAberto).map(u => (
+              <div key={u.id}>
+                <button
+                  onClick={() => abrirEditar(u)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  ✏️ Editar usuário
+                </button>
+                <button
+                  onClick={() => alternarAtivo(u)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50"
+                >
+                  {u.ativo
+                    ? <span className="text-red-600">🔴 Desativar</span>
+                    : <span className="text-green-600">🟢 Ativar</span>}
+                </button>
+              </div>
+            ))}
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );
