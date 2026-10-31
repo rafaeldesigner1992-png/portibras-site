@@ -6,7 +6,7 @@ import {
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
   Loader2, Send, Pencil, Trash2, MapPin, Navigation, Bell,
   Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download, Eye,
-  ChevronDown, Package, ArrowLeft, ClipboardCheck
+  ChevronDown, Package, ArrowLeft, ClipboardCheck, Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -2978,6 +2978,10 @@ function CrmPage() {
   const [novaMsg, setNovaMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
   const conversaRef = useRef<HTMLDivElement>(null);
+  const [uploadandoDts, setUploadandoDts] = useState(false);
+  const [uploadandoDte, setUploadandoDte] = useState(false);
+  const dtsInputRef = useRef<HTMLInputElement>(null);
+  const dteInputRef = useRef<HTMLInputElement>(null);
 
   // Mapa leadId → { tipo, valor } derivado das propostas/orçamentos reais
   const [valoresPorLead, setValoresPorLead] = useState<Record<string, { tipo: "orcamento" | "manutencao"; valor: number }>>({});
@@ -3250,6 +3254,48 @@ function CrmPage() {
     setNovaMsg("");
     await carregarConversas(cardAberto.id);
     setEnviando(false);
+  }
+
+  function renderTextoComLinks(texto: string) {
+    // Detecta padrões [texto](url) e transforma em links
+    const partes = texto.split(/(\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
+    return partes.map((parte, i) => {
+      const match = parte.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+      if (match) {
+        return (
+          <a key={i} href={match[2]} target="_blank" rel="noopener noreferrer"
+            className="text-blue-600 hover:underline font-medium">
+            {match[1]}
+          </a>
+        );
+      }
+      return <span key={i}>{parte}</span>;
+    });
+  }
+
+  async function uploadDocumento(file: File, tipo: "DTS" | "DTE") {
+    if (!cardAberto) return;
+    const setUploading = tipo === "DTS" ? setUploadandoDts : setUploadandoDte;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `leads/${cardAberto.id}/${tipo}_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("dts-documentos").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: urlData } = supabase.storage.from("dts-documentos").getPublicUrl(path);
+      const url = urlData?.publicUrl;
+      // Registra no histórico
+      await supabase.from("crm_conversas").insert({
+        lead_id: cardAberto.id,
+        texto: `📎 ${tipo} anexado: [${file.name}](${url})`,
+        autor: "Sistema",
+      });
+      await carregarConversas(cardAberto.id);
+      setToast({ msg: `${tipo} anexado com sucesso!`, tipo: "sucesso" });
+    } catch (e: any) {
+      setToast({ msg: `Erro ao anexar ${tipo}: ${e.message}`, tipo: "erro" });
+    }
+    setUploading(false);
   }
 
   const hoje = new Date().toISOString().split("T")[0];
@@ -3728,19 +3774,39 @@ function CrmPage() {
                           <span className="text-xs font-semibold text-gray-700">{c.autor}</span>
                           <span className="text-xs text-gray-400">{new Date(c.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
                         </div>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.texto}</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{renderTextoComLinks(c.texto)}</p>
                       </div>
                     ))}
                   </div>
-                  <div className="p-5 border-t border-gray-100 flex gap-3">
-                    <textarea rows={2} value={novaMsg} onChange={e => setNovaMsg(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensagem(); }}}
-                      placeholder="Registrar interação…"
-                      className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
-                    <button onClick={enviarMensagem} disabled={enviando || !novaMsg.trim()}
-                      className="flex items-center justify-center rounded-lg bg-[#1a6b2f] px-4 text-white hover:bg-[#155824] disabled:opacity-40">
-                      {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    </button>
+                  <div className="p-4 border-t border-gray-100 space-y-2">
+                    {/* Botões DTS e DTE */}
+                    <div className="flex gap-2">
+                      <input ref={dtsInputRef} type="file" accept=".pdf" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadDocumento(f, "DTS"); e.target.value = ""; }} />
+                      <input ref={dteInputRef} type="file" accept=".pdf" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadDocumento(f, "DTE"); e.target.value = ""; }} />
+                      <button onClick={() => dtsInputRef.current?.click()} disabled={uploadandoDts}
+                        className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50 transition-colors">
+                        {uploadandoDts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        Anexar DTS
+                      </button>
+                      <button onClick={() => dteInputRef.current?.click()} disabled={uploadandoDte}
+                        className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-colors">
+                        {uploadandoDte ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        Anexar DTE
+                      </button>
+                    </div>
+                    {/* Área de texto */}
+                    <div className="flex gap-3">
+                      <textarea rows={2} value={novaMsg} onChange={e => setNovaMsg(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarMensagem(); }}}
+                        placeholder="Registrar interação…"
+                        className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+                      <button onClick={enviarMensagem} disabled={enviando || !novaMsg.trim()}
+                        className="flex items-center justify-center rounded-lg bg-[#1a6b2f] px-4 text-white hover:bg-[#155824] disabled:opacity-40">
+                        {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
