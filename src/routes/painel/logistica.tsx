@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Package, Plus, AlertTriangle, X, ShoppingCart,
   ExternalLink, Clock, Pencil, Trash2, AlertCircle,
-  Wrench, CalendarDays as CalendarIcon, Ticket, ChevronRight, MapPin, User, Users, HardHat, Check,
-  ClipboardList, ShoppingBag, Building2, ChevronDown, ChevronUp, Loader2,
+  Wrench, CalendarDays as CalendarIcon, Ticket, ChevronRight, MapPin, User, HardHat, Check,
+  ClipboardList, ShoppingBag, ChevronDown, ChevronUp, Loader2, BarChart2, FileCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -101,6 +101,20 @@ const PRIORIDADE_CORES: Record<string, string> = {
   urgente:"bg-red-100 text-red-700",
 };
 
+// ─── Pedidos Fechados (do CRM) ────────────────────────────────────────────────
+interface PedidoFechado {
+  id: string;
+  lead_id: string;
+  tipo: "orcamento" | "manutencao";
+  nome_arquivo: string;
+  status: string;
+  conteudo: { portas?: number; parcela?: number } | null;
+  criado_em: string;
+  atualizado_em: string | null;
+  enviado_logistica: boolean;
+  lead?: { nome_empresa: string; contato: string };
+}
+
 // ─── Atendimentos ─────────────────────────────────────────────────────────────
 interface Atendimento {
   id: string;
@@ -180,8 +194,283 @@ const EMPTY_MAT = {
   status: "Solicitado" as const, observacoes: "",
 };
 
+// ─── Cores por responsável ────────────────────────────────────────────────────
+const RESP_CORES: Record<string, { bg: string; text: string; border: string }> = {
+  "Rafael Nunes": { bg: "bg-blue-100",    text: "text-blue-800",   border: "border-blue-300" },
+  "Matheus Alves":{ bg: "bg-purple-100",  text: "text-purple-800", border: "border-purple-300" },
+  "Dinho":        { bg: "bg-orange-100",  text: "text-orange-800", border: "border-orange-300" },
+  "Marco":        { bg: "bg-pink-100",    text: "text-pink-800",   border: "border-pink-300" },
+  "Ajudante":     { bg: "bg-gray-100",    text: "text-gray-700",   border: "border-gray-300" },
+};
+const RESP_COR_DEFAULT = { bg: "bg-emerald-100", text: "text-emerald-800", border: "border-emerald-300" };
+
+function corParaResp(r: string) {
+  return RESP_CORES[r] ?? RESP_COR_DEFAULT;
+}
+
+function GanttView({ atendimentos, carregando }: { atendimentos: Atendimento[]; carregando: boolean }) {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  // Calcular janela de 6 semanas a partir de segunda-feira da semana atual
+  const inicioJanela = useMemo(() => {
+    const d = new Date(hoje);
+    const dow = d.getDay() === 0 ? 6 : d.getDay() - 1; // 0=seg
+    d.setDate(d.getDate() - dow);
+    return d;
+  }, []);
+
+  const SEMANAS = 6;
+  const DIAS_TOTAL = SEMANAS * 7;
+
+  const diasJanela = useMemo(() => {
+    return Array.from({ length: DIAS_TOTAL }, (_, i) => {
+      const d = new Date(inicioJanela);
+      d.setDate(d.getDate() + i);
+      return d;
+    });
+  }, [inicioJanela]);
+
+  // Semanas agrupadas
+  const semanas = useMemo(() => {
+    const result = [];
+    for (let s = 0; s < SEMANAS; s++) {
+      const inicio = new Date(inicioJanela);
+      inicio.setDate(inicio.getDate() + s * 7);
+      const dias = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(inicio);
+        d.setDate(d.getDate() + i);
+        return d;
+      });
+      result.push({ inicio, dias });
+    }
+    return result;
+  }, [inicioJanela]);
+
+  // Atendimentos com data na janela
+  const atendComData = useMemo(() => {
+    return atendimentos
+      .filter(a => a.data_agendada && a.status !== "Cancelado")
+      .map(a => {
+        const d = new Date(a.data_agendada! + "T00:00:00");
+        return { ...a, dataObj: d };
+      })
+      .filter(a => {
+        const fim = new Date(inicioJanela);
+        fim.setDate(fim.getDate() + DIAS_TOTAL);
+        return a.dataObj >= inicioJanela && a.dataObj < fim;
+      })
+      .sort((a, b) => a.dataObj.getTime() - b.dataObj.getTime());
+  }, [atendimentos, inicioJanela]);
+
+  // Atendimentos sem data
+  const semData = atendimentos.filter(a => !a.data_agendada && a.status !== "Cancelado");
+
+  const nomesDia = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+  function idxDia(data: Date): number {
+    const ms = data.getTime() - inicioJanela.getTime();
+    return Math.floor(ms / 86400000);
+  }
+
+  function ehHoje(d: Date) {
+    return d.toDateString() === hoje.toDateString();
+  }
+
+  function ehFds(d: Date) {
+    const dow = d.getDay();
+    return dow === 0 || dow === 6;
+  }
+
+  if (carregando) {
+    return (
+      <div className="flex items-center gap-2 text-gray-400 py-12">
+        <Loader2 className="h-4 w-4 animate-spin" /> Carregando atendimentos...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Legenda responsáveis */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs text-gray-400 font-medium">Responsáveis:</span>
+        {Object.entries(RESP_CORES).map(([nome, cor]) => (
+          <span key={nome} className={cn("flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border", cor.bg, cor.text, cor.border)}>
+            <span className="h-2 w-2 rounded-full bg-current opacity-60 inline-block" />
+            {nome}
+          </span>
+        ))}
+      </div>
+
+      {/* Grade Gantt */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Header semanas + dias */}
+        <div className="overflow-x-auto">
+          <div style={{ minWidth: `${DIAS_TOTAL * 44 + 160}px` }}>
+            {/* Linha de semanas */}
+            <div className="flex border-b border-gray-200 bg-gray-50">
+              <div className="w-40 shrink-0 border-r border-gray-200 px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Atendimento
+              </div>
+              {semanas.map((s, i) => (
+                <div key={i} className="flex border-r border-gray-200 last:border-r-0"
+                  style={{ width: `${7 * 44}px` }}>
+                  <div className="w-full px-2 py-1.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                    Sem. {s.inicio.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Linha de dias */}
+            <div className="flex border-b border-gray-200 bg-gray-50/60">
+              <div className="w-40 shrink-0 border-r border-gray-200" />
+              {diasJanela.map((d, i) => (
+                <div key={i}
+                  style={{ width: "44px" }}
+                  className={cn(
+                    "shrink-0 border-r border-gray-100 last:border-r-0 text-center py-1",
+                    ehHoje(d) ? "bg-[#1a6b2f]/10" : "",
+                    ehFds(d) ? "bg-gray-100/60" : "",
+                  )}>
+                  <div className={cn("text-[9px] font-medium", ehHoje(d) ? "text-[#1a6b2f] font-bold" : "text-gray-400")}>
+                    {nomesDia[(d.getDay() + 6) % 7]}
+                  </div>
+                  <div className={cn("text-[10px] font-semibold leading-none", ehHoje(d) ? "text-[#1a6b2f]" : "text-gray-600")}>
+                    {d.getDate()}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Linhas de atendimentos */}
+            {atendComData.length === 0 ? (
+              <div className="flex items-center justify-center py-16 text-sm text-gray-400">
+                Nenhum atendimento agendado nas próximas 6 semanas
+              </div>
+            ) : (
+              atendComData.map(a => {
+                const idx = idxDia(a.dataObj);
+                const primResp = a.responsaveis?.[0] ?? "";
+                const cor = corParaResp(primResp);
+                return (
+                  <div key={a.id} className="flex items-center border-b border-gray-100 last:border-b-0 hover:bg-gray-50/40">
+                    {/* Label */}
+                    <div className="w-40 shrink-0 border-r border-gray-200 px-3 py-2">
+                      <p className="text-xs font-medium text-gray-800 truncate leading-tight">{a.titulo}</p>
+                      {a.responsaveis?.length > 0 && (
+                        <p className="text-[10px] text-gray-400 truncate mt-0.5">{a.responsaveis.join(", ")}</p>
+                      )}
+                    </div>
+                    {/* Grade */}
+                    <div className="relative flex flex-1" style={{ height: "44px" }}>
+                      {diasJanela.map((d, di) => (
+                        <div key={di}
+                          style={{ width: "44px" }}
+                          className={cn(
+                            "shrink-0 border-r border-gray-100 last:border-r-0 h-full",
+                            ehHoje(d) ? "bg-[#1a6b2f]/5" : "",
+                            ehFds(d) ? "bg-gray-50" : "",
+                          )}
+                        />
+                      ))}
+                      {/* Barra do atendimento */}
+                      {idx >= 0 && idx < DIAS_TOTAL && (
+                        <div
+                          className={cn(
+                            "absolute top-2.5 rounded-lg px-2 flex items-center gap-1 border text-[10px] font-semibold truncate",
+                            cor.bg, cor.text, cor.border,
+                          )}
+                          style={{
+                            left: `${idx * 44 + 2}px`,
+                            width: "40px",
+                            height: "22px",
+                          }}
+                          title={`${a.titulo} — ${a.data_agendada}`}
+                        >
+                          <span className={cn(
+                            "rounded-full px-1 py-0 text-[9px] font-bold shrink-0",
+                            a.status === "Concluído" ? "bg-green-200 text-green-800" :
+                            a.status === "Em andamento" ? "bg-yellow-200 text-yellow-800" :
+                            "bg-white/60 text-gray-600"
+                          )}>
+                            {a.status === "Concluído" ? "✓" : a.status === "Em andamento" ? "▶" : "○"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Atendimentos sem data */}
+      {semData.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-gray-600 flex items-center gap-2">
+            <CalendarIcon className="h-4 w-4 text-gray-400" />
+            Sem data agendada ({semData.length})
+          </h3>
+          <div className="space-y-2">
+            {semData.map(a => {
+              const primResp = a.responsaveis?.[0] ?? "";
+              const cor = corParaResp(primResp);
+              return (
+                <div key={a.id} className={cn(
+                  "flex items-center gap-3 rounded-xl border px-4 py-3",
+                  cor.bg, cor.border
+                )}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{a.titulo}</p>
+                    {a.responsaveis?.length > 0 && (
+                      <p className="text-xs opacity-70">{a.responsaveis.join(", ")}</p>
+                    )}
+                  </div>
+                  <span className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold border shrink-0",
+                    STATUS_ATEND_COR[a.status]
+                  )}>
+                    {a.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Resumo por responsável */}
+      {atendimentos.filter(a => a.status !== "Cancelado").length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-gray-600">Carga por responsável</h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.keys(RESP_CORES).map(resp => {
+              const total = atendimentos.filter(
+                a => a.responsaveis?.includes(resp) && a.status !== "Cancelado"
+              );
+              if (total.length === 0) return null;
+              const concluidos = total.filter(a => a.status === "Concluído").length;
+              const cor = corParaResp(resp);
+              return (
+                <div key={resp} className={cn("rounded-xl border p-4", cor.bg, cor.border)}>
+                  <p className={cn("text-sm font-semibold", cor.text)}>{resp}</p>
+                  <p className="text-2xl font-bold text-gray-800 mt-1">{total.length}</p>
+                  <p className="text-xs text-gray-500">{concluidos} concluído{concluidos !== 1 ? "s" : ""}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LogisticaPage() {
-  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras">("atendimentos");
+  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras" | "gantt">("atendimentos");
 
   // ── Estoque ────────────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemEstoque[]>([]);
@@ -192,6 +481,10 @@ function LogisticaPage() {
     nome: "", codigo: "", categoria: "", quantidade: 0,
     estoque_minimo: 0, unidade: "un", localizacao: "",
   });
+
+  // ── Pedidos Fechados ───────────────────────────────────────────────────────
+  const [pedidosFechados, setPedidosFechados] = useState<PedidoFechado[]>([]);
+  const [carregandoPedidos, setCarregandoPedidos] = useState(false);
 
   // ── Atendimentos ──────────────────────────────────────────────────────────
   const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
@@ -212,7 +505,8 @@ function LogisticaPage() {
   const [atendFiltroCompras, setAtendFiltroCompras] = useState<string | null>(null);
 
   useEffect(() => {
-    if (aba === "atendimentos") carregarAtendimentos();
+    if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); }
+    if (aba === "gantt") carregarAtendimentos();
     if (aba === "compras") { carregarAtendimentos(); carregarMateriais(); }
     if (aba === "estoque") carregarEstoque();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,6 +517,17 @@ function LogisticaPage() {
     const { data } = await supabase.from("atendimentos").select("*").order("data_agendada", { ascending: false });
     if (data) setAtendimentos(data as Atendimento[]);
     setCarregandoAtend(false);
+  }
+
+  async function carregarPedidosFechados() {
+    setCarregandoPedidos(true);
+    const { data } = await supabase
+      .from("crm_propostas")
+      .select("*, lead:crm_leads(nome_empresa, contato)")
+      .eq("status", "fechado")
+      .order("atualizado_em", { ascending: false });
+    if (data) setPedidosFechados(data as PedidoFechado[]);
+    setCarregandoPedidos(false);
   }
 
   async function carregarMateriais() {
@@ -495,14 +800,15 @@ function LogisticaPage() {
       </div>
 
       {/* Abas */}
-      <div className="mb-6 flex gap-1 border-b border-gray-200">
+      <div className="mb-6 flex gap-1 border-b border-gray-200 overflow-x-auto">
         {([
           { key: "atendimentos", label: "Atendimentos",           icon: ClipboardList },
-          { key: "compras",     label: "Compras",               icon: ShoppingBag },
-          { key: "estoque",     label: "Estoque",               icon: Package },
-          { key: "suprimentos", label: "Catálogo",              icon: ShoppingCart },
-          { key: "equipe",      label: "Equipe / Terceirizados", icon: HardHat },
-          { key: "tecnico",     label: "Área Técnica",          icon: Wrench },
+          { key: "gantt",        label: "Gantt",                  icon: BarChart2 },
+          { key: "compras",      label: "Compras",               icon: ShoppingBag },
+          { key: "estoque",      label: "Estoque",               icon: Package },
+          { key: "suprimentos",  label: "Catálogo",              icon: ShoppingCart },
+          { key: "equipe",       label: "Equipe / Terceirizados", icon: HardHat },
+          { key: "tecnico",      label: "Área Técnica",          icon: Wrench },
         ] as const).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setAba(key)}
             className={cn(
@@ -522,6 +828,11 @@ function LogisticaPage() {
             {key === "atendimentos" && atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length > 0 && (
               <span className="ml-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                 {atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length}
+              </span>
+            )}
+            {key === "atendimentos" && pedidosFechados.length > 0 && (
+              <span className="ml-1 rounded-full bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white" title="Pedidos fechados">
+                {pedidosFechados.length} ✓
               </span>
             )}
             {key === "tecnico" && ticketsAbertos.length > 0 && (
@@ -679,6 +990,91 @@ function LogisticaPage() {
             </div>
           )}
 
+          {/* ── Pedidos Fechados do CRM ── */}
+          <div className="mt-8">
+            <div className="mb-3 flex items-center gap-2">
+              <FileCheck className="h-4 w-4 text-green-600" />
+              <h2 className="text-sm font-semibold text-gray-700">Pedidos Fechados</h2>
+              {carregandoPedidos ? (
+                <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
+              ) : (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                  {pedidosFechados.length}
+                </span>
+              )}
+              <span className="text-xs text-gray-400">— contratos fechados no CRM</span>
+            </div>
+
+            {carregandoPedidos ? (
+              <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
+            ) : pedidosFechados.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-sm text-gray-400">
+                Nenhum pedido fechado ainda
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Cliente</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Tipo</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden sm:table-cell">Proposta</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden lg:table-cell">Valor</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Data</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {pedidosFechados.map(p => {
+                      const clienteNome = p.lead?.nome_empresa || p.lead?.contato || "—";
+                      const valorMensal = p.conteudo?.parcela ?? null;
+                      const dataFecho = p.atualizado_em
+                        ? new Date(p.atualizado_em).toLocaleDateString("pt-BR")
+                        : new Date(p.criado_em).toLocaleDateString("pt-BR");
+                      return (
+                        <tr key={p.id} className="hover:bg-gray-50/60">
+                          <td className="px-4 py-3">
+                            <p className="text-sm font-medium text-gray-900">{clienteNome}</p>
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <span className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              p.tipo === "manutencao"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-emerald-100 text-emerald-700"
+                            )}>
+                              {p.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell text-sm text-gray-500 truncate max-w-[180px]">
+                            {p.nome_arquivo || "—"}
+                          </td>
+                          <td className="px-4 py-3 hidden lg:table-cell">
+                            {valorMensal ? (
+                              <span className="text-sm font-semibold text-gray-800">
+                                {valorMensal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                <span className="text-xs font-normal text-gray-400">/mês</span>
+                              </span>
+                            ) : <span className="text-xs text-gray-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">{dataFecho}</td>
+                          <td className="px-4 py-3 text-right">
+                            <a
+                              href={`/painel/crm?lead=${p.lead_id}`}
+                              className="flex items-center gap-1 text-xs text-[#1a6b2f] hover:underline justify-end"
+                            >
+                              <ExternalLink className="h-3 w-3" /> CRM
+                            </a>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* Modal Atendimento */}
           {modalAtend && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalAtend(false)}>
@@ -818,6 +1214,11 @@ function LogisticaPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* ═══════ ABA GANTT ═══════ */}
+      {aba === "gantt" && (
+        <GanttView atendimentos={atendimentos} carregando={carregandoAtend} />
       )}
 
       {/* ═══════ ABA COMPRAS ═══════ */}
