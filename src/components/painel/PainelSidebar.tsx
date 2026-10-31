@@ -14,6 +14,7 @@ import {
   BookOpen,
   Building2,
   GitBranch,
+  Target,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 const MENU = [
   { modulo: "dashboard",   label: "Dashboard",        href: "/painel",               icon: LayoutDashboard },
   { modulo: "crm",         label: "CRM Comercial",    href: "/painel/crm",           icon: Users },
+  { modulo: "hunter",      label: "Hunter",            href: "/painel/hunter",        icon: Target },
   { modulo: "crm",         label: "Clientes",          href: "/painel/clientes",      icon: Building2 },
   { modulo: "contratos",   label: "Contratos",         href: "/painel/contratos",     icon: FileText },
   { modulo: "orcamentos",  label: "Orçamentos",        href: "/painel/orcamentos",    icon: Calculator },
