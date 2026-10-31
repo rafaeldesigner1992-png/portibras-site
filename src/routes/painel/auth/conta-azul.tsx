@@ -7,11 +7,11 @@ export const Route = createFileRoute("/painel/auth/conta-azul")({
   component: ContaAzulCallback,
 });
 
-const CLIENT_ID = "fmqdoaoovj40498lfpg739pos";
-const CLIENT_SECRET = "gseh8ikddi2l7gie3tg2olif2na5oh3d03lfubajfl589d2rgb0";
+const CLIENT_ID = "s90G8jF0L4Fl0MIKUhAtDhH4aDol82JFN0ounsxgW2IOsz0o";
+const CLIENT_SECRET = "HF7SHzW0uEfpi1oHGn2fzLrmCJOoXLnFwGLoWAuZMjAn76SDqbQlHPa8kRTsP4fL";
 const REDIRECT_URI = `${window.location.origin}/painel/auth/conta-azul`;
 const TOKEN_URL = "https://api.contaazul.com/auth/token";
-const AUTH_URL = "https://api.contaazul.com/auth/authorize";
+const AUTH_URL = "https://login.contaazul.com/#/oauth/authorize";
 
 function ContaAzulCallback() {
   const navigate = useNavigate();
@@ -83,7 +83,7 @@ function ContaAzulCallback() {
       "response_type=code",
       `client_id=${CLIENT_ID}`,
       `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
-      "scope=sales%20receivables%20contracts",
+      "scope=openid%20profile%20aws.cognito.signin.user.admin",
     ].join("&");
     window.location.href = `${AUTH_URL}?${params}`;
   }
