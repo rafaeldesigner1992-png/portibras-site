@@ -3874,7 +3874,11 @@ function CrmPage() {
         {/* KANBAN */}
         {view === "kanban" && (
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {ETAPA_ORDER.map(etapa => {
+            {ETAPA_ORDER.filter(etapa =>
+              filtroEtapa === "todas"
+                ? etapa !== "fechado" && etapa !== "perdido"
+                : etapa === filtroEtapa
+            ).map(etapa => {
               const cfg = ETAPAS[etapa];
               const cards = porEtapa[etapa];
               const totalOrcK = cards.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "orcamento").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
