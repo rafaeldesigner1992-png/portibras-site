@@ -3743,20 +3743,33 @@ function CrmPage() {
         </div>
 
         {/* Resumo de etapas — apenas desktop */}
-        <div className="mb-5 hidden md:flex gap-2 flex-wrap">
+        <div className="mb-5 hidden md:grid grid-cols-3 lg:grid-cols-6 gap-2">
           {ETAPA_ORDER.map(e => {
             const leads_etapa = porEtapa[e];
             const totalOrc = leads_etapa.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "orcamento").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
             const totalMan = leads_etapa.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "manutencao").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
             const totalGeral = leads_etapa.reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
             const fmtC = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const ativo = filtroEtapa === e;
             return (
-              <button key={e} onClick={() => setFiltroEtapa(filtroEtapa === e ? "todas" : e)}
-                className={cn("flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-opacity", ETAPAS[e].bg, ETAPAS[e].cor, filtroEtapa !== "todas" && filtroEtapa !== e && "opacity-40")}>
-                {ETAPAS[e].label} <span className="font-bold">({leads_etapa.length})</span>
-                {totalGeral > 0 && <span className="opacity-80">· {fmtC(totalGeral)}</span>}
-                {totalOrc > 0 && <span className="opacity-60">· ORC {fmtC(totalOrc)}</span>}
-                {totalMan > 0 && <span className="opacity-60">· 12× {fmtC(totalMan)}</span>}
+              <button key={e} onClick={() => setFiltroEtapa(ativo ? "todas" : e)}
+                className={cn(
+                  "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-all",
+                  ETAPAS[e].bg, ETAPAS[e].border,
+                  ativo ? "ring-2 ring-offset-1 opacity-100" : "opacity-70 hover:opacity-100",
+                  filtroEtapa !== "todas" && !ativo && "opacity-30"
+                )}>
+                <div className={cn("text-[11px] font-semibold uppercase tracking-wide", ETAPAS[e].cor)}>{ETAPAS[e].label}</div>
+                <div className={cn("text-2xl font-bold leading-none", ETAPAS[e].cor)}>{leads_etapa.length}</div>
+                {totalGeral > 0 ? (
+                  <div className="flex flex-col gap-0.5 w-full">
+                    {totalOrc > 0 && <div className="text-[10px] text-gray-500 truncate">ORC {fmtC(totalOrc)}</div>}
+                    {totalMan > 0 && <div className="text-[10px] text-gray-500 truncate">12× {fmtC(totalMan)}</div>}
+                    {totalOrc === 0 && totalMan === 0 && <div className={cn("text-[11px] font-medium truncate", ETAPAS[e].cor)}>{fmtC(totalGeral)}</div>}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-400">—</div>
+                )}
               </button>
             );
           })}
