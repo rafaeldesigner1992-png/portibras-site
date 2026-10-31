@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
-  Loader2, Send, Pencil, Trash2, MapPin, Navigation,
+  Loader2, Send, Pencil, Trash2, MapPin, Navigation, Bell,
   Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download, Eye,
   ChevronDown, Package, ArrowLeft
 } from "lucide-react";
@@ -38,6 +38,7 @@ interface Lead {
   tipo_negocio: "orcamento" | "manutencao" | null;
   observacoes: string;
   prazo: string | null;
+  proximo_contato: string | null;
   endereco_fiscal: string;
   endereco_atendimento: string;
   criado_em: string;
@@ -2852,6 +2853,75 @@ function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onProposta
   );
 }
 
+// ─── Componente: Próximo Contato com edição inline ────────────────────────────
+function ProximoContatoInline({ lead, onSave }: { lead: Lead; onSave: (data: string | null) => Promise<void> }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(lead.proximo_contato ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const hoje = new Date().toISOString().split("T")[0];
+
+  async function salvar() {
+    setSalvando(true);
+    await onSave(valor || null);
+    setSalvando(false);
+    setEditando(false);
+  }
+
+  async function limpar() {
+    setSalvando(true);
+    setValor("");
+    await onSave(null);
+    setSalvando(false);
+  }
+
+  if (editando) {
+    return (
+      <div className="flex items-center gap-2">
+        <input type="date" value={valor} onChange={e => setValor(e.target.value)} autoFocus
+          className="flex-1 rounded-lg border border-[#1a6b2f] px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b2f]/20" />
+        <button onClick={salvar} disabled={salvando}
+          className="rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+          {salvando ? "…" : "Ok"}
+        </button>
+        <button onClick={() => { setValor(lead.proximo_contato ?? ""); setEditando(false); }}
+          className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-500 hover:bg-gray-50">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  if (lead.proximo_contato) {
+    const vencido = lead.proximo_contato < hoje;
+    const dtFmt = new Date(lead.proximo_contato + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+    return (
+      <div className="flex items-center gap-2">
+        <div className={cn("flex items-center gap-1.5 flex-1 rounded-lg px-3 py-2 text-sm font-medium",
+          vencido ? "bg-red-50 text-red-700 border border-red-200" : "bg-blue-50 text-blue-700 border border-blue-200")}>
+          <Bell className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="capitalize">{dtFmt}</span>
+          {vencido && <span className="text-[10px] font-bold uppercase tracking-wide ml-1 opacity-70">Vencido</span>}
+        </div>
+        <button onClick={() => { setValor(lead.proximo_contato ?? ""); setEditando(true); }}
+          className="rounded-lg border border-gray-200 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50">
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={limpar} className="rounded-lg border border-gray-200 p-1.5 text-gray-300 hover:text-red-400 hover:bg-red-50">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={() => setEditando(true)}
+      className="flex w-full items-center gap-2 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-400 hover:border-[#1a6b2f] hover:text-[#1a6b2f] transition-colors">
+      <Bell className="h-3.5 w-3.5" />
+      Definir próximo contato
+    </button>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 function CrmPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -2860,6 +2930,15 @@ function CrmPage() {
   const [view, setView] = useState<"lista" | "kanban">("lista");
   const [filtroEtapa, setFiltroEtapa] = useState<Etapa | "todas">("todas");
   const [filtroPrazo, setFiltroPrazo] = useState("");
+  // Filtros combinados (chips)
+  const [filtros, setFiltros] = useState<Set<string>>(new Set());
+  function toggleFiltro(f: string) {
+    setFiltros(prev => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f); else next.add(f);
+      return next;
+    });
+  }
 
   const [modal, setModal] = useState(false);
   const [selecionado, setSelecionado] = useState<Lead | null>(null);
@@ -2972,7 +3051,7 @@ function CrmPage() {
       }
     } else {
       setSelecionado(null);
-      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, tipo_negocio: null, observacoes: "", prazo: null, endereco_fiscal: "", endereco_atendimento: "", cliente_id: null });
+      setForm({ nome: "", empresa: "", cnpj: "", telefone: "", email: "", etapa: "prospecto", valor_estimado: null, tipo_negocio: null, observacoes: "", prazo: null, proximo_contato: null, endereco_fiscal: "", endereco_atendimento: "", cliente_id: null });
     }
     setModal(true);
   }
@@ -3069,6 +3148,7 @@ function CrmPage() {
       tipo_negocio: form.tipo_negocio,
       observacoes: form.observacoes,
       prazo: form.prazo,
+      proximo_contato: form.proximo_contato ?? null,
       endereco_fiscal: form.endereco_fiscal,
       endereco_atendimento: form.endereco_atendimento,
     };
@@ -3111,6 +3191,13 @@ function CrmPage() {
     const buscaOk = !busca || l.nome?.toLowerCase().includes(busca.toLowerCase()) || l.empresa?.toLowerCase().includes(busca.toLowerCase()) || l.cnpj?.includes(busca);
     const etapaOk = filtroEtapa === "todas" || l.etapa === filtroEtapa;
     const prazoOk = !filtroPrazo || (l.prazo && l.prazo <= filtroPrazo);
+    // Filtros combinados
+    const tipoReal = valoresPorLead[l.id]?.tipo ?? l.tipo_negocio;
+    if (filtros.has("a_vencer") && !(l.proximo_contato && l.proximo_contato >= hoje)) return false;
+    if (filtros.has("vencido") && !(l.proximo_contato && l.proximo_contato < hoje)) return false;
+    if (filtros.has("manutencao") && tipoReal !== "manutencao") return false;
+    if (filtros.has("orcamento") && tipoReal !== "orcamento") return false;
+    if (filtros.has("cliente") && !l.cliente_id) return false;
     return buscaOk && etapaOk && prazoOk;
   });
 
@@ -3143,7 +3230,7 @@ function CrmPage() {
           </div>
         </div>
 
-        <div className="mb-4 flex gap-3 flex-wrap">
+        <div className="mb-3 flex gap-3 flex-wrap">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input type="text" placeholder="Buscar por nome, empresa ou CNPJ…" value={busca} onChange={e => setBusca(e.target.value)}
@@ -3154,12 +3241,38 @@ function CrmPage() {
             <option value="todas">Todas as etapas</option>
             {ETAPA_ORDER.map(e => <option key={e} value={e}>{ETAPAS[e].label}</option>)}
           </select>
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-gray-400" />
-            <input type="date" value={filtroPrazo} onChange={e => setFiltroPrazo(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-[#1a6b2f]" />
-            {filtroPrazo && <button onClick={() => setFiltroPrazo("")} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>}
-          </div>
+        </div>
+        {/* Chips de filtro combinados */}
+        <div className="mb-4 flex gap-2 flex-wrap items-center">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide mr-1">Filtros:</span>
+          {([
+            { id: "a_vencer", label: "📅 A vencer", cor: "blue" },
+            { id: "vencido", label: "⚠ Vencido", cor: "red" },
+            { id: "manutencao", label: "🔧 Manutenção 12×", cor: "orange" },
+            { id: "orcamento", label: "📄 Orçamento comum", cor: "purple" },
+            { id: "cliente", label: "✅ Cliente vinculado", cor: "green" },
+          ] as const).map(({ id, label, cor }) => {
+            const ativo = filtros.has(id);
+            const cores: Record<string, string> = {
+              blue: ativo ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-300 hover:bg-blue-50",
+              red: ativo ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-300 hover:bg-red-50",
+              orange: ativo ? "bg-orange-500 text-white border-orange-500" : "bg-white text-orange-700 border-orange-300 hover:bg-orange-50",
+              purple: ativo ? "bg-purple-600 text-white border-purple-600" : "bg-white text-purple-700 border-purple-300 hover:bg-purple-50",
+              green: ativo ? "bg-[#1a6b2f] text-white border-[#1a6b2f]" : "bg-white text-[#1a6b2f] border-green-300 hover:bg-green-50",
+            };
+            return (
+              <button key={id} onClick={() => toggleFiltro(id)}
+                className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-all", cores[cor])}>
+                {label}
+                {ativo && <X className="h-3 w-3" />}
+              </button>
+            );
+          })}
+          {filtros.size > 0 && (
+            <button onClick={() => setFiltros(new Set())} className="ml-1 text-xs text-gray-400 hover:text-gray-600 underline">
+              Limpar filtros
+            </button>
+          )}
         </div>
 
         <div className="mb-5 flex gap-2 flex-wrap">
@@ -3303,7 +3416,8 @@ function CrmPage() {
                           </div>
                           {lead.empresa && <p className="mt-0.5 text-xs text-gray-400">{lead.empresa}</p>}
                           {(valoresPorLead[lead.id]?.valor ?? lead.valor_estimado) ? <p className="mt-2 text-xs font-semibold text-[#1a6b2f]">{(valoresPorLead[lead.id]?.valor ?? lead.valor_estimado!).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p> : null}
-                          {lead.prazo && <p className={cn("mt-1 flex items-center gap-1 text-xs", vencido ? "text-red-500" : "text-gray-400")}><Calendar className="h-3 w-3" />{vencido && "⚠ "}{new Date(lead.prazo + "T00:00:00").toLocaleDateString("pt-BR")}</p>}
+                          {lead.proximo_contato && (() => { const pcVenc = lead.proximo_contato < hoje; return <p className={cn("mt-1 flex items-center gap-1 text-xs font-medium", pcVenc ? "text-red-500" : "text-blue-600")}><Bell className="h-3 w-3" />{pcVenc && "⚠ "}{new Date(lead.proximo_contato + "T00:00:00").toLocaleDateString("pt-BR")}</p>; })()}
+                          {lead.prazo && <p className={cn("mt-0.5 flex items-center gap-1 text-xs", vencido ? "text-red-500" : "text-gray-400")}><Calendar className="h-3 w-3" />{vencido && "⚠ "}{new Date(lead.prazo + "T00:00:00").toLocaleDateString("pt-BR")}</p>}
                           {lead.telefone && <p className="mt-1 flex items-center gap-1 text-xs text-gray-400"><Phone className="h-3 w-3" />{lead.telefone}</p>}
                         </div>
                       );
@@ -3399,6 +3513,16 @@ function CrmPage() {
                     <span>{cardAberto.prazo < hoje && "⚠ "}{new Date(cardAberto.prazo + "T00:00:00").toLocaleDateString("pt-BR")}</span>
                   </div>
                 )}
+              </div>
+
+              {/* Próximo Contato / Tarefa */}
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Próximo Contato / Tarefa</p>
+                <ProximoContatoInline lead={cardAberto} onSave={async (data) => {
+                  await supabase.from("crm_leads").update({ proximo_contato: data }).eq("id", cardAberto.id);
+                  setLeads(prev => prev.map(l => l.id === cardAberto.id ? { ...l, proximo_contato: data } : l));
+                  setCardAberto(prev => prev ? { ...prev, proximo_contato: data } : prev);
+                }} />
               </div>
 
               {/* Endereços */}
@@ -3600,8 +3724,18 @@ function CrmPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Prazo</label>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Prazo do lead</label>
                   <input type="date" value={form.prazo || ""} onChange={e => setForm({ ...form, prazo: e.target.value || null })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                    <Bell className="h-3.5 w-3.5 text-gray-400" /> Próximo Contato / Tarefa
+                  </label>
+                  <input type="date" value={form.proximo_contato || ""} onChange={e => setForm({ ...form, proximo_contato: e.target.value || null })}
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
               </div>
