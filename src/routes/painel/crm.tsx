@@ -3200,6 +3200,8 @@ function CrmPage() {
   const [valoresPorLead, setValoresPorLead] = useState<Record<string, { tipo: "orcamento" | "manutencao"; valor: number }>>({});
   // Set de lead_ids que têm pelo menos uma proposta enviada para logística (mostra selo de vistoria)
   const [leadsEmLogistica, setLeadsEmLogistica] = useState<Set<string>>(new Set());
+  // Set de lead_ids que estão em vistoria pendente/agendada
+  const [leadsEmVistoria, setLeadsEmVistoria] = useState<Set<string>>(new Set());
 
   const { lead: leadIdParam } = useSearch({ from: "/painel/crm" });
 
@@ -3261,6 +3263,15 @@ function CrmPage() {
       }
       setValoresPorLead(mapa);
       setLeadsEmLogistica(emLogistica);
+
+      // Carrega leads em vistoria ativa (pendente ou agendada)
+      const { data: vistorias } = await supabase
+        .from("vistorias")
+        .select("lead_id")
+        .in("status", ["pendente", "agendada"]);
+      if (vistorias) {
+        setLeadsEmVistoria(new Set(vistorias.map((v: { lead_id: string }) => v.lead_id)));
+      }
     }
     setCarregando(false);
   }
@@ -3771,7 +3782,7 @@ function CrmPage() {
                       <tr key={lead.id} className="hover:bg-gray-50/60 cursor-pointer" onClick={() => abrirCard(lead)}>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
-                            {(lead.etapa as any) === "vistoria" && (
+                            {leadsEmVistoria.has(lead.id) && (
                               <span title="Em Vistoria" className="flex-shrink-0 w-3 h-3 rounded-full bg-yellow-400 ring-2 ring-yellow-200" />
                             )}
                             <div>
@@ -3865,7 +3876,7 @@ function CrmPage() {
                       return (
                         <div key={lead.id} onClick={() => abrirCard(lead)}
                           className="relative rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
-                          {(lead.etapa as any) === "vistoria" && (
+                          {leadsEmVistoria.has(lead.id) && (
                             <span title="Em Vistoria" className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-yellow-400 ring-2 ring-yellow-200 z-10" />
                           )}
                           <div className="flex items-start justify-between gap-1">
