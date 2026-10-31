@@ -7,7 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CLIENT_ID = Deno.env.get("CONTA_AZUL_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("CONTA_AZUL_CLIENT_SECRET")!;
-const TOKEN_URL = "https://api.contaazul.com/auth/token";
+const TOKEN_URL = "https://api-v2.contaazul.com/oauth/token";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,17 +31,17 @@ serve(async (req) => {
 
     // Conta Azul (Cognito) exige JSON no body + Basic Auth no header
     const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
+    const bodyParams = new URLSearchParams();
+    bodyParams.append("grant_type", "authorization_code");
+    bodyParams.append("code", code);
+    bodyParams.append("redirect_uri", redirect_uri);
     const tokenRes = await fetch(TOKEN_URL, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
         "Authorization": `Basic ${basicAuth}`,
       },
-      body: JSON.stringify({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri,
-      }),
+      body: bodyParams.toString(),
     });
 
     const tokenText = await tokenRes.text();
