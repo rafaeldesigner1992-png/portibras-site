@@ -1109,52 +1109,53 @@ function LogisticaPage() {
       </div>
 
       {/* Abas */}
-      <div className="mb-6 flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {([
-          { key: "atendimentos", label: "Atendimentos",           icon: ClipboardList },
-          { key: "vistorias",    label: "Vistorias",              icon: ClipboardCheck },
-          { key: "gantt",        label: "Gantt",                  icon: BarChart2 },
-          { key: "compras",      label: "Compras",               icon: ShoppingBag },
-          { key: "estoque",      label: "Estoque",               icon: Package },
-          { key: "suprimentos",  label: "Catálogo",              icon: ShoppingCart },
-          { key: "equipe",       label: "Equipe / Terceirizados", icon: HardHat },
-          { key: "tecnico",      label: "Área Técnica",          icon: Wrench },
-        ] as const).map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setAba(key)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-              aba === key
-                ? "border-[#1a6b2f] text-[#1a6b2f]"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            )}>
-            <Icon className="h-4 w-4" />
-            {label}
-            {key === "estoque" && abaixoMinimo.length > 0 && (
-              <span className="ml-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{abaixoMinimo.length}</span>
-            )}
-            {key === "suprimentos" && precosDesatualizados.length > 0 && (
-              <span className="ml-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{precosDesatualizados.length}</span>
-            )}
-            {key === "vistorias" && vistorias.filter(v => v.status === "pendente" || v.status === "agendada").length > 0 && (
-              <span className="ml-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {vistorias.filter(v => v.status === "pendente" || v.status === "agendada").length}
-              </span>
-            )}
-            {key === "atendimentos" && atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length > 0 && (
-              <span className="ml-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length}
-              </span>
-            )}
-            {key === "atendimentos" && pedidosFechados.length > 0 && (
-              <span className="ml-1 rounded-full bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white" title="Pedidos fechados">
-                {pedidosFechados.length} ✓
-              </span>
-            )}
-            {key === "tecnico" && ticketsAbertos.length > 0 && (
-              <span className="ml-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{ticketsAbertos.length}</span>
-            )}
-          </button>
-        ))}
+      {/* ── Navegação por abas ── */}
+      <div className="mb-6">
+        <div className="flex gap-1 overflow-x-auto border-b border-gray-200 scrollbar-none pb-px">
+          {([
+            { key: "atendimentos", label: "Atendimentos", icon: ClipboardList },
+            { key: "vistorias",    label: "Vistorias",    icon: ClipboardCheck },
+            { key: "gantt",        label: "Gantt",        icon: BarChart2 },
+            { key: "compras",      label: "Compras",      icon: ShoppingBag },
+            { key: "estoque",      label: "Estoque",      icon: Package },
+            { key: "suprimentos",  label: "Catálogo",     icon: ShoppingCart },
+            { key: "equipe",       label: "Equipe",       icon: HardHat },
+            { key: "tecnico",      label: "Área Técnica", icon: Wrench },
+          ] as const).map(({ key, label, icon: Icon }) => {
+            const ativo = aba === key;
+            const badges: { count: number; cor: string; title?: string }[] = [];
+            if (key === "estoque" && abaixoMinimo.length > 0) badges.push({ count: abaixoMinimo.length, cor: "bg-orange-500" });
+            if (key === "suprimentos" && precosDesatualizados.length > 0) badges.push({ count: precosDesatualizados.length, cor: "bg-amber-500" });
+            if (key === "vistorias") { const n = vistorias.filter(v => v.status === "pendente" || v.status === "agendada").length; if (n > 0) badges.push({ count: n, cor: "bg-orange-500" }); }
+            if (key === "atendimentos") {
+              const ativos = atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length;
+              if (ativos > 0) badges.push({ count: ativos, cor: "bg-emerald-500" });
+              if (pedidosFechados.length > 0) badges.push({ count: pedidosFechados.length, cor: "bg-green-600", title: "Pedidos fechados" });
+            }
+            if (key === "tecnico" && ticketsAbertos.length > 0) badges.push({ count: ticketsAbertos.length, cor: "bg-blue-500" });
+            return (
+              <button key={key} onClick={() => setAba(key)}
+                className={cn(
+                  "relative flex flex-shrink-0 flex-col items-center gap-1 px-4 py-2.5 border-b-2 -mb-px transition-all duration-150",
+                  ativo
+                    ? "border-[#1a6b2f] text-[#1a6b2f]"
+                    : "border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-300"
+                )}>
+                <div className="relative">
+                  <Icon className={cn("h-4 w-4", ativo ? "text-[#1a6b2f]" : "text-gray-400")} />
+                  {badges.length > 0 && (
+                    <span className={cn("absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center rounded-full px-1 text-[9px] font-bold text-white leading-none", badges[0].cor)}>
+                      {badges.reduce((s, b) => s + b.count, 0)}
+                    </span>
+                  )}
+                </div>
+                <span className={cn("text-[11px] font-medium whitespace-nowrap", ativo ? "text-[#1a6b2f]" : "text-gray-400")}>
+                  {label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ═══════ ABA ATENDIMENTOS ═══════ */}
