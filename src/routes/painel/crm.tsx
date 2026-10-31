@@ -2939,6 +2939,9 @@ function CrmPage() {
       return next;
     });
   }
+  // Controle de gavetas (dropdowns compactos)
+  const [gavetaFiltros, setGavetaFiltros] = useState(false);
+  const [gavetaEtapas, setGavetaEtapas] = useState(false);
 
   const [modal, setModal] = useState(false);
   const [selecionado, setSelecionado] = useState<Lead | null>(null);
@@ -3230,52 +3233,100 @@ function CrmPage() {
           </div>
         </div>
 
-        <div className="mb-3 flex gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Buscar por nome, empresa ou CNPJ…" value={busca} onChange={e => setBusca(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white pl-10 pr-4 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+        {/* Barra de busca + gavetas */}
+        <div className="mb-3 flex gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Buscar…" value={busca} onChange={e => setBusca(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
           </div>
-          <select value={filtroEtapa} onChange={e => setFiltroEtapa(e.target.value as Etapa | "todas")}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-[#1a6b2f]">
-            <option value="todas">Todas as etapas</option>
-            {ETAPA_ORDER.map(e => <option key={e} value={e}>{ETAPAS[e].label}</option>)}
-          </select>
-        </div>
-        {/* Chips de filtro combinados */}
-        <div className="mb-4 flex gap-2 flex-wrap items-center">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide mr-1">Filtros:</span>
-          {([
-            { id: "a_vencer", label: "📅 A vencer", cor: "blue" },
-            { id: "vencido", label: "⚠ Vencido", cor: "red" },
-            { id: "manutencao", label: "🔧 Manutenção 12×", cor: "orange" },
-            { id: "orcamento", label: "📄 Orçamento comum", cor: "purple" },
-            { id: "cliente", label: "✅ Cliente vinculado", cor: "green" },
-          ] as const).map(({ id, label, cor }) => {
-            const ativo = filtros.has(id);
-            const cores: Record<string, string> = {
-              blue: ativo ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-300 hover:bg-blue-50",
-              red: ativo ? "bg-red-500 text-white border-red-500" : "bg-white text-red-600 border-red-300 hover:bg-red-50",
-              orange: ativo ? "bg-orange-500 text-white border-orange-500" : "bg-white text-orange-700 border-orange-300 hover:bg-orange-50",
-              purple: ativo ? "bg-purple-600 text-white border-purple-600" : "bg-white text-purple-700 border-purple-300 hover:bg-purple-50",
-              green: ativo ? "bg-[#1a6b2f] text-white border-[#1a6b2f]" : "bg-white text-[#1a6b2f] border-green-300 hover:bg-green-50",
-            };
-            return (
-              <button key={id} onClick={() => toggleFiltro(id)}
-                className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-all", cores[cor])}>
-                {label}
-                {ativo && <X className="h-3 w-3" />}
-              </button>
-            );
-          })}
-          {filtros.size > 0 && (
-            <button onClick={() => setFiltros(new Set())} className="ml-1 text-xs text-gray-400 hover:text-gray-600 underline">
-              Limpar filtros
+
+          {/* Gaveta Etapas */}
+          <div className="relative">
+            <button onClick={() => { setGavetaEtapas(v => !v); setGavetaFiltros(false); }}
+              className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
+                filtroEtapa !== "todas" ? "border-[#1a6b2f] bg-[#1a6b2f]/5 text-[#1a6b2f]" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50")}>
+              {filtroEtapa !== "todas" ? ETAPAS[filtroEtapa].label : "Etapa"}
+              {filtroEtapa !== "todas" && <span className="rounded-full bg-[#1a6b2f] text-white text-[10px] px-1.5 py-0.5 leading-none">1</span>}
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", gavetaEtapas && "rotate-180")} />
             </button>
-          )}
+            {gavetaEtapas && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setGavetaEtapas(false)} />
+                <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+                  <button onClick={() => { setFiltroEtapa("todas"); setGavetaEtapas(false); }}
+                    className={cn("flex w-full items-center gap-2 px-4 py-2.5 text-sm text-left hover:bg-gray-50",
+                      filtroEtapa === "todas" ? "font-semibold text-[#1a6b2f]" : "text-gray-700")}>
+                    Todas as etapas
+                  </button>
+                  <div className="border-t border-gray-100" />
+                  {ETAPA_ORDER.map(e => (
+                    <button key={e} onClick={() => { setFiltroEtapa(e); setGavetaEtapas(false); }}
+                      className={cn("flex w-full items-center justify-between gap-2 px-4 py-2.5 text-sm text-left hover:bg-gray-50",
+                        filtroEtapa === e ? "font-semibold text-[#1a6b2f]" : "text-gray-700")}>
+                      <span className="flex items-center gap-2">
+                        <span className={cn("h-2 w-2 rounded-full flex-shrink-0", ETAPAS[e].bg)} />
+                        {ETAPAS[e].label}
+                      </span>
+                      <span className="text-xs text-gray-400 font-medium">{porEtapa[e].length}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Gaveta Filtros */}
+          <div className="relative">
+            <button onClick={() => { setGavetaFiltros(v => !v); setGavetaEtapas(false); }}
+              className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+                filtros.size > 0 ? "border-[#1a6b2f] bg-[#1a6b2f]/5 text-[#1a6b2f]" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50")}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/>
+              </svg>
+              <span className="hidden sm:inline">Filtros</span>
+              {filtros.size > 0 && <span className="rounded-full bg-[#1a6b2f] text-white text-[10px] px-1.5 py-0.5 leading-none">{filtros.size}</span>}
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", gavetaFiltros && "rotate-180")} />
+            </button>
+            {gavetaFiltros && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setGavetaFiltros(false)} />
+                <div className="absolute right-0 top-full mt-1 z-20 w-56 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+                  <p className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100">Filtros ativos</p>
+                  {([
+                    { id: "a_vencer",   label: "📅 A vencer",         cor: "text-blue-700" },
+                    { id: "vencido",    label: "⚠ Vencido",           cor: "text-red-600" },
+                    { id: "manutencao", label: "🔧 Manutenção 12×",   cor: "text-orange-700" },
+                    { id: "orcamento",  label: "📄 Orçamento comum",  cor: "text-purple-700" },
+                    { id: "cliente",    label: "✅ Cliente vinculado", cor: "text-[#1a6b2f]" },
+                  ] as const).map(({ id, label, cor }) => {
+                    const ativo = filtros.has(id);
+                    return (
+                      <button key={id} onClick={() => toggleFiltro(id)}
+                        className="flex w-full items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors">
+                        <span className={cn("font-medium", cor)}>{label}</span>
+                        <span className={cn("flex h-4.5 h-5 w-5 items-center justify-center rounded border transition-colors flex-shrink-0",
+                          ativo ? "border-[#1a6b2f] bg-[#1a6b2f]" : "border-gray-300 bg-white")}>
+                          {ativo && <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="1,6 4.5,9.5 11,2"/></svg>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {filtros.size > 0 && (
+                    <div className="border-t border-gray-100 px-4 py-2">
+                      <button onClick={() => { setFiltros(new Set()); }} className="w-full text-center text-xs text-gray-400 hover:text-gray-600 underline">
+                        Limpar todos
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="mb-5 flex gap-2 flex-wrap">
+        {/* Resumo de etapas — apenas desktop */}
+        <div className="mb-5 hidden md:flex gap-2 flex-wrap">
           {ETAPA_ORDER.map(e => {
             const leads_etapa = porEtapa[e];
             const totalOrc = leads_etapa.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "orcamento").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
