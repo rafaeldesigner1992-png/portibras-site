@@ -174,6 +174,71 @@ async function syncCobrancas(token: string) {
   return rows.length;
 }
 
+// ─── Sync: Saldos das contas bancárias ──────────────────────────────────────
+async function syncSaldos(token: string) {
+  let contas: unknown[] = [];
+  try {
+    const data = await apiCA(`/bank-accounts`, token);
+    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.bankAccounts ?? [];
+  } catch (e) {
+    console.error("Erro ao buscar saldos:", e);
+    return 0;
+  }
+
+  if (contas.length === 0) return 0;
+
+  const rows = (contas as any[]).map((c) => ({
+    id: String(c.id),
+    nome: c.name ?? c.description ?? "Conta",
+    tipo: c.type ?? c.bankAccountType ?? "corrente",
+    saldo: Number(c.balance ?? c.currentBalance ?? 0),
+    banco: c.bankCode ?? c.bank ?? null,
+    agencia: c.agency ?? c.branchNumber ?? null,
+    conta: c.accountNumber ?? c.account ?? null,
+    ativo: c.active !== false,
+    sincronizado_em: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase.from("ca_saldos").upsert(rows, { onConflict: "id" });
+  if (error) console.error("Erro ao salvar saldos:", error);
+  return rows.length;
+}
+
+// ─── Sync: Contas a pagar ─────────────────────────────────────────────────────
+async function syncContasPagar(token: string) {
+  const hoje = new Date();
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0).toISOString().slice(0, 10);
+
+  let contas: unknown[] = [];
+  try {
+    const data = await apiCA(`/payables?startDate=${inicio}&endDate=${fim}&size=200`, token);
+    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? [];
+  } catch (e) {
+    console.error("Erro ao buscar contas a pagar:", e);
+    return 0;
+  }
+
+  if (contas.length === 0) return 0;
+
+  const rows = (contas as any[]).map((c) => ({
+    id: String(c.id),
+    descricao: c.description ?? c.name ?? "—",
+    fornecedor_nome: c.supplier?.name ?? c.vendor?.name ?? c.customer?.name ?? null,
+    valor: Number(c.value ?? c.amount ?? c.total ?? 0),
+    vencimento: c.dueDate ?? c.due_date ?? null,
+    status: c.status ?? "pending",
+    pago_em: c.paymentDate ?? c.paid_at ?? null,
+    valor_pago: Number(c.paidValue ?? c.amountPaid ?? 0),
+    categoria: c.category?.name ?? c.costCenter ?? null,
+    sincronizado_em: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase.from("ca_contas_pagar").upsert(rows, { onConflict: "id" });
+  if (error) console.error("Erro ao salvar contas a pagar:", error);
+  return rows.length;
+}
+
 // ─── Sync: Contratos recorrentes ─────────────────────────────────────────────
 async function syncContratos(token: string) {
   let contratos: unknown[] = [];
@@ -219,10 +284,12 @@ serve(async (req) => {
   try {
     const token = await getAccessToken();
 
-    const [nVendas, nCobrancas, nContratos] = await Promise.all([
+    const [nVendas, nCobrancas, nContratos, nSaldos, nContasPagar] = await Promise.all([
       syncVendas(token),
       syncCobrancas(token),
       syncContratos(token),
+      syncSaldos(token),
+      syncContasPagar(token),
     ]);
 
     // Registrar última sincronização
@@ -232,7 +299,7 @@ serve(async (req) => {
     );
 
     return new Response(
-      JSON.stringify({ ok: true, vendas: nVendas, cobrancas: nCobrancas, contratos: nContratos }),
+      JSON.stringify({ ok: true, vendas: nVendas, cobrancas: nCobrancas, contratos: nContratos, saldos: nSaldos, contas_pagar: nContasPagar }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {

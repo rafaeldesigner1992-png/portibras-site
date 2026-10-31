@@ -57,6 +57,31 @@ interface CrmContrato {
   lead?: { nome_empresa: string; contato: string };
 }
 
+interface CaSaldo {
+  id: string;
+  nome: string;
+  tipo: string | null;
+  saldo: number;
+  banco: string | null;
+  agencia: string | null;
+  conta: string | null;
+  ativo: boolean;
+  sincronizado_em: string;
+}
+
+interface CaContaPagar {
+  id: string;
+  descricao: string;
+  fornecedor_nome: string | null;
+  valor: number;
+  vencimento: string | null;
+  status: string;
+  pago_em: string | null;
+  valor_pago: number;
+  categoria: string | null;
+  sincronizado_em: string;
+}
+
 export const Route = createFileRoute("/painel/financeiro")({
   component: FinanceiroPage,
 });
@@ -162,6 +187,8 @@ function FinanceiroPage() {
   const [caVendas, setCaVendas] = useState<CaVenda[]>([]);
   const [caCobrancas, setCaCobrancas] = useState<CaCobranca[]>([]);
   const [caContratos, setCaContratos] = useState<CaContrato[]>([]);
+  const [caSaldos, setCaSaldos] = useState<CaSaldo[]>([]);
+  const [caContasPagar, setCaContasPagar] = useState<CaContaPagar[]>([]);
   const [crmContratos, setCrmContratos] = useState<CrmContrato[]>([]);
   const [carregandoCA, setCarregandoCA] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
@@ -203,15 +230,19 @@ function FinanceiroPage() {
 
   const carregarDadosCA = useCallback(async () => {
     setCarregandoCA(true);
-    const [v, c, ct, crm] = await Promise.all([
+    const [v, c, ct, s, cp, crm] = await Promise.all([
       supabase.from("ca_vendas").select("*").order("data_emissao", { ascending: false }).limit(200),
       supabase.from("ca_cobrancas").select("*").order("vencimento", { ascending: true }).limit(200),
       supabase.from("ca_contratos").select("*").order("cliente_nome").limit(200),
+      supabase.from("ca_saldos").select("*").order("nome").limit(50),
+      supabase.from("ca_contas_pagar").select("*").order("vencimento", { ascending: true }).limit(200),
       supabase.from("crm_propostas").select("*, lead:crm_leads(nome_empresa, contato)").eq("status", "fechado").limit(200),
     ]);
     if (v.data) setCaVendas(v.data as CaVenda[]);
     if (c.data) setCaCobrancas(c.data as CaCobranca[]);
     if (ct.data) setCaContratos(ct.data as CaContrato[]);
+    if (s.data) setCaSaldos(s.data as CaSaldo[]);
+    if (cp.data) setCaContasPagar(cp.data as CaContaPagar[]);
     if (crm.data) setCrmContratos(crm.data as CrmContrato[]);
     setCarregandoCA(false);
   }, []);
@@ -469,6 +500,8 @@ function FinanceiroPage() {
           vendas={caVendas}
           cobrancas={caCobrancas}
           contratos={caContratos}
+          saldos={caSaldos}
+          contasPagar={caContasPagar}
           crmContratos={crmContratos}
           ultimoSync={ultimoSync}
           filtroMeses={filtroMeses}
@@ -1033,7 +1066,7 @@ function Indicador({ label, valor, status, desc }: { label: string; valor: strin
 
 // ─── ContaAzulView ────────────────────────────────────────────────────────────
 function ContaAzulView({
-  conectado, carregando, vendas, cobrancas, contratos, crmContratos,
+  conectado, carregando, vendas, cobrancas, contratos, saldos, contasPagar, crmContratos,
   ultimoSync, filtroMeses, setFiltroMeses, horizonteFuturo, setHorizonteFuturo,
 }: {
   conectado: boolean;
@@ -1041,6 +1074,8 @@ function ContaAzulView({
   vendas: CaVenda[];
   cobrancas: CaCobranca[];
   contratos: CaContrato[];
+  saldos: CaSaldo[];
+  contasPagar: CaContaPagar[];
   crmContratos: CrmContrato[];
   ultimoSync: string | null;
   filtroMeses: 1 | 2 | 3;
@@ -1096,6 +1131,22 @@ function ContaAzulView({
     return new Date(c.vencimento) < hoje;
   }).reduce((s, c) => s + c.valor, 0);
 
+  // ── Saldos e contas a pagar ──
+  const saldoTotal = saldos.filter(s => s.ativo).reduce((acc, s) => acc + s.saldo, 0);
+  const aPagarVencidos = contasPagar.filter(c => {
+    const statuses = ["PAID", "RECEIVED", "CANCELED", "CANCELLED"];
+    if (statuses.includes(c.status.toUpperCase())) return false;
+    if (!c.vencimento) return false;
+    return new Date(c.vencimento) < hoje;
+  }).reduce((s, c) => s + c.valor, 0);
+  const aPagarProximo = contasPagar.filter(c => {
+    const statuses = ["PAID", "RECEIVED", "CANCELED", "CANCELLED"];
+    if (statuses.includes(c.status.toUpperCase())) return false;
+    if (!c.vencimento) return false;
+    const venc = new Date(c.vencimento);
+    return venc >= hoje && venc <= horizonte;
+  }).reduce((s, c) => s + c.valor, 0);
+
   // ── Conciliação: contratos CRM sem contrato ativo no CA ───────────────────
   const nomesCA = contratos
     .filter(c => c.status === "ACTIVE" || c.status === "active")
@@ -1120,13 +1171,34 @@ function ContaAzulView({
   return (
     <div className="space-y-6">
 
-      {/* ── KPIs ── */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      {/* ── KPIs linha 1: Saldos bancários ── */}
+      {saldos.length > 0 && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-blue-500">💙 Saldo das contas</span>
+            <span className="ml-auto text-lg font-bold text-blue-700">{fmt(saldoTotal)}</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {saldos.filter(s => s.ativo).map(s => (
+              <div key={s.id} className="rounded-lg bg-white border border-blue-100 px-3 py-2 flex items-center gap-3">
+                <div>
+                  <p className="text-xs font-medium text-gray-800">{s.nome}</p>
+                  {s.banco && <p className="text-[10px] text-gray-400">{s.banco}{s.agencia ? ` · Ag ${s.agencia}` : ""}</p>}
+                </div>
+                <p className="text-sm font-bold text-gray-900 ml-2">{fmt(s.saldo)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── KPIs linha 2: Recebíveis e pagamentos ── */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "Faturado (período)", valor: fmt(totalFaturado), icon: FileText, cor: "bg-blue-50 text-blue-600" },
           { label: "Recebido", valor: fmt(totalRecebido), icon: CheckCircle2, cor: "bg-green-50 text-green-600" },
-          { label: `A receber (${horizonteFuturo}d)`, valor: fmt(aReceber), icon: Clock, cor: "bg-yellow-50 text-yellow-600" },
-          { label: "Em atraso", valor: fmt(emAtraso), icon: AlertCircle, cor: emAtraso > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-400" },
+          { label: `A receber vencidos`, valor: fmt(emAtraso), icon: AlertCircle, cor: emAtraso > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-400" },
+          { label: `A pagar vencidos`, valor: fmt(aPagarVencidos), icon: TrendingDown, cor: aPagarVencidos > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-400" },
         ].map(kpi => (
           <div key={kpi.label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
             <div className={cn("mb-2 flex h-9 w-9 items-center justify-center rounded-lg", kpi.cor)}>
@@ -1181,6 +1253,55 @@ function ContaAzulView({
                   <td className="px-4 py-3.5 text-gray-600">{fmtDate(c.vencimento)}</td>
                   <td className="px-4 py-3.5 text-right font-medium text-gray-900">{fmt(c.valor)}</td>
                   <td className="px-4 py-3.5 text-right text-gray-600">{c.valor_pago > 0 ? fmt(c.valor_pago) : "—"}</td>
+                  <td className="px-4 py-3.5 text-center">
+                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(c.status))}>
+                      {c.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Contas a pagar ── */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <TrendingDown className="h-4 w-4 text-red-500" />
+            <span className="text-sm font-semibold text-gray-800">Contas a Pagar</span>
+            {aPagarVencidos > 0 && (
+              <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">
+                ⚠ {fmt(aPagarVencidos)} vencidos
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Próximos {horizonteFuturo}d:</span>
+            <span className="text-xs font-semibold text-orange-600">{fmt(aPagarProximo)}</span>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500">
+                <th className="px-5 py-3">Descrição</th>
+                <th className="px-4 py-3">Fornecedor</th>
+                <th className="px-4 py-3">Vencimento</th>
+                <th className="px-4 py-3 text-right">Valor</th>
+                <th className="px-4 py-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {contasPagar.length === 0 ? (
+                <tr><td colSpan={5} className="px-5 py-8 text-center text-xs text-gray-400">Nenhuma conta a pagar encontrada</td></tr>
+              ) : contasPagar.map(c => (
+                <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[180px] truncate">{c.descricao}</td>
+                  <td className="px-4 py-3.5 text-gray-600 max-w-[160px] truncate">{c.fornecedor_nome ?? "—"}</td>
+                  <td className="px-4 py-3.5 text-gray-600">{fmtDate(c.vencimento)}</td>
+                  <td className="px-4 py-3.5 text-right font-medium text-gray-900">{fmt(c.valor)}</td>
                   <td className="px-4 py-3.5 text-center">
                     <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(c.status))}>
                       {c.status}
