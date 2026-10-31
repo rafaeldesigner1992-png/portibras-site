@@ -54,7 +54,7 @@ serve(async (req) => {
   return new Response(null, {
     status: 302,
     headers: {
-      Location: "https://painel.portibras.com.br/painel/logistica?google_connected=true",
+      Location: "https://www.portibras.com.br/painel/logistica?google_connected=true",
     },
   });
 });
