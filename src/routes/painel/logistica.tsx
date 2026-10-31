@@ -113,7 +113,7 @@ interface PedidoFechado {
   criado_em: string;
   atualizado_em: string | null;
   enviado_logistica: boolean;
-  lead?: { nome_empresa: string; contato: string };
+  lead?: { nome: string; empresa: string };
 }
 
 // ─── Atendimentos ─────────────────────────────────────────────────────────────
@@ -659,7 +659,7 @@ function LogisticaPage() {
     setCarregandoPedidos(true);
     const { data } = await supabase
       .from("crm_propostas")
-      .select("*, lead:crm_leads(nome_empresa, contato)")
+      .select("*, lead:crm_leads(nome, empresa)")
       .eq("status", "fechado")
       .order("atualizado_em", { ascending: false });
     if (data) setPedidosFechados(data as PedidoFechado[]);
@@ -1342,7 +1342,7 @@ function LogisticaPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {pedidosFechados.map(p => {
-                      const clienteNome = p.lead?.nome_empresa || p.lead?.contato || "—";
+                      const clienteNome = p.lead?.empresa || p.lead?.nome || "—";
                       const valorMensal = p.conteudo?.parcela ?? null;
                       const dataFecho = p.atualizado_em
                         ? new Date(p.atualizado_em).toLocaleDateString("pt-BR")
