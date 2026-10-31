@@ -1066,14 +1066,19 @@ function LogisticaPage() {
         { headers: { Authorization: `Bearer ${token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY } }
       );
       const json = await res.json();
+      console.log("[GoogleCalendar] status:", res.status, "body:", json);
       if (json.error === "not_connected" || json.error === "token_expired") {
         setGoogleConectado(false);
         setEventosGoogle([]);
-      } else if (json.eventos) {
+      } else if (res.ok && "eventos" in json) {
         setGoogleConectado(true);
-        setEventosGoogle(json.eventos);
+        setEventosGoogle(json.eventos ?? []);
+      } else {
+        // resposta inesperada — trata como não conectado
+        setGoogleConectado(false);
       }
-    } catch {
+    } catch (e) {
+      console.error("[GoogleCalendar] erro:", e);
       setGoogleConectado(false);
     }
     setCarregandoGoogle(false);
