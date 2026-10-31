@@ -29,15 +29,15 @@ serve(async (req) => {
       );
     }
 
-    // Troca o código pelo token usando Basic Auth (exigido pelo Conta Azul)
+    // Conta Azul (Cognito) exige JSON no body + Basic Auth no header
     const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
     const tokenRes = await fetch(TOKEN_URL, {
       method: "POST",
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
         "Authorization": `Basic ${basicAuth}`,
       },
-      body: new URLSearchParams({
+      body: JSON.stringify({
         grant_type: "authorization_code",
         code,
         redirect_uri,
