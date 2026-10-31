@@ -3174,6 +3174,66 @@ function CrmPage() {
   const [gavetaFiltros, setGavetaFiltros] = useState(false);
   const [gavetaEtapas, setGavetaEtapas] = useState(false);
 
+  // Importação CSV do Hunter Desktop
+  const [modalImport, setModalImport] = useState(false);
+  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
+  const [importando, setImportando] = useState(false);
+  const [importResult, setImportResult] = useState<{ok: number; erros: number} | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return;
+      const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+      const rows = lines.slice(1).map(line => {
+        const vals = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g) ?? line.split(",");
+        const row: Record<string, string> = {};
+        headers.forEach((h, i) => { row[h] = (vals[i] ?? "").trim().replace(/^"|"$/g, ""); });
+        return row;
+      }).filter(r => r["nome"] || r["empresa"] || r["title"]);
+      setImportRows(rows);
+      setImportResult(null);
+      setModalImport(true);
+    };
+    reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  }
+
+  async function confirmarImport() {
+    setImportando(true);
+    let ok = 0; let erros = 0;
+    for (const r of importRows) {
+      try {
+        const nome = r["nome"] || r["title"] || r["empresa"] || "Lead importado";
+        await supabase.from("crm_leads").insert({
+          nome,
+          empresa:              r["empresa"]  || r["title"] || "",
+          cnpj:                 (r["cnpj"] || "").replace(/\D/g, ""),
+          telefone:             r["telefone"] || r["phone"] || "",
+          email:                r["email"]    || r["emails"]?.split(";")[0] || "",
+          etapa:                "prospecto" as Etapa,
+          valor_estimado:       null,
+          tipo_negocio:         null,
+          observacoes:          `Importado via Hunter Desktop. Categoria: ${r["categoria"] || r["category"] || "—"}. Rating: ${r["rating"] || r["review_rating"] || "—"}. Fonte: ${r["fonte"] || "Google Maps"}`,
+          prazo:                null,
+          proximo_contato:      null,
+          endereco_fiscal:      r["endereco"] || r["address"] || "",
+          endereco_atendimento: r["endereco"] || r["address"] || "",
+          data_inicio:          new Date().toISOString(),
+        });
+        ok++;
+      } catch { erros++; }
+    }
+    setImportResult({ ok, erros });
+    setImportando(false);
+    if (ok > 0) carregar();
+  }
+
   const [modal, setModal] = useState(false);
   const [selecionado, setSelecionado] = useState<Lead | null>(null);
   const [form, setForm] = useState<Partial<Lead>>({});
@@ -3661,6 +3721,11 @@ function CrmPage() {
                 <Columns className="h-4 w-4" /> Kanban
               </button>
             </div>
+            <button onClick={() => importRef.current?.click()} title="Importar leads do Hunter Desktop (CSV)"
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-600 shadow-sm hover:bg-gray-50">
+              <Upload className="h-4 w-4" /> Importar CSV
+            </button>
+            <input ref={importRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
             <button onClick={() => abrirModal()} className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
               <Plus className="h-4 w-4" /> Novo Lead
             </button>
@@ -4377,6 +4442,92 @@ function CrmPage() {
                 <button onClick={() => setModal(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
                 <button onClick={salvar} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Importação CSV (Hunter Desktop) ── */}
+      {modalImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={e => e.target === e.currentTarget && !importando && setModalImport(false)}>
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Upload className="h-5 w-5 text-[#1a6b2f]" />
+                <h2 className="text-lg font-semibold text-gray-900">Importar Leads do Hunter</h2>
+              </div>
+              {!importando && (
+                <button onClick={() => setModalImport(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100">
+                  <X className="h-5 w-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="px-6 py-4 max-h-[60vh] overflow-y-auto">
+              {importResult ? (
+                <div className="text-center py-6">
+                  <div className="text-5xl mb-3">{importResult.erros === 0 ? "✅" : "⚠️"}</div>
+                  <p className="text-xl font-bold text-gray-900 mb-1">
+                    {importResult.ok} lead{importResult.ok !== 1 ? "s" : ""} importado{importResult.ok !== 1 ? "s" : ""}
+                  </p>
+                  {importResult.erros > 0 && (
+                    <p className="text-sm text-red-500">{importResult.erros} erro{importResult.erros !== 1 ? "s" : ""}</p>
+                  )}
+                  <p className="text-sm text-gray-500 mt-2">Os leads entraram na etapa <strong>Prospecto</strong>.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500 mb-3">
+                    {importRows.length} lead{importRows.length !== 1 ? "s" : ""} encontrado{importRows.length !== 1 ? "s" : ""} no arquivo. Revise abaixo:
+                  </p>
+                  <div className="rounded-xl border border-gray-200 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {["Nome", "Telefone", "E-mail", "Endereço", "Categoria"].map(h => (
+                            <th key={h} className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importRows.slice(0, 20).map((r, i) => (
+                          <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
+                            <td className="px-3 py-2 font-medium text-gray-800 max-w-[160px] truncate">{r["nome"] || r["title"] || "—"}</td>
+                            <td className="px-3 py-2 text-gray-600">{r["telefone"] || r["phone"] || "—"}</td>
+                            <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate">{r["email"] || r["emails"]?.split(";")[0] || "—"}</td>
+                            <td className="px-3 py-2 text-gray-600 max-w-[160px] truncate">{r["endereco"] || r["address"] || "—"}</td>
+                            <td className="px-3 py-2 text-gray-600">{r["categoria"] || r["category"] || "—"}</td>
+                          </tr>
+                        ))}
+                        {importRows.length > 20 && (
+                          <tr><td colSpan={5} className="px-3 py-2 text-center text-gray-400 text-xs">+ {importRows.length - 20} mais…</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+              {importResult ? (
+                <button onClick={() => setModalImport(false)}
+                  className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">
+                  Ver leads no CRM
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => setModalImport(false)} disabled={importando}
+                    className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    Cancelar
+                  </button>
+                  <button onClick={confirmarImport} disabled={importando || importRows.length === 0}
+                    className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50 flex items-center justify-center gap-2">
+                    {importando ? <><Loader2 className="h-4 w-4 animate-spin" /> Importando…</> : `Importar ${importRows.length} lead${importRows.length !== 1 ? "s" : ""}`}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
