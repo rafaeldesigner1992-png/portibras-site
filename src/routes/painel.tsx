@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { PainelSidebar } from "@/components/painel/PainelSidebar";
+import { MobileNav } from "@/components/painel/MobileNav";
 
 export const Route = createFileRoute("/painel")({
   component: PainelLayout,
@@ -32,10 +33,15 @@ function PainelLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <PainelSidebar />
-      <main className="flex-1 overflow-y-auto">
+      {/* Sidebar — oculta no mobile */}
+      <div className="hidden md:flex">
+        <PainelSidebar />
+      </div>
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
         <Outlet />
       </main>
+      {/* Bottom nav — apenas no mobile */}
+      <MobileNav />
     </div>
   );
 }
