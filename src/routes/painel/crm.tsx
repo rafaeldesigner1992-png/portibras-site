@@ -3257,17 +3257,21 @@ function CrmPage() {
   }
 
   function renderTextoComLinks(texto: string) {
-    // Detecta padrões [texto](url) e transforma em links
-    const partes = texto.split(/(\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
+    // Divide por links [texto](url) e bold **texto**
+    const partes = texto.split(/(\[[^\]]+\]\(https?:\/\/[^)]+\)|\*\*[^*]+\*\*)/g);
     return partes.map((parte, i) => {
-      const match = parte.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
-      if (match) {
+      const linkMatch = parte.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+      if (linkMatch) {
         return (
-          <a key={i} href={match[2]} target="_blank" rel="noopener noreferrer"
+          <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer"
             className="text-blue-600 hover:underline font-medium">
-            {match[1]}
+            {linkMatch[1]}
           </a>
         );
+      }
+      const boldMatch = parte.match(/^\*\*([^*]+)\*\*$/);
+      if (boldMatch) {
+        return <strong key={i}>{boldMatch[1]}</strong>;
       }
       return <span key={i}>{parte}</span>;
     });
@@ -3292,6 +3296,45 @@ function CrmPage() {
       });
       await carregarConversas(cardAberto.id);
       setToast({ msg: `${tipo} anexado com sucesso!`, tipo: "sucesso" });
+
+      // Se for DTS, chama a análise automática
+      if (tipo === "DTS" && url) {
+        try {
+          const analiseRes = await fetch(
+            "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/analisar-dts",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              },
+              body: JSON.stringify({ pdf_url: url }),
+            }
+          );
+          if (analiseRes.ok) {
+            const { resumo } = await analiseRes.json();
+            if (resumo) {
+              const linhasPecas = (resumo.pecas ?? [])
+                .map((p: { nome: string; quantidade: number }) => `  • ${p.nome}: **${p.quantidade} un**`)
+                .join("\n");
+              const textoResumo =
+                `📊 **Resumo do DTS:**\n` +
+                `  • Total de portas vistoriadas: **${resumo.total_portas}**\n` +
+                `  • Conformes: **${resumo.conformes}** | Não conformes: **${resumo.nao_conformes}**\n` +
+                `  • Status geral: **${resumo.status_geral}**\n\n` +
+                `🔧 **Peças a substituir/manutenção:**\n${linhasPecas}`;
+              await supabase.from("crm_conversas").insert({
+                lead_id: cardAberto.id,
+                texto: textoResumo,
+                autor: "Sistema",
+              });
+              await carregarConversas(cardAberto.id);
+            }
+          }
+        } catch (_) {
+          // Falha silenciosa na análise — o upload já foi registrado
+        }
+      }
     } catch (e: any) {
       setToast({ msg: `Erro ao anexar ${tipo}: ${e.message}`, tipo: "erro" });
     }
