@@ -1,23 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-// Converte ArrayBuffer para base64 sem estourar stack
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -25,88 +16,25 @@ serve(async (req) => {
   }
 
   try {
-    const { pdf_url } = await req.json();
+    const { pdf_url, lead_id } = await req.json();
 
-    if (!pdf_url) {
-      return new Response(JSON.stringify({ error: "pdf_url é obrigatório" }), {
+    if (!pdf_url || !lead_id) {
+      return new Response(JSON.stringify({ error: "pdf_url e lead_id são obrigatórios" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Faz o download do PDF
-    const pdfRes = await fetch(pdf_url);
-    if (!pdfRes.ok) {
-      throw new Error(`Não foi possível baixar o PDF: ${pdfRes.status}`);
-    }
-    const pdfBuffer = await pdfRes.arrayBuffer();
-    const pdfBase64 = arrayBufferToBase64(pdfBuffer);
+    // Responde imediatamente ao frontend (não bloqueia)
+    // e processa em background
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Envia para Claude API com o PDF em base64
-    const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "pdfs-2024-09-25",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5",
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: "application/pdf",
-                  data: pdfBase64,
-                },
-              },
-              {
-                type: "text",
-                text: `Analise este DTS de vistoria de portas corta-fogo. Extraia SOMENTE estas informações em JSON:
-
-{
-  "total_portas": número do campo "Total de PCF Vistoriadas",
-  "conformes": número do campo "Total Conformes (C)",
-  "nao_conformes": número do campo "Total Não Conformes (NC)",
-  "status_geral": texto do campo "Status Geral das Portas",
-  "pecas": [
-    { "nome": "nome da peça", "quantidade": número }
-  ]
-}
-
-Para as peças, use EXATAMENTE o texto da seção "3. RESUMO DE MATERIAIS IDENTIFICADOS".
-
-Responda APENAS com o JSON, sem mais nada.`,
-              },
-            ],
-          },
-        ],
-      }),
+    // Processa de forma assíncrona
+    processarDTS(pdf_url, lead_id, supabase).catch((e) => {
+      console.error("[analisar-dts] erro no processamento:", e.message);
     });
 
-    if (!claudeRes.ok) {
-      const err = await claudeRes.text();
-      throw new Error(`Erro na API Claude: ${err}`);
-    }
-
-    const claudeData = await claudeRes.json();
-    const textoResposta = claudeData.content?.[0]?.text ?? "";
-
-    // Extrai o JSON da resposta
-    const jsonMatch = textoResposta.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error(`Claude retornou: ${textoResposta}`);
-    }
-
-    const resumo = JSON.parse(jsonMatch[0]);
-
-    return new Response(JSON.stringify({ resumo }), {
+    return new Response(JSON.stringify({ ok: true, msg: "Análise iniciada" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
@@ -117,3 +45,102 @@ Responda APENAS com o JSON, sem mais nada.`,
     });
   }
 });
+
+async function processarDTS(pdf_url: string, lead_id: string, supabase: any) {
+  // Baixa só os primeiros 200KB do PDF (página 1 tem o resumo)
+  const pdfRes = await fetch(pdf_url, {
+    headers: { Range: "bytes=0-204800" },
+  });
+  if (!pdfRes.ok && pdfRes.status !== 206) {
+    throw new Error(`Não foi possível baixar o PDF: ${pdfRes.status}`);
+  }
+
+  const pdfBuffer = await pdfRes.arrayBuffer();
+
+  // Converte para base64 em chunks
+  const bytes = new Uint8Array(pdfBuffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  const pdfBase64 = btoa(binary);
+
+  // Envia para Claude API
+  const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "pdfs-2024-09-25",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5",
+      max_tokens: 512,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: "application/pdf",
+                data: pdfBase64,
+              },
+            },
+            {
+              type: "text",
+              text: `Leia este DTS de vistoria de portas corta-fogo e responda APENAS com este JSON:
+
+{
+  "total_portas": número,
+  "conformes": número,
+  "nao_conformes": número,
+  "status_geral": "texto",
+  "pecas": [{"nome": "texto", "quantidade": número}]
+}
+
+Dados na seção "2. DADOS DA VISTORIA" e "3. RESUMO DE MATERIAIS IDENTIFICADOS". Nenhum texto além do JSON.`,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!claudeRes.ok) {
+    const err = await claudeRes.text();
+    throw new Error(`Erro Claude API: ${err}`);
+  }
+
+  const claudeData = await claudeRes.json();
+  const texto = claudeData.content?.[0]?.text ?? "";
+  console.log("[analisar-dts] resposta Claude:", texto);
+
+  const jsonMatch = texto.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`JSON não encontrado na resposta: ${texto}`);
+
+  const resumo = JSON.parse(jsonMatch[0]);
+
+  const linhasPecas = (resumo.pecas ?? [])
+    .map((p: { nome: string; quantidade: number }) => `  • ${p.nome}: **${p.quantidade} un**`)
+    .join("\n");
+
+  const textoResumo =
+    `📊 **Resumo do DTS:**\n` +
+    `  • Total de portas vistoriadas: **${resumo.total_portas}**\n` +
+    `  • Conformes: **${resumo.conformes}** | Não conformes: **${resumo.nao_conformes}**\n` +
+    `  • Status geral: **${resumo.status_geral}**\n\n` +
+    `🔧 **Peças / Manutenção:**\n${linhasPecas}`;
+
+  await supabase.from("crm_conversas").insert({
+    lead_id,
+    texto: textoResumo,
+    autor: "Sistema",
+  });
+
+  console.log("[analisar-dts] resumo salvo para lead:", lead_id);
+}

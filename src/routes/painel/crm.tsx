@@ -3308,28 +3308,15 @@ function CrmPage() {
                 "Content-Type": "application/json",
                 apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
               },
-              body: JSON.stringify({ pdf_url: url }),
+              body: JSON.stringify({ pdf_url: url, lead_id: cardAberto.id }),
             }
           );
           if (analiseRes.ok) {
-            const { resumo } = await analiseRes.json();
-            if (resumo) {
-              const linhasPecas = (resumo.pecas ?? [])
-                .map((p: { nome: string; quantidade: number }) => `  • ${p.nome}: **${p.quantidade} un**`)
-                .join("\n");
-              const textoResumo =
-                `📊 **Resumo do DTS:**\n` +
-                `  • Total de portas vistoriadas: **${resumo.total_portas}**\n` +
-                `  • Conformes: **${resumo.conformes}** | Não conformes: **${resumo.nao_conformes}**\n` +
-                `  • Status geral: **${resumo.status_geral}**\n\n` +
-                `🔧 **Peças a substituir/manutenção:**\n${linhasPecas}`;
-              await supabase.from("crm_conversas").insert({
-                lead_id: cardAberto.id,
-                texto: textoResumo,
-                autor: "Sistema",
-              });
-              await carregarConversas(cardAberto.id);
-            }
+            // Processamento assíncrono — recarrega histórico após 20s
+            const idLead = cardAberto.id;
+            setTimeout(async () => {
+              await carregarConversas(idLead);
+            }, 20000);
           }
         } catch (_) {
           // Falha silenciosa na análise — o upload já foi registrado
