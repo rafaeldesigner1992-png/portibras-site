@@ -11,8 +11,7 @@ const CLIENT_ID = "fmqdoaoovj40498lfpg739pos";
 const CLIENT_SECRET = "gseh8ikddi2l7gie3tg2olif2na5oh3d03lfubajfl589d2rgb0";
 const REDIRECT_URI = `${window.location.origin}/painel/auth/conta-azul`;
 const TOKEN_URL = "https://api.contaazul.com/auth/token";
-// O Conta Azul exige passar pelo /auth/login que redireciona ao authorize internamente
-const AUTH_URL = "https://api.contaazul.com/auth/login";
+const AUTH_URL = "https://api.contaazul.com/auth/authorize";
 
 function ContaAzulCallback() {
   const navigate = useNavigate();
@@ -83,10 +82,7 @@ function ContaAzulCallback() {
       `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
       "scope=sales%20receivables%20contracts",
     ].join("&");
-    const fullUrl = `${AUTH_URL}?${params}`;
-    console.log("CA AUTH URL:", fullUrl);
-    setMsg("URL gerada: " + fullUrl);
-    setStatus("error"); // mostra na tela para debug
+    window.location.href = `${AUTH_URL}?${params}`;
   }
 
   return (
