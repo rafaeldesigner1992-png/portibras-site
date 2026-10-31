@@ -907,7 +907,22 @@ function LogisticaPage() {
   const [carregandoTickets, setCarregandoTickets] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState<string>("aberto");
 
-  useEffect(() => { if (aba === "tecnico") carregarTickets(); }, [aba]);
+  // ── Fila unificada de agendáveis ───────────────────────────────────────────
+  interface ItemAgendavel {
+    id: string;
+    tipo: "vistoria" | "atendimento" | "manutencao";
+    cliente: string;
+    endereco: string | null;
+    bairro: string | null;
+    data: string | null;
+    status: string;
+    tecnico: string | null;
+    descricao?: string;
+  }
+  const [agendaveis, setAgendaveis] = useState<ItemAgendavel[]>([]);
+  const [carregandoAgenda, setCarregandoAgenda] = useState(false);
+
+  useEffect(() => { if (aba === "tecnico") { carregarTickets(); carregarAgendaveis(); } }, [aba]);
 
   async function carregarTickets() {
     setCarregandoTickets(true);
@@ -917,6 +932,104 @@ function LogisticaPage() {
       .order("agendado_para", { ascending: true });
     if (data) setTickets(data as TicketTecnico[]);
     setCarregandoTickets(false);
+  }
+
+  function extrairBairro(endereco: string | null): string | null {
+    if (!endereco) return null;
+    // Tenta extrair bairro de endereços no formato "Rua X, N - Bairro, Cidade - UF"
+    const partes = endereco.split(/[-,]/);
+    if (partes.length >= 3) return partes[partes.length - 3]?.trim() || null;
+    if (partes.length === 2) return partes[1]?.trim() || null;
+    return null;
+  }
+
+  async function carregarAgendaveis() {
+    setCarregandoAgenda(true);
+    const itens: ReturnType<typeof useState<any[]>>[0] = [];
+
+    // Vistorias pendentes e agendadas
+    const { data: vis } = await supabase
+      .from("vistorias")
+      .select("id, cliente_nome, cliente_endereco, status, data_agendada, tecnico_nome")
+      .in("status", ["pendente", "agendada", "em_andamento"]);
+
+    (vis ?? []).forEach((v: any) => {
+      itens.push({
+        id: v.id,
+        tipo: "vistoria",
+        cliente: v.cliente_nome,
+        endereco: v.cliente_endereco,
+        bairro: extrairBairro(v.cliente_endereco),
+        data: v.data_agendada,
+        status: v.status,
+        tecnico: v.tecnico_nome,
+        descricao: "Vistoria técnica",
+      });
+    });
+
+    // Atendimentos programados ou em andamento
+    const { data: atend } = await supabase
+      .from("atendimentos")
+      .select("id, titulo, endereco, status, data_agendada, responsaveis")
+      .in("status", ["Programado", "Em andamento"]);
+
+    (atend ?? []).forEach((a: any) => {
+      itens.push({
+        id: a.id,
+        tipo: "atendimento",
+        cliente: a.titulo,
+        endereco: a.endereco,
+        bairro: extrairBairro(a.endereco),
+        data: a.data_agendada,
+        status: a.status,
+        tecnico: Array.isArray(a.responsaveis) ? a.responsaveis[0] : null,
+        descricao: "Atendimento",
+      });
+    });
+
+    // Contratos ativos (manutenções recorrentes)
+    const { data: contr } = await supabase
+      .from("ca_contratos")
+      .select("id, nome, cliente_nome")
+      .eq("status", "active")
+      .limit(30);
+
+    (contr ?? []).forEach((c: any) => {
+      itens.push({
+        id: c.id,
+        tipo: "manutencao",
+        cliente: c.cliente_nome,
+        endereco: null,
+        bairro: null,
+        data: null,
+        status: "ativo",
+        tecnico: null,
+        descricao: c.nome,
+      });
+    });
+
+    // Ordenar: sem data primeiro (pendentes), depois por data
+    itens.sort((a: any, b: any) => {
+      if (!a.data && !b.data) return a.cliente.localeCompare(b.cliente);
+      if (!a.data) return -1;
+      if (!b.data) return 1;
+      return new Date(a.data).getTime() - new Date(b.data).getTime();
+    });
+
+    setAgendaveis(itens as any);
+    setCarregandoAgenda(false);
+  }
+
+  function abrirGoogleCalendar(item: any) {
+    const titulo = encodeURIComponent(`[${item.tipo === "vistoria" ? "Vistoria" : item.tipo === "atendimento" ? "Atendimento" : "Manutenção"}] ${item.cliente}`);
+    const local = encodeURIComponent(item.endereco ?? "");
+    const detalhe = encodeURIComponent(`Tipo: ${item.descricao}\nEndereço: ${item.endereco ?? "—"}\nTécnico: ${item.tecnico ?? "—"}`);
+    // Data base: amanhã ao meio-dia se não tiver data
+    const base = item.data ? new Date(item.data) : (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(12, 0, 0, 0); return d; })();
+    const fim = new Date(base.getTime() + 2 * 60 * 60 * 1000); // +2h
+    const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${fmt(base)}/${fmt(fim)}&location=${local}&details=${detalhe}`;
+    window.open(url, "_blank");
   }
 
   const ticketsFiltrados = tickets.filter(t =>
@@ -2085,6 +2198,111 @@ function LogisticaPage() {
             <p className="text-xs text-gray-400">
               Os tickets são gerenciados nos aplicativos de campo (AppSheet) e sincronizados aqui pela tabela <code className="font-mono bg-gray-100 px-1 rounded">tickets_tecnicos</code> no Supabase.
             </p>
+          </div>
+
+          {/* ── Fila de Agendamentos ── */}
+          <div className="mt-8">
+            <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-[#1a6b2f]" />
+                <h2 className="text-sm font-semibold text-gray-700">Fila de Agendamentos</h2>
+                {agendaveis.length > 0 && (
+                  <span className="rounded-full bg-[#e8f5e9] px-2 py-0.5 text-xs font-medium text-[#1a6b2f]">
+                    {agendaveis.length} {agendaveis.length === 1 ? "item" : "itens"}
+                  </span>
+                )}
+              </div>
+              <button onClick={carregarAgendaveis}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
+                <Loader2 className={cn("h-3 w-3", carregandoAgenda && "animate-spin")} /> Atualizar
+              </button>
+            </div>
+
+            {carregandoAgenda ? (
+              <div className="flex justify-center py-8 text-gray-400">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
+            ) : agendaveis.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-gray-400">
+                <CalendarIcon className="mx-auto h-8 w-8 mb-2 opacity-30" />
+                <p className="text-sm">Nenhum item pendente de agendamento</p>
+              </div>
+            ) : (() => {
+              // Agrupar por bairro
+              const grupos: Record<string, typeof agendaveis> = {};
+              agendaveis.forEach(item => {
+                const bairro = item.bairro ?? "Sem bairro identificado";
+                if (!grupos[bairro]) grupos[bairro] = [];
+                grupos[bairro].push(item);
+              });
+
+              const TIPO_COR: Record<string, string> = {
+                vistoria:    "bg-orange-50 text-orange-700 border-orange-200",
+                atendimento: "bg-blue-50 text-blue-700 border-blue-200",
+                manutencao:  "bg-purple-50 text-purple-700 border-purple-200",
+              };
+              const TIPO_LABEL: Record<string, string> = {
+                vistoria:    "Vistoria",
+                atendimento: "Atendimento",
+                manutencao:  "Manutenção",
+              };
+
+              return (
+                <div className="space-y-4">
+                  {Object.entries(grupos).map(([bairro, itens]) => (
+                    <div key={bairro} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                      <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-4 py-2.5">
+                        <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{bairro}</span>
+                        <span className="ml-auto text-xs text-gray-400">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>
+                      </div>
+                      <div className="divide-y divide-gray-50">
+                        {itens.map(item => (
+                          <div key={item.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/60 group">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-gray-900">{item.cliente}</span>
+                                <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", TIPO_COR[item.tipo])}>
+                                  {TIPO_LABEL[item.tipo]}
+                                </span>
+                              </div>
+                              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                                {item.endereco && (
+                                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                                    <MapPin className="h-3 w-3" /> {item.endereco}
+                                  </span>
+                                )}
+                                {item.data && (
+                                  <span className="flex items-center gap-1 text-xs text-blue-600">
+                                    <CalendarIcon className="h-3 w-3" />
+                                    {new Date(item.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                )}
+                                {item.tecnico && (
+                                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                                    <User className="h-3 w-3" /> {item.tecnico}
+                                  </span>
+                                )}
+                                {item.descricao && item.tipo === "manutencao" && (
+                                  <span className="text-xs text-gray-400 italic">{item.descricao}</span>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => abrirGoogleCalendar(item)}
+                              title="Agendar no Google Calendar"
+                              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                            >
+                              <CalendarIcon className="h-3.5 w-3.5" /> Google Calendar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </>
       )}
