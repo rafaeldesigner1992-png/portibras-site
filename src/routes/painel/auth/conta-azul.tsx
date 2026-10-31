@@ -8,9 +8,7 @@ export const Route = createFileRoute("/painel/auth/conta-azul")({
 });
 
 const CLIENT_ID = "s90G8jF0L4Fl0MIKUhAtDhH4aDol82JFN0ounsxgW2IOsz0o";
-const CLIENT_SECRET = "HF7SHzW0uEfpi1oHGn2fzLrmCJOoXLnFwGLoWAuZMjAn76SDqbQlHPa8kRTsP4fL";
 const REDIRECT_URI = `${window.location.origin}/painel/auth/conta-azul`;
-const TOKEN_URL = "https://api.contaazul.com/auth/token";
 const AUTH_URL = "https://login.contaazul.com/#/oauth/authorize";
 
 function ContaAzulCallback() {
@@ -37,34 +35,13 @@ function ContaAzulCallback() {
   async function trocarCodigo(code: string) {
     setStatus("loading");
     try {
-      // Conta Azul exige Basic Auth no header, não no body
-      const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
-      const res = await fetch(TOKEN_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Authorization": `Basic ${basicAuth}`,
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: REDIRECT_URI,
-        }),
+      // A troca é feita no servidor (Edge Function) para evitar CORS
+      const { data, error } = await supabase.functions.invoke("conta-azul-callback", {
+        body: { code, redirect_uri: REDIRECT_URI },
       });
 
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error("Erro ao trocar código: " + txt);
-      }
-
-      const token = await res.json();
-      const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
-
-      await supabase.from("configuracoes").upsert([
-        { chave: "ca_access_token", valor: token.access_token, descricao: "Conta Azul OAuth2 access token" },
-        { chave: "ca_refresh_token", valor: token.refresh_token, descricao: "Conta Azul OAuth2 refresh token" },
-        { chave: "ca_token_expires_at", valor: expiresAt, descricao: "Conta Azul token expira em" },
-      ], { onConflict: "chave" });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
 
       // Dispara primeiro sync
       await supabase.functions.invoke("sync-conta-azul");
