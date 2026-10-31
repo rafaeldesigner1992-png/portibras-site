@@ -6,8 +6,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const CONTA_AZUL_BASE = "https://api.contaazul.com/v1";
-const TOKEN_URL = "https://api.contaazul.com/auth/token";
+const CONTA_AZUL_BASE = "https://api-v2.contaazul.com";
+const TOKEN_URL = "https://api-v2.contaazul.com/oauth/token";
 
 const CLIENT_ID = Deno.env.get("CONTA_AZUL_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("CONTA_AZUL_CLIENT_SECRET")!;
@@ -89,6 +89,7 @@ async function salvarToken(token: { access_token: string; refresh_token?: string
 }
 
 // ─── Chamada genérica à API ──────────────────────────────────────────────────
+// path deve começar com /v1/... conforme documentação API v2
 async function apiCA(path: string, token: string) {
   const res = await fetch(`${CONTA_AZUL_BASE}${path}`, {
     headers: {
@@ -104,15 +105,13 @@ async function apiCA(path: string, token: string) {
 }
 
 // ─── Sync: Vendas (faturamento) ──────────────────────────────────────────────
+// Endpoint API v2: GET /v1/vendas?pagina=1&tamanho_pagina=100
 async function syncVendas(token: string) {
-  const hoje = new Date();
-  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
-  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().slice(0, 10);
-
   let vendas: unknown[] = [];
   try {
-    const data = await apiCA(`/sales?startDate=${inicio}&endDate=${fim}&size=200`, token);
-    vendas = Array.isArray(data) ? data : data?.content ?? data?.items ?? [];
+    // Busca últimas 100 vendas (v2 não filtra por data diretamente no list)
+    const data = await apiCA(`/v1/vendas?pagina=1&tamanho_pagina=100`, token);
+    vendas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.vendas ?? [];
   } catch (e) {
     console.error("Erro ao buscar vendas:", e);
     return 0;
@@ -120,16 +119,16 @@ async function syncVendas(token: string) {
 
   if (vendas.length === 0) return 0;
 
-  const rows = vendas.map((v: any) => ({
-    id: String(v.id ?? v.number),
-    numero: v.number ?? v.id,
-    cliente_nome: v.customer?.name ?? v.client?.name ?? "—",
-    cliente_documento: v.customer?.document ?? v.client?.document ?? null,
-    valor_total: Number(v.total ?? v.totalValue ?? 0),
+  const rows = (vendas as any[]).map((v) => ({
+    id: String(v.id ?? v.numero),
+    numero: v.numero ?? v.number ?? v.id,
+    cliente_nome: v.cliente?.nome ?? v.customer?.name ?? v.cliente_nome ?? "—",
+    cliente_documento: v.cliente?.documento ?? v.customer?.document ?? null,
+    valor_total: Number(v.valor_total ?? v.total ?? v.totalValue ?? 0),
     status: v.status ?? "unknown",
-    data_emissao: v.emission ?? v.emissionDate ?? v.createdAt ?? null,
-    data_vencimento: v.dueDate ?? null,
-    observacao: v.observation ?? v.notes ?? null,
+    data_emissao: v.data_emissao ?? v.emission ?? v.emissionDate ?? v.createdAt ?? null,
+    data_vencimento: v.data_vencimento ?? v.dueDate ?? null,
+    observacao: v.observacao ?? v.observation ?? v.notes ?? null,
     sincronizado_em: new Date().toISOString(),
   }));
 
@@ -139,16 +138,19 @@ async function syncVendas(token: string) {
 }
 
 // ─── Sync: Cobranças / Recebíveis ────────────────────────────────────────────
+// Endpoint API v2: GET /v1/financeiro/contasreceber?pagina=1&tamanho_pagina=100
 async function syncCobrancas(token: string) {
   const hoje = new Date();
-  // Janela: 2 meses atrás até 3 meses à frente (visão futura)
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
   const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0).toISOString().slice(0, 10);
 
   let cobrancas: unknown[] = [];
   try {
-    const data = await apiCA(`/receivables?startDate=${inicio}&endDate=${fim}&size=200`, token);
-    cobrancas = Array.isArray(data) ? data : data?.content ?? data?.items ?? [];
+    const data = await apiCA(
+      `/v1/financeiro/contasreceber?data_vencimento_inicial=${inicio}&data_vencimento_final=${fim}&pagina=1&tamanho_pagina=200`,
+      token
+    );
+    cobrancas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contasReceber ?? [];
   } catch (e) {
     console.error("Erro ao buscar cobranças:", e);
     return 0;
@@ -156,16 +158,16 @@ async function syncCobrancas(token: string) {
 
   if (cobrancas.length === 0) return 0;
 
-  const rows = cobrancas.map((c: any) => ({
+  const rows = (cobrancas as any[]).map((c) => ({
     id: String(c.id),
-    descricao: c.description ?? c.name ?? "—",
-    cliente_nome: c.customer?.name ?? c.client?.name ?? null,
-    valor: Number(c.value ?? c.amount ?? c.total ?? 0),
-    vencimento: c.dueDate ?? c.due_date ?? null,
+    descricao: c.descricao ?? c.description ?? c.name ?? "—",
+    cliente_nome: c.cliente?.nome ?? c.customer?.name ?? c.client?.name ?? null,
+    valor: Number(c.valor ?? c.value ?? c.amount ?? c.total ?? 0),
+    vencimento: c.data_vencimento ?? c.dueDate ?? c.due_date ?? null,
     status: c.status ?? "pending",
-    pago_em: c.paymentDate ?? c.paid_at ?? null,
-    valor_pago: Number(c.paidValue ?? c.amountPaid ?? 0),
-    tipo: c.type ?? "receita",
+    pago_em: c.data_pagamento ?? c.paymentDate ?? c.paid_at ?? null,
+    valor_pago: Number(c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
+    tipo: c.tipo ?? c.type ?? "receita",
     sincronizado_em: new Date().toISOString(),
   }));
 
@@ -175,11 +177,12 @@ async function syncCobrancas(token: string) {
 }
 
 // ─── Sync: Saldos das contas bancárias ──────────────────────────────────────
+// Endpoint API v2: GET /v1/financeiro/contasfinanceiras
 async function syncSaldos(token: string) {
   let contas: unknown[] = [];
   try {
-    const data = await apiCA(`/bank-accounts`, token);
-    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.bankAccounts ?? [];
+    const data = await apiCA(`/v1/financeiro/contasfinanceiras?pagina=1&tamanho_pagina=50`, token);
+    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contasFinanceiras ?? data?.bankAccounts ?? [];
   } catch (e) {
     console.error("Erro ao buscar saldos:", e);
     return 0;
@@ -189,13 +192,13 @@ async function syncSaldos(token: string) {
 
   const rows = (contas as any[]).map((c) => ({
     id: String(c.id),
-    nome: c.name ?? c.description ?? "Conta",
-    tipo: c.type ?? c.bankAccountType ?? "corrente",
-    saldo: Number(c.balance ?? c.currentBalance ?? 0),
-    banco: c.bankCode ?? c.bank ?? null,
-    agencia: c.agency ?? c.branchNumber ?? null,
-    conta: c.accountNumber ?? c.account ?? null,
-    ativo: c.active !== false,
+    nome: c.nome ?? c.name ?? c.descricao ?? c.description ?? "Conta",
+    tipo: c.tipo ?? c.type ?? c.bankAccountType ?? "corrente",
+    saldo: Number(c.saldo ?? c.saldo_atual ?? c.balance ?? c.currentBalance ?? 0),
+    banco: c.banco ?? c.bankCode ?? c.bank ?? null,
+    agencia: c.agencia ?? c.agency ?? c.branchNumber ?? null,
+    conta: c.numero_conta ?? c.accountNumber ?? c.account ?? null,
+    ativo: c.ativo !== false && c.active !== false,
     sincronizado_em: new Date().toISOString(),
   }));
 
@@ -205,6 +208,7 @@ async function syncSaldos(token: string) {
 }
 
 // ─── Sync: Contas a pagar ─────────────────────────────────────────────────────
+// Endpoint API v2: GET /v1/financeiro/contaspagar
 async function syncContasPagar(token: string) {
   const hoje = new Date();
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
@@ -212,8 +216,11 @@ async function syncContasPagar(token: string) {
 
   let contas: unknown[] = [];
   try {
-    const data = await apiCA(`/payables?startDate=${inicio}&endDate=${fim}&size=200`, token);
-    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? [];
+    const data = await apiCA(
+      `/v1/financeiro/contaspagar?data_vencimento_inicial=${inicio}&data_vencimento_final=${fim}&pagina=1&tamanho_pagina=200`,
+      token
+    );
+    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contasPagar ?? [];
   } catch (e) {
     console.error("Erro ao buscar contas a pagar:", e);
     return 0;
@@ -223,14 +230,14 @@ async function syncContasPagar(token: string) {
 
   const rows = (contas as any[]).map((c) => ({
     id: String(c.id),
-    descricao: c.description ?? c.name ?? "—",
-    fornecedor_nome: c.supplier?.name ?? c.vendor?.name ?? c.customer?.name ?? null,
-    valor: Number(c.value ?? c.amount ?? c.total ?? 0),
-    vencimento: c.dueDate ?? c.due_date ?? null,
+    descricao: c.descricao ?? c.description ?? c.name ?? "—",
+    fornecedor_nome: c.fornecedor?.nome ?? c.supplier?.name ?? c.vendor?.name ?? null,
+    valor: Number(c.valor ?? c.value ?? c.amount ?? c.total ?? 0),
+    vencimento: c.data_vencimento ?? c.dueDate ?? c.due_date ?? null,
     status: c.status ?? "pending",
-    pago_em: c.paymentDate ?? c.paid_at ?? null,
-    valor_pago: Number(c.paidValue ?? c.amountPaid ?? 0),
-    categoria: c.category?.name ?? c.costCenter ?? null,
+    pago_em: c.data_pagamento ?? c.paymentDate ?? c.paid_at ?? null,
+    valor_pago: Number(c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
+    categoria: c.categoria?.nome ?? c.category?.name ?? c.costCenter ?? null,
     sincronizado_em: new Date().toISOString(),
   }));
 
@@ -240,11 +247,12 @@ async function syncContasPagar(token: string) {
 }
 
 // ─── Sync: Contratos recorrentes ─────────────────────────────────────────────
+// Endpoint API v2: GET /v1/contratos
 async function syncContratos(token: string) {
   let contratos: unknown[] = [];
   try {
-    const data = await apiCA(`/contracts?size=200`, token);
-    contratos = Array.isArray(data) ? data : data?.content ?? data?.items ?? [];
+    const data = await apiCA(`/v1/contratos?pagina=1&tamanho_pagina=200`, token);
+    contratos = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contratos ?? [];
   } catch (e) {
     console.error("Erro ao buscar contratos:", e);
     return 0;
@@ -252,16 +260,16 @@ async function syncContratos(token: string) {
 
   if (contratos.length === 0) return 0;
 
-  const rows = contratos.map((c: any) => ({
+  const rows = (contratos as any[]).map((c) => ({
     id: String(c.id),
-    nome: c.name ?? c.description ?? "—",
-    cliente_nome: c.customer?.name ?? c.client?.name ?? "—",
-    cliente_documento: c.customer?.document ?? c.client?.document ?? null,
-    valor: Number(c.value ?? c.totalValue ?? c.amount ?? 0),
-    periodicidade: c.periodicity ?? c.frequency ?? null,
+    nome: c.nome ?? c.name ?? c.descricao ?? c.description ?? "—",
+    cliente_nome: c.cliente?.nome ?? c.customer?.name ?? c.client?.name ?? "—",
+    cliente_documento: c.cliente?.documento ?? c.customer?.document ?? c.client?.document ?? null,
+    valor: Number(c.valor ?? c.value ?? c.totalValue ?? c.amount ?? 0),
+    periodicidade: c.periodicidade ?? c.periodicity ?? c.frequency ?? null,
     status: c.status ?? "active",
-    data_inicio: c.startDate ?? c.start_date ?? null,
-    data_fim: c.endDate ?? c.end_date ?? null,
+    data_inicio: c.data_inicio ?? c.startDate ?? c.start_date ?? null,
+    data_fim: c.data_fim ?? c.endDate ?? c.end_date ?? null,
     sincronizado_em: new Date().toISOString(),
   }));
 
