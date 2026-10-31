@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import jsPDF from "jspdf";
 import {
   Plus, Search, Phone, Mail, X, LayoutList, Columns,
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
@@ -1420,7 +1421,7 @@ function PropostaDetalhe({
     }
   }
 
-  function abrirContrato() {
+  async function abrirContrato() {
     if (!c) return alert("Proposta sem dados de conteúdo.");
     setGerandoContrato(true);
     try {
@@ -1663,6 +1664,205 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
       janela.document.close();
       janela.focus();
       setTimeout(() => janela.print(), 500);
+
+      // Gera PDF com jsPDF e salva no histórico
+      try {
+        const doc = new jsPDF({ unit: "pt", format: "a4" });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 50;
+        const contentWidth = pageWidth - margin * 2;
+        let y = 50;
+
+        // Cabeçalho
+        doc.setFontSize(18);
+        doc.setTextColor(26, 107, 47);
+        doc.setFont("helvetica", "bold");
+        doc.text("PORTIBRAS", margin, y);
+        y += 16;
+        doc.setFontSize(8);
+        doc.setTextColor(107, 114, 128);
+        doc.setFont("helvetica", "normal");
+        doc.text("CNPJ: 63.823.452/0001-93 · Ipanema, Rio de Janeiro – RJ", margin, y);
+        y += 12;
+        doc.text("(22) 99104-8162 · vendas@portibras.com.br", margin, y);
+
+        // Título à direita
+        doc.setFontSize(9);
+        doc.setTextColor(26, 107, 47);
+        doc.setFont("helvetica", "bold");
+        doc.text("Instrumento de Manutenção Parcelada", pageWidth - margin, 50, { align: "right" });
+        doc.setFontSize(10);
+        doc.setTextColor(55, 65, 81);
+        doc.text(`Nº ${numContrato}`, pageWidth - margin, 62, { align: "right" });
+        doc.setFontSize(8);
+        doc.setTextColor(107, 114, 128);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Emitido em: ${dataHoje}`, pageWidth - margin, 74, { align: "right" });
+
+        y = 90;
+        // Linha verde
+        doc.setDrawColor(26, 107, 47);
+        doc.setLineWidth(2);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 16;
+
+        // Preâmbulo
+        doc.setFontSize(9);
+        doc.setTextColor(55, 65, 81);
+        doc.setFont("helvetica", "italic");
+        const preambulo = "Pelo presente instrumento particular de prestação de serviços de manutenção parcelada, as partes a seguir qualificadas têm entre si justo e contratado o seguinte:";
+        const preambuloLines = doc.splitTextToSize(preambulo, contentWidth);
+        doc.text(preambuloLines, margin, y);
+        y += preambuloLines.length * 13 + 10;
+
+        // Seção: Partes
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(26, 107, 47);
+        doc.text("PREÂMBULO E QUALIFICAÇÃO DAS PARTES", margin, y);
+        y += 4;
+        doc.setDrawColor(209, 250, 229);
+        doc.setLineWidth(1);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 10;
+
+        // Contratada
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(107, 114, 128);
+        doc.text("CONTRATADA", margin, y);
+        y += 10;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(55, 65, 81);
+        const contratadaTxt = "PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA, CNPJ 63.823.452/0001-93, Ipanema, Rio de Janeiro – RJ, representada por seu administrador Rafael (CONTRATADA).";
+        const contratadaLines = doc.splitTextToSize(contratadaTxt, contentWidth);
+        doc.text(contratadaLines, margin, y);
+        y += contratadaLines.length * 13 + 8;
+
+        // Contratante
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(107, 114, 128);
+        doc.text("CONTRATANTE", margin, y);
+        y += 10;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(55, 65, 81);
+        const contratanteTxt = `${contratante}, CNPJ ${cnpjContratante}, ${enderecoContratante}, representada por ${responsavel} (CONTRATANTE).`;
+        const contratanteLines = doc.splitTextToSize(contratanteTxt, contentWidth);
+        doc.text(contratanteLines, margin, y);
+        y += contratanteLines.length * 13 + 14;
+
+        // Dados do Contrato
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(26, 107, 47);
+        doc.text("DADOS DO CONTRATO", margin, y);
+        y += 4;
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 10;
+
+        const dados = [
+          ["Número do Contrato:", numContrato],
+          ["Data de Emissão:", dataHoje],
+          ["Início:", dataInicioFmt],
+          ["Término:", dataFim],
+          ["Portas contratadas:", String(c.portas)],
+          ["Parcela mensal:", fmt(c.parcela)],
+          ["Valor total (12×):", fmt(valorTotal)],
+          ["Vencimento:", `Todo dia ${diaVencimento} (${diaExtenso}) de cada mês`],
+        ];
+
+        doc.setFontSize(9);
+        dados.forEach(([label, valor]) => {
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(55, 65, 81);
+          doc.text(label, margin, y);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(31, 41, 55);
+          doc.text(valor, margin + 140, y);
+          y += 14;
+        });
+
+        y += 10;
+        // Cláusulas resumidas
+        const clausulas = [
+          ["CLÁUSULA 1 – OBJETO", `Manutenção preventiva e corretiva de ${c.portas} portas corta-fogo pelo período de 12 (doze) meses.`],
+          ["CLÁUSULA 2 – VALOR E PAGAMENTO", `R$ ${fmt(c.parcela)}/mês, vencendo todo dia ${diaVencimento} de cada mês, por 12 parcelas.`],
+          ["CLÁUSULA 3 – VIGÊNCIA", `De ${dataInicioFmt} a ${dataFim}.`],
+          ["CLÁUSULA 4 – RESCISÃO", "Qualquer parte pode rescindir com 30 dias de antecedência, mediante notificação escrita."],
+          ["CLÁUSULA 5 – FORO", "Fica eleito o foro da Comarca do Rio de Janeiro – RJ para dirimir quaisquer dúvidas."],
+        ];
+
+        clausulas.forEach(([titulo, corpo]) => {
+          if (y > 700) { doc.addPage(); y = 50; }
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8.5);
+          doc.setTextColor(31, 41, 55);
+          doc.text(titulo, margin, y);
+          y += 12;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(55, 65, 81);
+          const corpoLines = doc.splitTextToSize(corpo, contentWidth);
+          doc.text(corpoLines, margin, y);
+          y += corpoLines.length * 13 + 10;
+        });
+
+        // Assinaturas
+        if (y > 650) { doc.addPage(); y = 50; }
+        y += 20;
+        doc.setDrawColor(156, 163, 175);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 16;
+        doc.setFontSize(9);
+        doc.setTextColor(55, 65, 81);
+        doc.text(`${contratante}`, margin, y);
+        doc.text("PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA", pageWidth - margin, y, { align: "right" });
+        y += 12;
+        doc.setFontSize(8);
+        doc.setTextColor(107, 114, 128);
+        doc.text("CONTRATANTE", margin, y);
+        doc.text("CONTRATADA", pageWidth - margin, y, { align: "right" });
+
+        // Rodapé
+        doc.setFontSize(7);
+        doc.setTextColor(156, 163, 175);
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          doc.setPage(i);
+          doc.text(`${numContrato} · ${dataHoje}`, margin, 820);
+          doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, 820, { align: "right" });
+        }
+
+        // Upload para Supabase Storage
+        const pdfBlob = doc.output("blob");
+        const nomeArquivo = `contratos/${lead.id}/${numContrato}.pdf`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("dts-documentos")
+          .upload(nomeArquivo, pdfBlob, { contentType: "application/pdf", upsert: true });
+
+        if (uploadError) {
+          console.error("Erro ao fazer upload do contrato:", uploadError);
+        } else {
+          const { data: urlData } = supabase.storage
+            .from("dts-documentos")
+            .getPublicUrl(nomeArquivo);
+          const publicUrl = urlData?.publicUrl;
+          if (publicUrl) {
+            await supabase.from("crm_conversas").insert({
+              lead_id: lead.id,
+              texto: `📄 **Contrato gerado:** [${numContrato}](${publicUrl})\n📅 Vigência: ${dataInicioFmt} a ${dataFim}\n💰 Parcela: ${fmt(c.parcela)}/mês · Total: ${fmt(valorTotal)}`,
+              autor: "Sistema",
+            });
+          }
+        }
+      } catch (pdfErr) {
+        console.error("Erro ao gerar/salvar PDF do contrato:", pdfErr);
+        // Não bloqueia — janela já foi aberta
+      }
     } catch (err) {
       console.error("Erro ao gerar contrato:", err);
       alert("Não foi possível gerar o contrato.");
