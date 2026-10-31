@@ -77,7 +77,7 @@ async function processarDTS(pdf_url: string, lead_id: string, supabase: any) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5",
+      model: "claude-3-5-haiku-20241022",
       max_tokens: 512,
       messages: [
         {
