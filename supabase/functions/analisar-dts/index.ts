@@ -7,6 +7,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Converte ArrayBuffer para base64 sem estourar stack
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -22,13 +34,13 @@ serve(async (req) => {
       });
     }
 
-    // Faz o download do PDF como base64
+    // Faz o download do PDF
     const pdfRes = await fetch(pdf_url);
     if (!pdfRes.ok) {
       throw new Error(`Não foi possível baixar o PDF: ${pdfRes.status}`);
     }
     const pdfBuffer = await pdfRes.arrayBuffer();
-    const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));
+    const pdfBase64 = arrayBufferToBase64(pdfBuffer);
 
     // Envia para Claude API com o PDF em base64
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
@@ -40,7 +52,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-5",
+        model: "claude-haiku-4-5",
         max_tokens: 1024,
         messages: [
           {
@@ -56,27 +68,21 @@ serve(async (req) => {
               },
               {
                 type: "text",
-                text: `Analise este DTS (Documento Técnico de Segurança) de vistoria de portas corta-fogo e extraia APENAS as informações a seguir em formato JSON:
+                text: `Analise este DTS de vistoria de portas corta-fogo. Extraia SOMENTE estas informações em JSON:
 
 {
-  "total_portas": número total de PCF vistoriadas,
-  "conformes": número de portas conformes (C),
-  "nao_conformes": número de portas não conformes (NC),
-  "status_geral": "CONFORME" ou "NÃO CONFORME",
+  "total_portas": número do campo "Total de PCF Vistoriadas",
+  "conformes": número do campo "Total Conformes (C)",
+  "nao_conformes": número do campo "Total Não Conformes (NC)",
+  "status_geral": texto do campo "Status Geral das Portas",
   "pecas": [
-    { "nome": "nome da peça em português claro", "quantidade": número }
+    { "nome": "nome da peça", "quantidade": número }
   ]
 }
 
-Para as peças, use o campo "3. RESUMO DE MATERIAIS IDENTIFICADOS" do documento. Converta os nomes técnicos para português claro:
-- MANUTENCAO → Manutenção preventiva
-- DOBRADICA_SEM_PRESSAO ou Dobradiça com mola → Dobradiça com mola
-- FECHADURA_QUEBRADA ou Fechadura sobrepor sem chave → Fechadura sobrepor sem chave
-- Fechadura sobrepor com chave invertida → Fechadura sobrepor c/ chave invertida
-- MOLA_DESREGULADA ou Mola aérea → Mola aérea
-- Contramarco → Contramarco
+Para as peças, use EXATAMENTE o texto da seção "3. RESUMO DE MATERIAIS IDENTIFICADOS".
 
-Responda APENAS com o JSON, sem texto adicional.`,
+Responda APENAS com o JSON, sem mais nada.`,
               },
             ],
           },
@@ -95,7 +101,7 @@ Responda APENAS com o JSON, sem texto adicional.`,
     // Extrai o JSON da resposta
     const jsonMatch = textoResposta.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error("Claude não retornou JSON válido");
+      throw new Error(`Claude retornou: ${textoResposta}`);
     }
 
     const resumo = JSON.parse(jsonMatch[0]);
@@ -104,6 +110,7 @@ Responda APENAS com o JSON, sem texto adicional.`,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
+    console.error("[analisar-dts] erro:", e.message);
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
