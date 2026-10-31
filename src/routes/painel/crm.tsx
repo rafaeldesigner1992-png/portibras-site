@@ -3612,7 +3612,10 @@ function CrmPage() {
   const hoje = new Date().toISOString().split("T")[0];
   const filtrados = leads.filter(l => {
     const buscaOk = !busca || l.nome?.toLowerCase().includes(busca.toLowerCase()) || l.empresa?.toLowerCase().includes(busca.toLowerCase()) || l.cnpj?.includes(busca);
-    const etapaOk = filtroEtapa === "todas" || l.etapa === filtroEtapa;
+    // Fechado e Perdido só aparecem quando explicitamente selecionados
+    const etapaOk = filtroEtapa === "todas"
+      ? l.etapa !== "fechado" && l.etapa !== "perdido"
+      : l.etapa === filtroEtapa;
     const prazoOk = !filtroPrazo || (l.prazo && l.prazo <= filtroPrazo);
     // Filtros combinados
     const tipoReal = valoresPorLead[l.id]?.tipo ?? l.tipo_negocio;
