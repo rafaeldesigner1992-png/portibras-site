@@ -6,7 +6,7 @@ import {
   Building2, FileText, Calendar, MessageSquare, ChevronRight,
   Loader2, Send, Pencil, Trash2, MapPin, Navigation, Bell,
   Calculator, ShoppingCart, Save, Check, AlertCircle, Clock, Download, Eye,
-  ChevronDown, Package, ArrowLeft
+  ChevronDown, Package, ArrowLeft, ClipboardCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -3174,6 +3174,48 @@ function CrmPage() {
     carregar();
   }
 
+  async function enviarParaVistoria(lead: Lead) {
+    if (!confirm(`Enviar "${lead.nome}" para vistoria?\n\nUm email será enviado para Rafael agendar.`)) return;
+    try {
+      // Cria registro de vistoria
+      const { data: vistoria, error } = await supabase.from("vistorias").insert({
+        lead_id: lead.id,
+        cliente_nome: lead.nome,
+        cliente_endereco: lead.endereco ?? null,
+        cliente_telefone: lead.telefone ?? null,
+        cliente_email: lead.email ?? null,
+        status: "pendente",
+        enviado_por: "Marilia",
+      }).select("id").single();
+
+      if (error) throw error;
+
+      // Atualiza etapa do lead para "vistoria"
+      await supabase.from("crm_leads").update({ etapa: "vistoria" as any }).eq("id", lead.id);
+      setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, etapa: "vistoria" as any } : l));
+      if (cardAberto?.id === lead.id) setCardAberto({ ...cardAberto, etapa: "vistoria" as any });
+
+      // Dispara email de notificação
+      await supabase.functions.invoke("notify-vistoria", {
+        body: {
+          evento: "enviada",
+          vistoria: {
+            id: vistoria?.id,
+            cliente_nome: lead.nome,
+            cliente_endereco: lead.endereco ?? "",
+            cliente_telefone: lead.telefone ?? "",
+            cliente_email: lead.email ?? "",
+            enviado_por: "Marilia",
+          },
+        },
+      });
+
+      alert(`✅ "${lead.nome}" enviado para vistoria!\nRafael receberá um email para agendar.`);
+    } catch (e: any) {
+      alert(`Erro ao enviar para vistoria: ${e.message}`);
+    }
+  }
+
   async function mudarEtapa(lead: Lead, etapa: Etapa) {
     await supabase.from("crm_leads").update({ etapa }).eq("id", lead.id);
     if (cardAberto?.id === lead.id) setCardAberto({ ...cardAberto, etapa });
@@ -3509,6 +3551,13 @@ function CrmPage() {
                   </button>
                 ))}
               </div>
+              <button
+                onClick={() => enviarParaVistoria(cardAberto)}
+                className="flex items-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-100 transition-colors"
+                title="Enviar cliente para fila de vistoria técnica"
+              >
+                <ClipboardCheck className="h-4 w-4" /> Enviar para Vistoria
+              </button>
               <button onClick={() => abrirModal(cardAberto)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
                 <Pencil className="h-4 w-4" /> Editar
               </button>
