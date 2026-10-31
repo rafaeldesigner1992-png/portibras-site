@@ -31,9 +31,14 @@ export const PERFIS: Record<Perfil, { label: string; cor: string }> = {
 };
 
 export const ACESSO_POR_PERFIL: Record<Perfil, string[]> = {
+  // Admin: acesso total a todos os módulos
   admin: ["dashboard", "crm", "contratos", "orcamentos", "pessoas", "logistica", "financeiro", "organograma"],
-  vendedor: ["crm", "contratos", "orcamentos"],
-  tecnico: ["logistica"],
+  // Vendedor: área comercial completa + dashboard; sem financeiro, pessoas ou organograma
+  vendedor: ["dashboard", "crm", "contratos", "orcamentos"],
+  // Técnico: logística (agenda de campo) + contratos/OS para saber escopo do serviço
+  tecnico: ["logistica", "contratos"],
+  // Financeiro: dashboard + módulo financeiro; sem dados comerciais ou RH
   financeiro: ["dashboard", "financeiro"],
-  logistica: ["logistica"],
+  // Logística/Operações: logística + dashboard operacional
+  logistica: ["dashboard", "logistica"],
 };

@@ -30,16 +30,16 @@ const BOTTOM_ITEMS = [
 
 // Todos os itens do menu (para o drawer)
 const ALL_ITEMS = [
-  { modulo: "dashboard",  label: "Dashboard",        href: "/painel",               icon: LayoutDashboard },
-  { modulo: "crm",        label: "CRM Comercial",    href: "/painel/crm",           icon: Users },
-  { modulo: "crm",        label: "Clientes",          href: "/painel/clientes",      icon: Building2 },
-  { modulo: "contratos",  label: "Contratos",         href: "/painel/contratos",     icon: FileText },
-  { modulo: "orcamentos", label: "Orçamentos",        href: "/painel/orcamentos",    icon: Calculator },
-  { modulo: "logistica",  label: "Logística",         href: "/painel/logistica",     icon: Package },
-  { modulo: "financeiro", label: "Financeiro",        href: "/painel/financeiro",    icon: DollarSign },
-  { modulo: "pessoas",    label: "Gestão de Pessoas", href: "/painel/pessoas",       icon: UserCog },
-  { modulo: "pessoas",    label: "Organograma / RH",  href: "/painel/organograma",   icon: GitBranch },
-  { modulo: "crm",        label: "Script de Vendas",  href: "/painel/script-vendas", icon: BookOpen },
+  { modulo: "dashboard",   label: "Dashboard",        href: "/painel",               icon: LayoutDashboard },
+  { modulo: "crm",         label: "CRM Comercial",    href: "/painel/crm",           icon: Users },
+  { modulo: "crm",         label: "Clientes",          href: "/painel/clientes",      icon: Building2 },
+  { modulo: "contratos",   label: "Contratos",         href: "/painel/contratos",     icon: FileText },
+  { modulo: "orcamentos",  label: "Orçamentos",        href: "/painel/orcamentos",    icon: Calculator },
+  { modulo: "logistica",   label: "Logística",         href: "/painel/logistica",     icon: Package },
+  { modulo: "financeiro",  label: "Financeiro",        href: "/painel/financeiro",    icon: DollarSign },
+  { modulo: "organograma", label: "Gestão de Pessoas", href: "/painel/pessoas",       icon: UserCog },
+  { modulo: "organograma", label: "Organograma / RH",  href: "/painel/organograma",   icon: GitBranch },
+  { modulo: "crm",         label: "Script de Vendas",  href: "/painel/script-vendas", icon: BookOpen },
 ];
 
 export function MobileNav() {
