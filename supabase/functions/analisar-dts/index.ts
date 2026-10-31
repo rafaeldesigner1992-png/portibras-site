@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -25,11 +25,9 @@ serve(async (req) => {
       });
     }
 
-    // Responde imediatamente ao frontend (não bloqueia)
-    // e processa em background
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Processa de forma assíncrona
+    // Processa de forma assíncrona (responde imediatamente ao frontend)
     processarDTS(pdf_url, lead_id, supabase).catch((e) => {
       console.error("[analisar-dts] erro no processamento:", e.message);
     });
@@ -47,53 +45,29 @@ serve(async (req) => {
 });
 
 async function processarDTS(pdf_url: string, lead_id: string, supabase: any) {
-  // Baixa só os primeiros 200KB do PDF (página 1 tem o resumo)
-  const pdfRes = await fetch(pdf_url, {
-    headers: { Range: "bytes=0-204800" },
-  });
-  if (!pdfRes.ok && pdfRes.status !== 206) {
-    throw new Error(`Não foi possível baixar o PDF: ${pdfRes.status}`);
-  }
+  console.log("[analisar-dts] iniciando análise para lead:", lead_id);
 
-  const pdfBuffer = await pdfRes.arrayBuffer();
-
-  // Converte para base64 em chunks
-  const bytes = new Uint8Array(pdfBuffer);
-  let binary = "";
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  const pdfBase64 = btoa(binary);
-
-  // Envia para Claude API
-  const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+  // OpenAI gpt-4o-mini suporta PDF via URL diretamente
+  const openaiRes = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-beta": "pdfs-2024-09-25",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-3-5-haiku-20241022",
-      max_tokens: 512,
-      messages: [
+      model: "gpt-4o-mini",
+      input: [
         {
           role: "user",
           content: [
             {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: pdfBase64,
-              },
+              type: "input_file",
+              filename: "dts.pdf",
+              file_url: pdf_url,
             },
             {
-              type: "text",
-              text: `Leia este DTS de vistoria de portas corta-fogo e responda APENAS com este JSON:
+              type: "input_text",
+              text: `Leia este DTS de vistoria de portas corta-fogo e responda APENAS com este JSON (sem markdown, sem texto extra):
 
 {
   "total_portas": número,
@@ -103,7 +77,7 @@ async function processarDTS(pdf_url: string, lead_id: string, supabase: any) {
   "pecas": [{"nome": "texto", "quantidade": número}]
 }
 
-Dados na seção "2. DADOS DA VISTORIA" e "3. RESUMO DE MATERIAIS IDENTIFICADOS". Nenhum texto além do JSON.`,
+Extraia os dados das seções "2. DADOS DA VISTORIA" e "3. RESUMO DE MATERIAIS IDENTIFICADOS". Responda somente o JSON.`,
             },
           ],
         },
@@ -111,14 +85,14 @@ Dados na seção "2. DADOS DA VISTORIA" e "3. RESUMO DE MATERIAIS IDENTIFICADOS"
     }),
   });
 
-  if (!claudeRes.ok) {
-    const err = await claudeRes.text();
-    throw new Error(`Erro Claude API: ${err}`);
+  if (!openaiRes.ok) {
+    const err = await openaiRes.text();
+    throw new Error(`Erro OpenAI API: ${err}`);
   }
 
-  const claudeData = await claudeRes.json();
-  const texto = claudeData.content?.[0]?.text ?? "";
-  console.log("[analisar-dts] resposta Claude:", texto);
+  const openaiData = await openaiRes.json();
+  const texto = openaiData.output?.[0]?.content?.[0]?.text ?? "";
+  console.log("[analisar-dts] resposta OpenAI:", texto);
 
   const jsonMatch = texto.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error(`JSON não encontrado na resposta: ${texto}`);
