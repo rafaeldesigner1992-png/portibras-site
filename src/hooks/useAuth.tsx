@@ -14,9 +14,9 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const ACESSO_POR_PERFIL: Record<Perfil, string[]> = {
   // Admin: acesso total a todos os módulos
-  admin: ["dashboard", "crm", "contratos", "orcamentos", "pessoas", "logistica", "financeiro", "organograma"],
+  admin: ["dashboard", "crm", "hunter", "contratos", "orcamentos", "pessoas", "logistica", "financeiro", "organograma"],
   // Vendedor: área comercial completa + dashboard; sem financeiro, pessoas ou organograma
-  vendedor: ["dashboard", "crm", "contratos", "orcamentos"],
+  vendedor: ["dashboard", "crm", "hunter", "contratos", "orcamentos"],
   // Técnico: logística (agenda de campo) + contratos/OS para saber o escopo do serviço
   tecnico: ["logistica", "contratos"],
   // Financeiro: dashboard + módulo financeiro; sem dados comerciais ou RH
