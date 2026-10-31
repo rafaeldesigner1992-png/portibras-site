@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import jsPDF from "jspdf";
@@ -23,6 +23,9 @@ const PORTIBRAS_EMAIL_VENDAS = "${PORTIBRAS_EMAIL_VENDAS}";
 
 export const Route = createFileRoute("/painel/crm")({
   component: CrmPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    lead: (search.lead as string) ?? undefined,
+  }),
 });
 
 type Etapa = "prospecto" | "contato" | "proposta" | "negociacao" | "fechado" | "perdido";
@@ -3196,7 +3199,17 @@ function CrmPage() {
   // Mapa leadId → { tipo, valor } derivado das propostas/orçamentos reais
   const [valoresPorLead, setValoresPorLead] = useState<Record<string, { tipo: "orcamento" | "manutencao"; valor: number }>>({});
 
+  const { lead: leadIdParam } = useSearch({ from: "/painel/crm" });
+
   useEffect(() => { carregar(); }, []);
+
+  // Abre o card do lead referenciado via ?lead=<id> (ex: vindo da Logística)
+  useEffect(() => {
+    if (!leadIdParam || leads.length === 0 || cardAberto) return;
+    const lead = leads.find(l => l.id === leadIdParam);
+    if (lead) abrirCard(lead);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadIdParam, leads]);
 
   useEffect(() => {
     async function verificarPerfil() {
