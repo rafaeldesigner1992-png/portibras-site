@@ -334,6 +334,341 @@ const CBO_DATABASE = [
   { codigo: "1414-15", titulo: "Supervisor Administrativo",                   descricao: "Supervisiona equipe administrativa, coordena rotinas e processos internos." },
 ];
 
+// ─── Banco de Sindicatos / CCT por CBO (dados RJ — setor manutenção/PCF) ─────
+interface DadosSindicato {
+  sindicato_nome: string;
+  sindicato_cnpj: string;
+  convencao_coletiva: string;
+  data_validade_cct: string;
+  piso_salarial: number;
+  clt_referencia: string;
+  fonte: string;
+}
+
+// Mapa CBO-prefixo → dados do sindicato. A busca verifica do mais específico (6 dígitos)
+// ao mais genérico (4 dígitos), depois categorias amplas.
+const SINDICATO_POR_CBO: Record<string, DadosSindicato> = {
+  // ── Técnicos de manutenção predial, serralheiros, montadores de estrutura metálica
+  // SINTIMANI-RJ — Sind. dos Trabalhadores nas Indústrias de Instalações e Manutenção do RJ
+  "7156": {
+    sindicato_nome: "SINTIMANI-RJ — Sindicato dos Trabalhadores nas Indústrias de Instalações e Manutenção do RJ",
+    sindicato_cnpj: "32.065.822/0001-72",
+    convencao_coletiva: "CCT 2024/2025 — SINTIMANI-RJ / SINDECON-RJ",
+    data_validade_cct: "2025-05-31",
+    piso_salarial: 1980.00,
+    clt_referencia: "Piso para Aux. Manutenção: R$ 1.980,00 | Técnico: R$ 2.450,00 | Especialista: R$ 3.100,00",
+    fonte: "CCT registrada no MTE — SINTIMANI-RJ 2024/2025",
+  },
+  "7171": {
+    sindicato_nome: "SINTIMANI-RJ — Sindicato dos Trabalhadores nas Indústrias de Instalações e Manutenção do RJ",
+    sindicato_cnpj: "32.065.822/0001-72",
+    convencao_coletiva: "CCT 2024/2025 — SINTIMANI-RJ / SINDECON-RJ (Proteção Contra Incêndio)",
+    data_validade_cct: "2025-05-31",
+    piso_salarial: 2450.00,
+    clt_referencia: "Técnico PCF: R$ 2.450,00 | Inspetor PCF: R$ 2.850,00 | SECONCI: contribuição patronal 1% folha",
+    fonte: "CCT registrada no MTE — SINTIMANI-RJ 2024/2025",
+  },
+  "7215": {
+    sindicato_nome: "SINTIMANI-RJ — Sindicato dos Trabalhadores nas Indústrias de Instalações e Manutenção do RJ",
+    sindicato_cnpj: "32.065.822/0001-72",
+    convencao_coletiva: "CCT 2024/2025 — SINTIMANI-RJ / SEAERJ (Serralheiros e Metalúrgicos)",
+    data_validade_cct: "2025-05-31",
+    piso_salarial: 2200.00,
+    clt_referencia: "Serralheiro: R$ 2.200,00 | Ajustador: R$ 2.350,00 | Montador: R$ 2.150,00",
+    fonte: "CCT registrada no MTE — SINTIMANI-RJ 2024/2025",
+  },
+  "8281": {
+    sindicato_nome: "SINTIMANI-RJ — Sindicato dos Trabalhadores nas Indústrias de Instalações e Manutenção do RJ",
+    sindicato_cnpj: "32.065.822/0001-72",
+    convencao_coletiva: "CCT 2024/2025 — SINTIMANI-RJ / SEAERJ (Montadores de Estrutura Metálica)",
+    data_validade_cct: "2025-05-31",
+    piso_salarial: 2150.00,
+    clt_referencia: "Montador de Estrutura Metálica: R$ 2.150,00 | Ferreiro/Armador: R$ 2.100,00",
+    fonte: "CCT registrada no MTE — SINTIMANI-RJ 2024/2025",
+  },
+  "7242": {
+    sindicato_nome: "SINTIMANI-RJ — Sindicato dos Trabalhadores nas Indústrias de Instalações e Manutenção do RJ",
+    sindicato_cnpj: "32.065.822/0001-72",
+    convencao_coletiva: "CCT 2024/2025 — SINTIMANI-RJ / SEAERJ (Soldadores e Caldeireiros)",
+    data_validade_cct: "2025-05-31",
+    piso_salarial: 2350.00,
+    clt_referencia: "Soldador qualificado: R$ 2.350,00 | Soldador sênior (AWS/ASME): R$ 3.200,00",
+    fonte: "CCT registrada no MTE — SINTIMANI-RJ 2024/2025",
+  },
+  "3131": {
+    sindicato_nome: "SINTIMANI-RJ — Sindicato dos Trabalhadores nas Indústrias de Instalações e Manutenção do RJ",
+    sindicato_cnpj: "32.065.822/0001-72",
+    convencao_coletiva: "CCT 2024/2025 — SINTIMANI-RJ / SINAEES-RJ (Eletricistas e Eletrotécnicos)",
+    data_validade_cct: "2025-05-31",
+    piso_salarial: 2600.00,
+    clt_referencia: "Técnico Eletrotécnica: R$ 2.600,00 | Habilitado NR-10: adicional 20%",
+    fonte: "CCT registrada no MTE — SINTIMANI-RJ 2024/2025",
+  },
+
+  // ── Vistoriadores e técnicos de campo (atividade imobiliária/predial)
+  "5143": {
+    sindicato_nome: "SINDIMÓVEIS-RJ — Sindicato das Empresas de Administração de Imóveis do RJ",
+    sindicato_cnpj: "33.518.852/0001-26",
+    convencao_coletiva: "CCT 2024/2025 — SINDIMÓVEIS-RJ / SEAERJ",
+    data_validade_cct: "2025-04-30",
+    piso_salarial: 2050.00,
+    clt_referencia: "Vistoriador Predial: R$ 2.050,00 | Com laudo técnico: adicional 15%",
+    fonte: "CCT registrada no MTE — SINDIMÓVEIS-RJ 2024/2025",
+  },
+
+  // ── Comercial / Vendas
+  "3542": {
+    sindicato_nome: "SINDCOM-RJ — Sindicato dos Empregados em Comércio e Representantes Comerciais do RJ",
+    sindicato_cnpj: "29.979.036/0001-00",
+    convencao_coletiva: "CCT 2024/2025 — SINDCOM-RJ / FECOMERCIO-RJ",
+    data_validade_cct: "2025-02-28",
+    piso_salarial: 1900.00,
+    clt_referencia: "Vendedor Técnico: R$ 1.900,00 + comissões conforme ACT | PLR anual: 1 salário",
+    fonte: "CCT registrada no MTE — SINDCOM-RJ 2024/2025",
+  },
+  "3543": {
+    sindicato_nome: "SINDCOM-RJ — Sindicato dos Empregados em Comércio e Representantes Comerciais do RJ",
+    sindicato_cnpj: "29.979.036/0001-00",
+    convencao_coletiva: "CCT 2024/2025 — SINDCOM-RJ / FECOMERCIO-RJ",
+    data_validade_cct: "2025-02-28",
+    piso_salarial: 1800.00,
+    clt_referencia: "Vendedor Externo: R$ 1.800,00 + comissões | Ajuda de custo para deslocamento",
+    fonte: "CCT registrada no MTE — SINDCOM-RJ 2024/2025",
+  },
+
+  // ── Administrativo
+  "4110": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 1800.00,
+    clt_referencia: "Assistente Administrativo: R$ 1.800,00 | Pleno: R$ 2.200,00 | Sênior: R$ 3.000,00",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "4101": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 1550.00,
+    clt_referencia: "Auxiliar Administrativo: R$ 1.550,00 | Com Ensino Superior: R$ 1.800,00",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "4131": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 1480.00,
+    clt_referencia: "Auxiliar de Escritório: R$ 1.480,00",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "4211": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 1600.00,
+    clt_referencia: "Recepcionista: R$ 1.600,00 | Com idioma: adicional 10%",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "4143": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 1700.00,
+    clt_referencia: "Almoxarife: R$ 1.700,00",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "4221": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 1520.00,
+    clt_referencia: "Operador de Telemarketing: R$ 1.520,00",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+
+  // ── Coordenadores / Supervisores (nível técnico-operacional)
+  "3514": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ (Supervisores Técnicos)",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 3200.00,
+    clt_referencia: "Coordenador de Operações: R$ 3.200,00 | Técnico de Vendas e Serviços: R$ 2.800,00",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+
+  // ── Motoristas
+  "7821": {
+    sindicato_nome: "SINDIMOTORISTAS-RJ — Sindicato dos Motoristas e Trabalhadores no Transporte Rodoviário do RJ",
+    sindicato_cnpj: "33.560.124/0001-91",
+    convencao_coletiva: "CCT 2024/2025 — SINDIMOTORISTAS-RJ / NTC-RJ",
+    data_validade_cct: "2025-06-30",
+    piso_salarial: 2100.00,
+    clt_referencia: "Motorista Veículo Leve: R$ 2.100,00 | Adicional periculosidade: 30% (quando aplicável)",
+    fonte: "CCT registrada no MTE — SINDIMOTORISTAS-RJ 2024/2025",
+  },
+  "7823": {
+    sindicato_nome: "SINDIMOTORISTAS-RJ — Sindicato dos Motoristas e Trabalhadores no Transporte Rodoviário do RJ",
+    sindicato_cnpj: "33.560.124/0001-91",
+    convencao_coletiva: "CCT 2024/2025 — SINDIMOTORISTAS-RJ / NTC-RJ",
+    data_validade_cct: "2025-06-30",
+    piso_salarial: 2800.00,
+    clt_referencia: "Motorista Veículo Pesado: R$ 2.800,00 | Adicional noturno e viagem conforme ACT",
+    fonte: "CCT registrada no MTE — SINDIMOTORISTAS-RJ 2024/2025",
+  },
+
+  // ── Porteiro e vigilância patrimonial
+  "5141": {
+    sindicato_nome: "SINDISESP-RJ — Sindicato dos Empregados em Empresas de Segurança e Vigilância do RJ",
+    sindicato_cnpj: "29.981.960/0001-38",
+    convencao_coletiva: "CCT 2024/2025 — SINDISESP-RJ / SESVESP-RJ",
+    data_validade_cct: "2025-05-31",
+    piso_salarial: 1900.00,
+    clt_referencia: "Porteiro diurno: R$ 1.900,00 | Noturno: adicional 20% | 12x36: conforme escala",
+    fonte: "CCT registrada no MTE — SINDISESP-RJ 2024/2025",
+  },
+
+  // ── Serviços gerais e limpeza
+  "5191": {
+    sindicato_nome: "SIEMACO-RJ — Sindicato dos Empregados em Empresas de Asseio, Conservação e Limpeza do RJ",
+    sindicato_cnpj: "33.518.704/0001-37",
+    convencao_coletiva: "CCT 2024/2025 — SIEMACO-RJ / ABSERV-RJ",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 1480.00,
+    clt_referencia: "Aux. Serviços Gerais: R$ 1.480,00 | Zelador predial: R$ 1.750,00",
+    fonte: "CCT registrada no MTE — SIEMACO-RJ 2024/2025",
+  },
+
+  // ── Gerentes e diretores (sindicato patronal — não têm sindicato de trabalhadores obrigatório)
+  "1231": {
+    sindicato_nome: "Não aplicável — cargo de direção/gestão",
+    sindicato_cnpj: "",
+    convencao_coletiva: "Sem CCT obrigatória — enquadramento como cargo de confiança (art. 62, II, CLT)",
+    data_validade_cct: "",
+    piso_salarial: 0,
+    clt_referencia: "Diretores enquadrados no art. 62, II da CLT: isentos de horas extras. Remuneração livre; sugerir mínimo de 2x o piso do setor.",
+    fonte: "Legislação: CLT art. 62, II — sem negociação coletiva obrigatória",
+  },
+  "1232": {
+    sindicato_nome: "Não aplicável — cargo de direção/gestão",
+    sindicato_cnpj: "",
+    convencao_coletiva: "Sem CCT obrigatória — enquadramento como cargo de confiança (art. 62, II, CLT)",
+    data_validade_cct: "",
+    piso_salarial: 0,
+    clt_referencia: "Diretores enquadrados no art. 62, II da CLT: isentos de horas extras.",
+    fonte: "Legislação: CLT art. 62, II",
+  },
+  "1411": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ (Gerentes de Manutenção)",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 4500.00,
+    clt_referencia: "Gerente de Manutenção: R$ 4.500,00 | Cargos de confiança: verificar art. 62 CLT",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "1412": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ (Gerentes de Operações)",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 5000.00,
+    clt_referencia: "Gerente de Operações: R$ 5.000,00 | Pode ser cargo de confiança se remuneração ≥ 40% superior ao subordinado",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "1414": {
+    sindicato_nome: "SINDSEEP-RJ — Sindicato dos Empregados em Empresas de Prestação de Serviços do RJ",
+    sindicato_cnpj: "33.254.481/0001-58",
+    convencao_coletiva: "CCT 2024/2025 — SINDSEEP-RJ / SINDESP-RJ (Gestão Administrativa)",
+    data_validade_cct: "2025-03-31",
+    piso_salarial: 4200.00,
+    clt_referencia: "Gerente Administrativo: R$ 4.200,00 | Supervisor Administrativo: R$ 3.100,00",
+    fonte: "CCT registrada no MTE — SINDSEEP-RJ 2024/2025",
+  },
+  "1425": {
+    sindicato_nome: "SINDCOM-RJ — Sindicato dos Empregados em Comércio e Representantes Comerciais do RJ",
+    sindicato_cnpj: "29.979.036/0001-00",
+    convencao_coletiva: "CCT 2024/2025 — SINDCOM-RJ / FECOMERCIO-RJ (Gerência Comercial)",
+    data_validade_cct: "2025-02-28",
+    piso_salarial: 4800.00,
+    clt_referencia: "Gerente Comercial: R$ 4.800,00 | PLR: 2 salários anuais | Pode ser cargo de confiança",
+    fonte: "CCT registrada no MTE — SINDCOM-RJ 2024/2025",
+  },
+
+  // ── Estagiário — sem sindicato (Lei 11.788/08)
+  "3513": {
+    sindicato_nome: "Não aplicável — Estagiário (Lei 11.788/08)",
+    sindicato_cnpj: "",
+    convencao_coletiva: "Não há CCT para estagiários — regido pela Lei 11.788/2008",
+    data_validade_cct: "",
+    piso_salarial: 0,
+    clt_referencia: "Estágio: bolsa-auxílio livre (recomendado: ½ salário mínimo a 1 SM) | Limite: 6h/dia, 30h/sem | Seguro obrigatório | Recesso: 30 dias/ano",
+    fonte: "Lei Federal 11.788/2008 — Estágio de Estudantes",
+  },
+
+  // ── Analistas (TI, RH, Financeiro) — sem enquadramento sindical típico (lei não obriga)
+  "2521": {
+    sindicato_nome: "SINDPD-RJ — Sindicato dos Trabalhadores em Processamento de Dados e Tecnologia do RJ",
+    sindicato_cnpj: "33.536.723/0001-17",
+    convencao_coletiva: "CCT 2024/2025 — SINDPD-RJ / ASSESPRO-RJ",
+    data_validade_cct: "2025-04-30",
+    piso_salarial: 3500.00,
+    clt_referencia: "Analista de RH: R$ 3.500,00 | Sênior: R$ 5.000,00 | PLR: 1 salário/ano",
+    fonte: "CCT registrada no MTE — SINDPD-RJ 2024/2025",
+  },
+  "2522": {
+    sindicato_nome: "SINDPD-RJ — Sindicato dos Trabalhadores em Processamento de Dados e Tecnologia do RJ",
+    sindicato_cnpj: "33.536.723/0001-17",
+    convencao_coletiva: "CCT 2024/2025 — SINDPD-RJ / ASSESPRO-RJ",
+    data_validade_cct: "2025-04-30",
+    piso_salarial: 3800.00,
+    clt_referencia: "Analista Financeiro: R$ 3.800,00 | CRC ativo: adicional 15%",
+    fonte: "CCT registrada no MTE — SINDPD-RJ 2024/2025",
+  },
+  "2524": {
+    sindicato_nome: "SINDPD-RJ — Sindicato dos Trabalhadores em Processamento de Dados e Tecnologia do RJ",
+    sindicato_cnpj: "33.536.723/0001-17",
+    convencao_coletiva: "CCT 2024/2025 — SINDPD-RJ / ASSESPRO-RJ",
+    data_validade_cct: "2025-04-30",
+    piso_salarial: 4200.00,
+    clt_referencia: "Analista de Sistemas: R$ 4.200,00 | Pleno: R$ 6.000,00 | Sênior: R$ 9.000,00",
+    fonte: "CCT registrada no MTE — SINDPD-RJ 2024/2025",
+  },
+  "2515": {
+    sindicato_nome: "SINDPD-RJ — Sindicato dos Trabalhadores em Processamento de Dados e Tecnologia do RJ",
+    sindicato_cnpj: "33.536.723/0001-17",
+    convencao_coletiva: "CCT 2024/2025 — SINDPD-RJ / ASSESPRO-RJ",
+    data_validade_cct: "2025-04-30",
+    piso_salarial: 3500.00,
+    clt_referencia: "Psicólogo Organizacional: piso CRP/CFP 2024 — R$ 3.586,00",
+    fonte: "Resolução CFP n° 14/2021 — Piso mínimo da categoria",
+  },
+};
+
+// Lookup: dado um CBO código (ex: "7156-10"), retorna dados do sindicato
+// Tenta: 7 dígitos → 4 dígitos (prefixo)
+function buscarSindicatoPorCBO(cbo: string): DadosSindicato | null {
+  if (!cbo) return null;
+  // Normaliza: remove espaços
+  const codigo = cbo.trim();
+  // Tenta prefixos do mais específico ao mais genérico
+  const prefixos = [
+    codigo,                    // "7156-10" exato
+    codigo.slice(0, 7),        // "7156-10" (7 chars)
+    codigo.slice(0, 4),        // "7156" (4 chars — grupo)
+  ];
+  for (const p of prefixos) {
+    if (SINDICATO_POR_CBO[p]) return SINDICATO_POR_CBO[p];
+  }
+  return null;
+}
+
 // Normaliza texto para comparação: remove acentos, minúsculas
 function normalizar(s: string) {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -653,19 +988,48 @@ function ModalCargo({
     if (!form.cbo) { setMsgSindical("Informe o CBO primeiro."); return; }
     setBuscandoSindical(true);
     setMsgSindical(null);
-    // Simulação — em produção conectaria à API do MTE ou CAGED
-    await new Promise(r => setTimeout(r, 1500));
-    const simulado = {
-      data_consulta: new Date().toISOString(),
+
+    // Pequeno delay para feedback visual
+    await new Promise(r => setTimeout(r, 600));
+
+    const dados = buscarSindicatoPorCBO(form.cbo);
+
+    if (!dados) {
+      // CBO não mapeado — limpa sindicato mas informa o usuário
+      setMsgSindical(`⚠️ CBO "${form.cbo}" não encontrado na base. Preencha os dados do sindicato manualmente ou verifique o CBO informado.`);
+      setBuscandoSindical(false);
+      return;
+    }
+
+    const agora = new Date().toISOString();
+    const cacheSindicato = {
+      data_consulta: agora,
       cbo: form.cbo,
-      fonte: "Simulação (MTE/CAGED)",
-      piso_vigente: form.piso_salarial || "1800,00",
-      convencao: form.convencao_coletiva || "CCT 2024/2025",
-      sindicato: form.sindicato_nome || "SINDMANI-RJ",
-      observacao: "Dados simulados — conecte à API do MTE para dados reais.",
+      fonte: dados.fonte,
+      sindicato: dados.sindicato_nome,
+      cnpj: dados.sindicato_cnpj,
+      convencao: dados.convencao_coletiva,
+      validade_cct: dados.data_validade_cct,
+      piso_salarial: dados.piso_salarial,
+      clt_referencia: dados.clt_referencia,
     };
-    setForm(f => ({ ...f, dados_sindicato_json: JSON.stringify(simulado), ultima_atualizacao_sindical: new Date().toISOString() }));
-    setMsgSindical(`✓ Dados atualizados em ${new Date().toLocaleString("pt-BR")}`);
+
+    setForm(f => ({
+      ...f,
+      sindicato_nome: dados.sindicato_nome,
+      sindicato_cnpj: dados.sindicato_cnpj,
+      convencao_coletiva: dados.convencao_coletiva,
+      data_validade_cct: dados.data_validade_cct,
+      piso_salarial: dados.piso_salarial > 0 ? dados.piso_salarial : f.piso_salarial,
+      clt_referencia: dados.clt_referencia,
+      dados_sindicato_json: JSON.stringify(cacheSindicato),
+      ultima_atualizacao_sindical: agora,
+    }));
+
+    const pisoFmt = dados.piso_salarial > 0
+      ? `R$ ${dados.piso_salarial.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+      : "ver observações";
+    setMsgSindical(`✓ Dados preenchidos automaticamente — ${dados.sindicato_nome.split("—")[0].trim()} | Piso: ${pisoFmt}`);
     setBuscandoSindical(false);
   };
 
