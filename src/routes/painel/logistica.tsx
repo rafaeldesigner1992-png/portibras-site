@@ -1060,9 +1060,10 @@ function LogisticaPage() {
     setCarregandoGoogle(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-proxy`,
-        { headers: { Authorization: `Bearer ${session?.access_token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY } }
+        { headers: { Authorization: `Bearer ${token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY } }
       );
       const json = await res.json();
       if (json.error === "not_connected" || json.error === "token_expired") {
