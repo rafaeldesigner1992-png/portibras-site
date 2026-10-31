@@ -2879,12 +2879,43 @@ function CrmPage() {
   const [enviando, setEnviando] = useState(false);
   const conversaRef = useRef<HTMLDivElement>(null);
 
+  // Mapa leadId → { tipo, valor } derivado das propostas/orçamentos reais
+  const [valoresPorLead, setValoresPorLead] = useState<Record<string, { tipo: "orcamento" | "manutencao"; valor: number }>>({});
+
   useEffect(() => { carregar(); }, []);
 
   async function carregar() {
     setCarregando(true);
     const { data } = await supabase.from("crm_leads").select("*").order("criado_em", { ascending: false });
-    if (data) setLeads(data as Lead[]);
+    if (data) {
+      setLeads(data as Lead[]);
+      // Busca propostas e orçamentos em paralelo para calcular valores reais
+      const [{ data: props }, { data: orcs }] = await Promise.all([
+        supabase.from("crm_propostas").select("lead_id, tipo, conteudo, status").neq("status", "descontinuado"),
+        supabase.from("crm_orcamentos").select("lead_id, preco_final"),
+      ]);
+      const mapa: Record<string, { tipo: "orcamento" | "manutencao"; valor: number }> = {};
+      // Propostas de manutenção: parcela × 12
+      if (props) {
+        for (const p of props as Array<{ lead_id: string; tipo: string; conteudo: ConteudoProposta | null; status: string }>) {
+          if (p.tipo === "manutencao" && p.conteudo?.parcela) {
+            const val = p.conteudo.parcela * 12;
+            if (!mapa[p.lead_id] || val > mapa[p.lead_id].valor) {
+              mapa[p.lead_id] = { tipo: "manutencao", valor: val };
+            }
+          }
+        }
+      }
+      // Orçamentos avulsos: preco_final (só preenche se ainda não tiver manutenção)
+      if (orcs) {
+        for (const o of orcs as Array<{ lead_id: string; preco_final: number }>) {
+          if (o.preco_final && !mapa[o.lead_id]) {
+            mapa[o.lead_id] = { tipo: "orcamento", valor: o.preco_final };
+          }
+        }
+      }
+      setValoresPorLead(mapa);
+    }
     setCarregando(false);
   }
 
@@ -3134,9 +3165,9 @@ function CrmPage() {
         <div className="mb-5 flex gap-2 flex-wrap">
           {ETAPA_ORDER.map(e => {
             const leads_etapa = porEtapa[e];
-            const totalOrc = leads_etapa.filter(l => l.tipo_negocio === "orcamento").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
-            const totalMan = leads_etapa.filter(l => l.tipo_negocio === "manutencao").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
-            const totalGeral = leads_etapa.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+            const totalOrc = leads_etapa.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "orcamento").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
+            const totalMan = leads_etapa.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "manutencao").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
+            const totalGeral = leads_etapa.reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
             const fmtC = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
             return (
               <button key={e} onClick={() => setFiltroEtapa(filtroEtapa === e ? "todas" : e)}
@@ -3224,9 +3255,9 @@ function CrmPage() {
             {ETAPA_ORDER.map(etapa => {
               const cfg = ETAPAS[etapa];
               const cards = porEtapa[etapa];
-              const totalOrcK = cards.filter(l => l.tipo_negocio === "orcamento").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
-              const totalManK = cards.filter(l => l.tipo_negocio === "manutencao").reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
-              const totalGeralK = cards.reduce((acc, l) => acc + (l.valor_estimado ?? 0), 0);
+              const totalOrcK = cards.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "orcamento").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
+              const totalManK = cards.filter(l => (valoresPorLead[l.id]?.tipo ?? l.tipo_negocio) === "manutencao").reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
+              const totalGeralK = cards.reduce((acc, l) => acc + (valoresPorLead[l.id]?.valor ?? l.valor_estimado ?? 0), 0);
               const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
               return (
                 <div key={etapa} className="flex-shrink-0 w-64">
@@ -3263,15 +3294,15 @@ function CrmPage() {
                           className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
                           <div className="flex items-start justify-between gap-1">
                             <p className="text-sm font-semibold text-gray-900 leading-tight">{lead.nome}</p>
-                            {lead.tipo_negocio === "manutencao" && (
+                            {(valoresPorLead[lead.id]?.tipo ?? lead.tipo_negocio) === "manutencao" && (
                               <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-700 uppercase tracking-wide">12×</span>
                             )}
-                            {lead.tipo_negocio === "orcamento" && (
+                            {(valoresPorLead[lead.id]?.tipo ?? lead.tipo_negocio) === "orcamento" && (
                               <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 uppercase tracking-wide">ORC</span>
                             )}
                           </div>
                           {lead.empresa && <p className="mt-0.5 text-xs text-gray-400">{lead.empresa}</p>}
-                          {lead.valor_estimado && <p className="mt-2 text-xs font-semibold text-[#1a6b2f]">{lead.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
+                          {(valoresPorLead[lead.id]?.valor ?? lead.valor_estimado) ? <p className="mt-2 text-xs font-semibold text-[#1a6b2f]">{(valoresPorLead[lead.id]?.valor ?? lead.valor_estimado!).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p> : null}
                           {lead.prazo && <p className={cn("mt-1 flex items-center gap-1 text-xs", vencido ? "text-red-500" : "text-gray-400")}><Calendar className="h-3 w-3" />{vencido && "⚠ "}{new Date(lead.prazo + "T00:00:00").toLocaleDateString("pt-BR")}</p>}
                           {lead.telefone && <p className="mt-1 flex items-center gap-1 text-xs text-gray-400"><Phone className="h-3 w-3" />{lead.telefone}</p>}
                         </div>
@@ -3349,14 +3380,19 @@ function CrmPage() {
                     <span className="break-all">{cardAberto.email}</span>
                   </div>
                 )}
-                {cardAberto.valor_estimado && (
+                {(valoresPorLead[cardAberto.id]?.valor ?? cardAberto.valor_estimado) ? (
                   <div className="flex items-center gap-2 text-sm">
                     <FileText className="h-4 w-4 text-gray-300 flex-shrink-0" />
                     <span className="font-semibold text-[#1a6b2f]">
-                      {cardAberto.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      {(valoresPorLead[cardAberto.id]?.valor ?? cardAberto.valor_estimado!).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      {valoresPorLead[cardAberto.id] && (
+                        <span className="ml-1 text-xs font-normal text-gray-400">
+                          ({valoresPorLead[cardAberto.id].tipo === "manutencao" ? "proposta manutenção" : "orçamento"})
+                        </span>
+                      )}
                     </span>
                   </div>
-                )}
+                ) : null}
                 {cardAberto.prazo && (
                   <div className={cn("flex items-center gap-2 text-sm", cardAberto.prazo < hoje ? "text-red-500" : "text-gray-600")}>
                     <Calendar className="h-4 w-4 flex-shrink-0 text-gray-300" />
