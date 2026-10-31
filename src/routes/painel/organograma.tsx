@@ -291,6 +291,266 @@ function CalculadoraSalarial({ cargo, onClose }: { cargo: Cargo; onClose: () => 
   );
 }
 
+// ─── Banco CBO (Código Brasileiro de Ocupações) ───────────────────────────────
+const CBO_DATABASE = [
+  { codigo: "1231-05", titulo: "Diretor Geral",                              descricao: "Planeja, organiza e dirige atividades da empresa; define políticas e metas estratégicas." },
+  { codigo: "1412-05", titulo: "Gerente de Operações",                        descricao: "Coordena operações da empresa, supervisiona equipes técnicas e administrativas." },
+  { codigo: "1414-05", titulo: "Gerente Administrativo",                      descricao: "Administra recursos humanos, financeiros e materiais de unidades organizacionais." },
+  { codigo: "1425-05", titulo: "Gerente Comercial",                           descricao: "Gerencia atividades comerciais, coordena equipes de vendas e prospecção." },
+  { codigo: "1411-05", titulo: "Gerente de Manutenção",                       descricao: "Coordena e controla equipes de manutenção predial e industrial." },
+  { codigo: "3514-05", titulo: "Coordenador de Operações",                    descricao: "Coordena operações de campo, agenda serviços e controla execução técnica." },
+  { codigo: "3542-05", titulo: "Vendedor Técnico",                            descricao: "Comercializa produtos e serviços técnicos, elabora propostas e orçamentos." },
+  { codigo: "3543-05", titulo: "Vendedor Externo",                            descricao: "Realiza vendas externas, visita clientes, prospecta e fecha negócios." },
+  { codigo: "7156-10", titulo: "Técnico em Manutenção Predial",               descricao: "Realiza manutenção preventiva e corretiva em sistemas prediais, incluindo portas, esquadrias e sistemas de segurança." },
+  { codigo: "7156-30", titulo: "Técnico de Manutenção Industrial",            descricao: "Executa manutenção em equipamentos e instalações industriais." },
+  { codigo: "7171-05", titulo: "Técnico em Proteção Contra Incêndio",         descricao: "Instala, inspeciona e mantém sistemas e equipamentos de proteção contra incêndio." },
+  { codigo: "7171-15", titulo: "Inspetor de Segurança Contra Incêndio",       descricao: "Vistoria instalações e equipamentos de combate a incêndio, emite laudos e relatórios técnicos." },
+  { codigo: "7242-10", titulo: "Soldador",                                    descricao: "Executa soldagem de peças metálicas por diferentes processos (MIG, TIG, eletrodo)." },
+  { codigo: "7215-35", titulo: "Serralheiro",                                 descricao: "Fabrica e instala esquadrias metálicas, grades, portões e estruturas em aço." },
+  { codigo: "7156-15", titulo: "Auxiliar de Manutenção Predial",              descricao: "Auxilia em serviços de manutenção predial, realiza reparos e conservação." },
+  { codigo: "7215-05", titulo: "Ajustador Mecânico",                          descricao: "Monta, ajusta e regula peças e componentes mecânicos conforme especificações." },
+  { codigo: "5143-20", titulo: "Vistoriador Predial",                         descricao: "Vistoria imóveis e instalações, elabora laudos técnicos e relatórios de condições." },
+  { codigo: "3131-05", titulo: "Técnico em Eletrotécnica",                    descricao: "Instala, opera e mantém sistemas elétricos prediais e industriais." },
+  { codigo: "4110-05", titulo: "Assistente Administrativo",                   descricao: "Executa atividades administrativas, organiza documentos, controla arquivo e apoia gestão." },
+  { codigo: "4101-05", titulo: "Auxiliar Administrativo",                     descricao: "Realiza tarefas de suporte administrativo, atendimento e organização de rotinas." },
+  { codigo: "4131-10", titulo: "Auxiliar de Escritório",                      descricao: "Executa serviços gerais de escritório, digitação, arquivo e atendimento." },
+  { codigo: "4211-10", titulo: "Recepcionista",                               descricao: "Recepciona pessoas, atende chamadas, agenda compromissos e realiza triagem." },
+  { codigo: "2521-05", titulo: "Analista de Recursos Humanos",                descricao: "Desenvolve e implementa políticas de RH, recrutamento, treinamento e remuneração." },
+  { codigo: "2522-05", titulo: "Analista Financeiro",                         descricao: "Analisa dados financeiros, elabora relatórios e controla fluxo de caixa." },
+  { codigo: "2524-05", titulo: "Analista de Sistemas",                        descricao: "Analisa, projeta e implementa sistemas de informação." },
+  { codigo: "5191-05", titulo: "Auxiliar de Serviços Gerais",                 descricao: "Realiza limpeza, conservação e serviços gerais em instalações." },
+  { codigo: "8281-20", titulo: "Montador de Estruturas Metálicas",            descricao: "Monta estruturas metálicas em obras e instalações industriais e prediais." },
+  { codigo: "3513-35", titulo: "Estagiário",                                  descricao: "Desenvolve atividades de aprendizado prático conforme Lei 11.788/08, sob supervisão." },
+  { codigo: "7215-40", titulo: "Ferreiro / Armador",                          descricao: "Fabrica e instala ferragens, dobradiças e fechaduras em esquadrias e portas." },
+  { codigo: "3514-25", titulo: "Técnico de Vendas e Serviços",                descricao: "Presta suporte técnico a clientes, demonstra produtos e resolve problemas de campo." },
+  { codigo: "1232-05", titulo: "Diretor Comercial",                           descricao: "Dirige área comercial, define estratégia de vendas, metas e políticas de preços." },
+  { codigo: "2515-10", titulo: "Psicólogo Organizacional",                    descricao: "Realiza seleção, avaliação e desenvolvimento de pessoal em contextos organizacionais." },
+  { codigo: "4221-05", titulo: "Operador de Telemarketing",                   descricao: "Realiza atendimento ativo e receptivo por telefone para suporte ou vendas." },
+  { codigo: "7821-05", titulo: "Motorista de Veículo Leve",                   descricao: "Conduz veículos leves para transporte de pessoas ou materiais." },
+  { codigo: "7823-05", titulo: "Motorista de Veículo Pesado",                 descricao: "Conduz caminhões ou veículos de carga para transporte de materiais." },
+  { codigo: "3543-20", titulo: "Representante Comercial",                     descricao: "Representa empresa junto a clientes, negocia contratos e desenvolve carteira." },
+  { codigo: "4143-10", titulo: "Almoxarife",                                  descricao: "Controla estoque, recebe e distribui materiais, realiza inventários." },
+  { codigo: "5141-05", titulo: "Porteiro",                                    descricao: "Controla acesso de pessoas e veículos, realiza ronda e vigilância patrimonial." },
+  { codigo: "1414-15", titulo: "Supervisor Administrativo",                   descricao: "Supervisiona equipe administrativa, coordena rotinas e processos internos." },
+];
+
+// Normaliza texto para comparação: remove acentos, minúsculas
+function normalizar(s: string) {
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+// Fuzzy match por relevância de palavras-chave
+function buscarCBO(query: string): typeof CBO_DATABASE {
+  if (!query.trim()) return [];
+  const palavras = normalizar(query).split(/\s+/).filter(p => p.length > 2);
+  if (!palavras.length) return [];
+
+  const scored = CBO_DATABASE.map(entry => {
+    const haystack = normalizar(entry.titulo + " " + entry.descricao + " " + entry.codigo);
+    let score = 0;
+    for (const p of palavras) {
+      if (haystack.includes(p)) score += p.length; // mais peso para palavras longas
+    }
+    return { ...entry, score };
+  }).filter(e => e.score > 0);
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 5);
+}
+
+// ─── Recomendações de Vagas para PORTIBRAS ────────────────────────────────────
+const RECOMENDACOES_PORTIBRAS = [
+  {
+    titulo: "Técnico em Manutenção Predial",
+    cbo: "7156-10",
+    cbo_descricao: "Realiza manutenção preventiva e corretiva em sistemas prediais, incluindo portas, esquadrias e sistemas de segurança.",
+    nivel: "operacional" as const,
+    departamento: "Técnica",
+    piso_salarial: 1800,
+    vale_transporte: true,
+    vale_refeicao_valor: 22,
+    sindicato_nome: "SINTIMANI-RJ",
+    observacoes: "Cargo principal — instalação e manutenção de portas corta-fogo (PCF). Exige NR35, NR10 e conhecimento de ABNT NBR 11742.",
+    emoji: "🔧",
+    destaque: true,
+  },
+  {
+    titulo: "Técnico em Proteção Contra Incêndio",
+    cbo: "7171-05",
+    cbo_descricao: "Instala, inspeciona e mantém sistemas e equipamentos de proteção contra incêndio.",
+    nivel: "operacional" as const,
+    departamento: "Técnica",
+    piso_salarial: 2000,
+    vale_transporte: true,
+    vale_refeicao_valor: 22,
+    sindicato_nome: "SINTIMANI-RJ",
+    observacoes: "Inspeção e certificação de PCF. Conhecimento de normas do Corpo de Bombeiros RJ e CBMERJ.",
+    emoji: "🔥",
+    destaque: true,
+  },
+  {
+    titulo: "Vistoriador Predial",
+    cbo: "5143-20",
+    cbo_descricao: "Vistoria imóveis e instalações, elabora laudos técnicos e relatórios de condições.",
+    nivel: "operacional" as const,
+    departamento: "Técnica",
+    piso_salarial: 1700,
+    vale_transporte: true,
+    vale_refeicao_valor: 22,
+    sindicato_nome: "SINTIMANI-RJ",
+    observacoes: "Realiza vistorias em clientes para diagnóstico do estado das PCF e geração de relatórios para proposta comercial.",
+    emoji: "🔍",
+    destaque: false,
+  },
+  {
+    titulo: "Auxiliar de Manutenção Predial",
+    cbo: "7156-15",
+    cbo_descricao: "Auxilia em serviços de manutenção predial, realiza reparos e conservação.",
+    nivel: "operacional" as const,
+    departamento: "Técnica",
+    piso_salarial: 1412,
+    vale_transporte: true,
+    vale_refeicao_valor: 22,
+    sindicato_nome: "SINTIMANI-RJ",
+    observacoes: "Apoia técnicos nas instalações e manutenções de PCF. Perfil de desenvolvimento para técnico pleno.",
+    emoji: "🔩",
+    destaque: false,
+  },
+  {
+    titulo: "Vendedor Técnico",
+    cbo: "3542-05",
+    cbo_descricao: "Comercializa produtos e serviços técnicos, elabora propostas e orçamentos.",
+    nivel: "operacional" as const,
+    departamento: "Comercial",
+    piso_salarial: 1800,
+    vale_transporte: true,
+    vale_refeicao_valor: 22,
+    sindicato_nome: "SINDESP-RJ",
+    observacoes: "Prospecção de condomínios, indústrias e shopping centers. Metas de novos contratos de manutenção 12x. Comissão sobre vendas.",
+    emoji: "💼",
+    destaque: true,
+  },
+  {
+    titulo: "Coordenador de Operações",
+    cbo: "3514-05",
+    cbo_descricao: "Coordena operações de campo, agenda serviços e controla execução técnica.",
+    nivel: "coordenacao" as const,
+    departamento: "Operações",
+    piso_salarial: 2800,
+    vale_transporte: false,
+    vale_refeicao_valor: 25,
+    sindicato_nome: "SINDESP-RJ",
+    observacoes: "Coordena agenda de técnicos, controla OS, gerencia estoque de peças e interface com clientes.",
+    emoji: "📋",
+    destaque: true,
+  },
+  {
+    titulo: "Assistente Administrativo",
+    cbo: "4110-05",
+    cbo_descricao: "Executa atividades administrativas, organiza documentos, controla arquivo e apoia gestão.",
+    nivel: "operacional" as const,
+    departamento: "Administrativo",
+    piso_salarial: 1600,
+    vale_transporte: true,
+    vale_refeicao_valor: 22,
+    sindicato_nome: "SINDESP-RJ",
+    observacoes: "Suporte às áreas financeira, comercial e RH. Emissão de NF, controle de contratos e documentação.",
+    emoji: "📂",
+    destaque: false,
+  },
+  {
+    titulo: "Serralheiro",
+    cbo: "7215-35",
+    cbo_descricao: "Fabrica e instala esquadrias metálicas, grades, portões e estruturas em aço.",
+    nivel: "operacional" as const,
+    departamento: "Técnica",
+    piso_salarial: 1800,
+    vale_transporte: true,
+    vale_refeicao_valor: 22,
+    sindicato_nome: "SINTIMANI-RJ",
+    observacoes: "Fabricação e ajuste de frames metálicos para portas corta-fogo. Trabalho em oficina e campo.",
+    emoji: "⚙️",
+    destaque: false,
+  },
+];
+
+function PainelRecomendacoes({ onCriar }: { onCriar: (r: (typeof RECOMENDACOES_PORTIBRAS)[0]) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const destaques = RECOMENDACOES_PORTIBRAS.filter(r => r.destaque);
+  const outros = RECOMENDACOES_PORTIBRAS.filter(r => !r.destaque);
+
+  return (
+    <div className="mb-6 rounded-xl border border-[#1a6b2f]/30 bg-[#f0f9f2] overflow-hidden">
+      <button
+        onClick={() => setAberto(a => !a)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-[#e8f5ec] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1a6b2f]">
+            <Briefcase className="h-4 w-4 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-[#1a6b2f]">Recomendações de Vagas — PORTIBRAS</p>
+            <p className="text-xs text-[#1a6b2f]/70">Estrutura sugerida para empresa de manutenção de portas corta-fogo · {RECOMENDACOES_PORTIBRAS.length} vagas</p>
+          </div>
+        </div>
+        {aberto ? <ChevronUp className="h-4 w-4 text-[#1a6b2f]" /> : <ChevronDown className="h-4 w-4 text-[#1a6b2f]" />}
+      </button>
+
+      {aberto && (
+        <div className="border-t border-[#1a6b2f]/20 p-5 space-y-4">
+          <p className="text-xs text-gray-600">
+            Com base na atividade da PORTIBRAS (manutenção e instalação de portas corta-fogo), sugerimos os cargos abaixo.
+            Clique em <strong>"Criar este cargo"</strong> para abrir o formulário pré-preenchido.
+          </p>
+
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">⭐ Cargos Prioritários</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {destaques.map(r => (
+                <div key={r.cbo} className="flex items-start gap-3 rounded-lg bg-white border border-[#1a6b2f]/20 p-3">
+                  <span className="text-xl">{r.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 leading-tight">{r.titulo}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">CBO {r.cbo} · {r.departamento} · R$ {r.piso_salarial.toLocaleString("pt-BR")}/mês</p>
+                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{r.observacoes}</p>
+                  </div>
+                  <button
+                    onClick={() => onCriar(r)}
+                    className="flex-shrink-0 flex items-center gap-1 rounded-md bg-[#1a6b2f] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#155a27] whitespace-nowrap">
+                    <Plus className="h-3 w-3" />Criar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Outros cargos sugeridos</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {outros.map(r => (
+                <div key={r.cbo} className="flex items-start gap-3 rounded-lg bg-white border border-gray-200 p-3">
+                  <span className="text-xl">{r.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 leading-tight">{r.titulo}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">CBO {r.cbo} · {r.departamento} · R$ {r.piso_salarial.toLocaleString("pt-BR")}/mês</p>
+                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{r.observacoes}</p>
+                  </div>
+                  <button
+                    onClick={() => onCriar(r)}
+                    className="flex-shrink-0 flex items-center gap-1 rounded-md border border-[#1a6b2f] px-2.5 py-1.5 text-xs font-medium text-[#1a6b2f] hover:bg-[#f0f9f2] whitespace-nowrap">
+                    <Plus className="h-3 w-3" />Criar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Modal de Cargo ───────────────────────────────────────────────────────────
 const FORM_VAZIO = {
   titulo: "", cbo: "", cbo_descricao: "", nivel: "operacional" as NivelCargo,
@@ -299,6 +559,71 @@ const FORM_VAZIO = {
   piso_salarial: "", salario_estimado: "", vale_transporte: true,
   vale_refeicao_valor: "", plano_saude: false, observacoes: "", ativo: true,
 };
+
+function BuscadorCBO({ onSelecionar }: { onSelecionar: (r: { codigo: string; titulo: string; descricao: string }) => void }) {
+  const [query, setQuery] = useState("");
+  const [resultados, setResultados] = useState<ReturnType<typeof buscarCBO>>([]);
+  const [buscando, setBuscando] = useState(false);
+
+  const buscar = () => {
+    if (!query.trim()) return;
+    setBuscando(true);
+    setTimeout(() => {
+      setResultados(buscarCBO(query));
+      setBuscando(false);
+    }, 300);
+  };
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Search className="h-4 w-4 text-blue-600 flex-shrink-0" />
+        <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Buscar Vaga pelo CBO</p>
+      </div>
+      <p className="text-xs text-blue-600">Digite uma descrição aproximada da vaga (ex: "técnico porta corta fogo") e clique em Buscar para encontrar a nomenclatura oficial.</p>
+      <div className="flex gap-2">
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && buscar()}
+          placeholder='Ex: técnico porta corta fogo, manutenção predial...'
+          className="flex-1 rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+        <button
+          onClick={buscar}
+          disabled={buscando || !query.trim()}
+          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">
+          {buscando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          Buscar
+        </button>
+      </div>
+
+      {resultados.length > 0 && (
+        <div className="space-y-1.5 max-h-52 overflow-y-auto">
+          <p className="text-xs text-blue-600 font-medium">{resultados.length} resultado(s) — clique para preencher o formulário:</p>
+          {resultados.map(r => (
+            <button
+              key={r.codigo}
+              onClick={() => { onSelecionar(r); setResultados([]); setQuery(""); }}
+              className="w-full text-left rounded-lg border border-blue-200 bg-white px-3 py-2.5 hover:border-blue-400 hover:bg-blue-50 transition-colors group">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 group-hover:text-blue-700">{r.titulo}</p>
+                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{r.descricao}</p>
+                </div>
+                <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-700 rounded px-1.5 py-0.5 font-mono">{r.codigo}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {resultados.length === 0 && query && !buscando && (
+        <p className="text-xs text-blue-500 italic">Nenhum resultado. Tente termos diferentes ou preencha o CBO manualmente.</p>
+      )}
+    </div>
+  );
+}
 
 function ModalCargo({
   cargo,
@@ -369,7 +694,7 @@ function ModalCargo({
       ativo: form.ativo,
     };
     let err;
-    if (cargo) {
+    if (cargo && cargo.id) {
       ({ error: err } = await supabase.from("cargos").update(payload).eq("id", cargo.id));
     } else {
       ({ error: err } = await supabase.from("cargos").insert(payload));
@@ -384,12 +709,20 @@ function ModalCargo({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
-          <h2 className="text-lg font-bold text-gray-900">{cargo ? "Editar Cargo" : "Novo Cargo / Vaga"}</h2>
+          <h2 className="text-lg font-bold text-gray-900">{cargo?.id ? "Editar Cargo" : "Novo Cargo / Vaga"}</h2>
           <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100"><X className="h-5 w-5 text-gray-500" /></button>
         </div>
 
         <div className="p-6 space-y-5">
           {erro && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700 flex gap-2"><AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />{erro}</div>}
+
+          {/* Buscador CBO */}
+          <BuscadorCBO onSelecionar={r => setForm(f => ({
+            ...f,
+            titulo: r.titulo,
+            cbo: r.codigo,
+            cbo_descricao: r.descricao,
+          }))} />
 
           {/* Básico */}
           <fieldset className="space-y-3">
@@ -830,6 +1163,21 @@ function OrganogramaPage() {
   const [busca, setBusca] = useState("");
   const [filtroNivel, setFiltroNivel] = useState<NivelCargo | "todos">("todos");
 
+  const criarDeRecomendacao = (r: typeof RECOMENDACOES_PORTIBRAS[0]) => {
+    // Cria um objeto Cargo "falso" (sem id) para pré-preencher o modal
+    const preenchido = {
+      id: "", titulo: r.titulo, cbo: r.cbo, cbo_descricao: r.cbo_descricao,
+      nivel: r.nivel, departamento: r.departamento, vagas_total: 1,
+      sindicato_nome: r.sindicato_nome, sindicato_cnpj: null,
+      convencao_coletiva: null, data_validade_cct: null, clt_referencia: null,
+      piso_salarial: r.piso_salarial, salario_estimado: r.piso_salarial,
+      vale_transporte: r.vale_transporte, vale_refeicao_valor: r.vale_refeicao_valor,
+      plano_saude: false, observacoes: r.observacoes, ultima_atualizacao_sindical: null,
+      dados_sindicato_json: null, ativo: true, criado_em: "", atualizado_em: "",
+    } as Cargo;
+    setModalCargo(preenchido);
+  };
+
   // Bloquear acesso não-admin
   useEffect(() => {
     if (usuario && usuario.perfil !== "admin") {
@@ -891,6 +1239,9 @@ function OrganogramaPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Recomendações ── */}
+      <PainelRecomendacoes onCriar={criarDeRecomendacao} />
 
       {/* ── Filtros + Visualização ── */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
