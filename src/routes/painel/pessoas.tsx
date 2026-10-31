@@ -225,27 +225,27 @@ function PessoasPage() {
                     <td className="px-6 py-4">
                       <div className="relative flex justify-end">
                         <button
-                          onClick={() => setMenuAberto(menuAberto === u.id ? null : u.id)}
-                          className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                          onClick={(e) => { e.stopPropagation(); setMenuAberto(menuAberto === u.id ? null : u.id); }}
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
                         {menuAberto === u.id && (
-                          <div className="absolute right-0 top-8 z-10 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                          <div className="absolute right-0 top-9 z-[60] w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-xl">
                             <button
                               onClick={() => abrirEditar(u)}
-                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
                             >
-                              Editar
+                              ✏️ Editar usuário
                             </button>
                             <button
                               onClick={() => alternarAtivo(u)}
-                              className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50"
                             >
                               {u.ativo ? (
-                                <span className="text-red-600">Desativar</span>
+                                <span className="text-red-600">🔴 Desativar</span>
                               ) : (
-                                <span className="text-green-600">Ativar</span>
+                                <span className="text-green-600">🟢 Ativar</span>
                               )}
                             </button>
                           </div>
@@ -362,7 +362,7 @@ function PessoasPage() {
 
       {/* Overlay para fechar menu */}
       {menuAberto && (
-        <div className="fixed inset-0 z-0" onClick={() => setMenuAberto(null)} />
+        <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(null)} />
       )}
     </div>
   );
