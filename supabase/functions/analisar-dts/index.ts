@@ -47,8 +47,26 @@ serve(async (req) => {
 async function processarDTS(pdf_url: string, lead_id: string, supabase: any) {
   console.log("[analisar-dts] iniciando análise para lead:", lead_id);
 
-  // OpenAI gpt-4o-mini suporta PDF via URL diretamente
-  const openaiRes = await fetch("https://api.openai.com/v1/responses", {
+  // Baixa o PDF e converte para base64 para enviar à OpenAI
+  const pdfRes = await fetch(pdf_url);
+  if (!pdfRes.ok) {
+    throw new Error(`Não foi possível baixar o PDF: ${pdfRes.status}`);
+  }
+
+  const pdfBuffer = await pdfRes.arrayBuffer();
+  const bytes = new Uint8Array(pdfBuffer);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  const pdfBase64 = btoa(binary);
+
+  console.log("[analisar-dts] PDF baixado, tamanho base64:", pdfBase64.length);
+
+  // OpenAI Chat Completions com PDF em base64
+  const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${OPENAI_API_KEY}`,
@@ -56,17 +74,12 @@ async function processarDTS(pdf_url: string, lead_id: string, supabase: any) {
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      input: [
+      messages: [
         {
           role: "user",
           content: [
             {
-              type: "input_file",
-              filename: "dts.pdf",
-              file_url: pdf_url,
-            },
-            {
-              type: "input_text",
+              type: "text",
               text: `Leia este DTS de vistoria de portas corta-fogo e responda APENAS com este JSON (sem markdown, sem texto extra):
 
 {
@@ -79,9 +92,16 @@ async function processarDTS(pdf_url: string, lead_id: string, supabase: any) {
 
 Extraia os dados das seções "2. DADOS DA VISTORIA" e "3. RESUMO DE MATERIAIS IDENTIFICADOS". Responda somente o JSON.`,
             },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:application/pdf;base64,${pdfBase64}`,
+              },
+            },
           ],
         },
       ],
+      max_tokens: 512,
     }),
   });
 
@@ -91,7 +111,7 @@ Extraia os dados das seções "2. DADOS DA VISTORIA" e "3. RESUMO DE MATERIAIS I
   }
 
   const openaiData = await openaiRes.json();
-  const texto = openaiData.output?.[0]?.content?.[0]?.text ?? "";
+  const texto = openaiData.choices?.[0]?.message?.content ?? "";
   console.log("[analisar-dts] resposta OpenAI:", texto);
 
   const jsonMatch = texto.match(/\{[\s\S]*\}/);
