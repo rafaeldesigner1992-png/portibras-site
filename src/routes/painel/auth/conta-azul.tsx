@@ -80,7 +80,8 @@ function ContaAzulCallback() {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", CLIENT_ID);
     url.searchParams.set("redirect_uri", REDIRECT_URI);
-    url.searchParams.set("scope", "sales receivables contracts");
+    // Conta Azul usa vírgula como separador de escopos
+    url.searchParams.set("scope", "sales,receivables,contracts");
     window.location.href = url.toString();
   }
 
