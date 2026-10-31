@@ -2854,15 +2854,18 @@ function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onProposta
 }
 
 // ─── Componente: Próximo Contato com edição inline ────────────────────────────
-function ProximoContatoInline({ lead, onSave }: { lead: Lead; onSave: (data: string | null) => Promise<void> }) {
+function ProximoContatoInline({ lead, onSave }: { lead: Lead; onSave: (data: string | null, motivo?: string) => Promise<void> }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState(lead.proximo_contato ?? "");
+  const [motivo, setMotivo] = useState("");
   const [salvando, setSalvando] = useState(false);
   const hoje = new Date().toISOString().split("T")[0];
 
   async function salvar() {
+    if (!valor) return;
     setSalvando(true);
-    await onSave(valor || null);
+    await onSave(valor, motivo.trim() || undefined);
+    setMotivo("");
     setSalvando(false);
     setEditando(false);
   }
@@ -2870,23 +2873,29 @@ function ProximoContatoInline({ lead, onSave }: { lead: Lead; onSave: (data: str
   async function limpar() {
     setSalvando(true);
     setValor("");
+    setMotivo("");
     await onSave(null);
     setSalvando(false);
   }
 
   if (editando) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2">
         <input type="date" value={valor} onChange={e => setValor(e.target.value)} autoFocus
-          className="flex-1 rounded-lg border border-[#1a6b2f] px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b2f]/20" />
-        <button onClick={salvar} disabled={salvando}
-          className="rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
-          {salvando ? "…" : "Ok"}
-        </button>
-        <button onClick={() => { setValor(lead.proximo_contato ?? ""); setEditando(false); }}
-          className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-500 hover:bg-gray-50">
-          <X className="h-3.5 w-3.5" />
-        </button>
+          className="w-full rounded-lg border border-[#1a6b2f] px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b2f]/20" />
+        <input type="text" value={motivo} onChange={e => setMotivo(e.target.value)}
+          placeholder="Motivo / tarefa (ex: Enviar proposta, Retorno cliente…)"
+          className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/10" />
+        <div className="flex gap-2">
+          <button onClick={salvar} disabled={salvando || !valor}
+            className="flex-1 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+            {salvando ? "…" : "Salvar"}
+          </button>
+          <button onClick={() => { setValor(lead.proximo_contato ?? ""); setMotivo(""); setEditando(false); }}
+            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-500 hover:bg-gray-50">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     );
   }
@@ -3519,7 +3528,7 @@ function CrmPage() {
 
         {/* LISTA */}
         {view === "lista" && (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden overflow-y-auto max-h-[calc(100vh-260px)]">
             {carregando ? (
               <div className="py-16 text-center text-sm text-gray-400">Carregando…</div>
             ) : filtrados.length === 0 ? (
@@ -3532,7 +3541,7 @@ function CrmPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden sm:table-cell">Contato</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Etapa</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Valor Est.</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden lg:table-cell">Prazo</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden lg:table-cell">Próximo Contato</th>
                     <th className="px-5 py-3" />
                   </tr>
                 </thead>
@@ -3570,9 +3579,12 @@ function CrmPage() {
                           {lead.valor_estimado ? lead.valor_estimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                         </td>
                         <td className="px-5 py-4 hidden lg:table-cell">
-                          {lead.prazo ? (
-                            <span className={cn("text-xs font-medium", vencido ? "text-red-600" : "text-gray-500")}>
-                              {vencido && "⚠ "}{new Date(lead.prazo + "T00:00:00").toLocaleDateString("pt-BR")}
+                          {lead.proximo_contato ? (
+                            <span className={cn("flex items-center gap-1 text-xs font-medium",
+                              lead.proximo_contato < hoje ? "text-red-600" : "text-blue-600")}>
+                              <Bell className="h-3 w-3" />
+                              {lead.proximo_contato < hoje && "⚠ "}
+                              {new Date(lead.proximo_contato + "T00:00:00").toLocaleDateString("pt-BR")}
                             </span>
                           ) : "—"}
                         </td>
@@ -3759,10 +3771,19 @@ function CrmPage() {
               {/* Próximo Contato / Tarefa */}
               <div className="px-5 py-4 border-b border-gray-100">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Próximo Contato / Tarefa</p>
-                <ProximoContatoInline lead={cardAberto} onSave={async (data) => {
+                <ProximoContatoInline lead={cardAberto} onSave={async (data, motivo) => {
                   await supabase.from("crm_leads").update({ proximo_contato: data }).eq("id", cardAberto.id);
                   setLeads(prev => prev.map(l => l.id === cardAberto.id ? { ...l, proximo_contato: data } : l));
                   setCardAberto(prev => prev ? { ...prev, proximo_contato: data } : prev);
+                  // Grava no histórico se tiver data e motivo
+                  if (data) {
+                    const dtFmt = new Date(data + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+                    const textoHistorico = motivo
+                      ? `📅 **Próximo contato agendado:** ${dtFmt}\n📝 **Motivo:** ${motivo}`
+                      : `📅 **Próximo contato agendado:** ${dtFmt}`;
+                    await supabase.from("crm_conversas").insert({ lead_id: cardAberto.id, texto: textoHistorico, autor: "Sistema" });
+                    await carregarConversas(cardAberto.id);
+                  }
                 }} />
               </div>
 
