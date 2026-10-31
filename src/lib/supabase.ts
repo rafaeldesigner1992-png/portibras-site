@@ -31,7 +31,7 @@ export const PERFIS: Record<Perfil, { label: string; cor: string }> = {
 };
 
 export const ACESSO_POR_PERFIL: Record<Perfil, string[]> = {
-  admin: ["dashboard", "crm", "contratos", "orcamentos", "pessoas", "logistica", "financeiro"],
+  admin: ["dashboard", "crm", "contratos", "orcamentos", "pessoas", "logistica", "financeiro", "organograma"],
   vendedor: ["crm", "contratos", "orcamentos"],
   tecnico: ["logistica"],
   financeiro: ["dashboard", "financeiro"],

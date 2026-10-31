@@ -10,6 +10,7 @@ import {
   LogOut,
   BookOpen,
   Building2,
+  GitBranch,
   Menu,
   X,
   ChevronRight,
@@ -37,6 +38,7 @@ const ALL_ITEMS = [
   { modulo: "logistica",  label: "Logística",         href: "/painel/logistica",     icon: Package },
   { modulo: "financeiro", label: "Financeiro",        href: "/painel/financeiro",    icon: DollarSign },
   { modulo: "pessoas",    label: "Gestão de Pessoas", href: "/painel/pessoas",       icon: UserCog },
+  { modulo: "pessoas",    label: "Organograma / RH",  href: "/painel/organograma",   icon: GitBranch },
   { modulo: "crm",        label: "Script de Vendas",  href: "/painel/script-vendas", icon: BookOpen },
 ];
 
