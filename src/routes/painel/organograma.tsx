@@ -864,6 +864,137 @@ function ModalCargo({
   );
 }
 
+// ─── Modal de Alocação de Colaborador ────────────────────────────────────────
+function ModalAlocar({
+  cargo,
+  alocados,
+  onClose,
+  onSave,
+}: {
+  cargo: Cargo;
+  alocados: FuncionarioCargo[];
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const [usuarios, setUsuarios] = useState<{ id: string; nome: string; email: string; perfil: string }[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");
+
+  const idsAlocados = new Set(alocados.filter(f => !f.data_fim).map(f => f.usuario_id));
+  const vagasOcupadas = idsAlocados.size;
+  const vagasLivres = cargo.vagas_total - vagasOcupadas;
+
+  useEffect(() => {
+    supabase.from("usuarios").select("id, nome, email, perfil").eq("ativo", true).order("nome")
+      .then(({ data }) => { if (data) setUsuarios(data); setCarregando(false); });
+  }, []);
+
+  const alocar = async (userId: string) => {
+    if (vagasLivres <= 0) { setErro("Todas as vagas deste cargo estão ocupadas."); return; }
+    setSalvando(userId);
+    setErro(null);
+    const { error } = await supabase.from("funcionarios_cargos").insert({
+      usuario_id: userId,
+      cargo_id: cargo.id,
+      data_inicio: new Date().toISOString().split("T")[0],
+    });
+    setSalvando(null);
+    if (error) { setErro(error.message); return; }
+    onSave();
+  };
+
+  const desalocar = async (userId: string) => {
+    setSalvando(userId);
+    setErro(null);
+    const vinculo = alocados.find(f => f.usuario_id === userId && !f.data_fim);
+    if (!vinculo) { setSalvando(null); return; }
+    const { error } = await supabase.from("funcionarios_cargos")
+      .update({ data_fim: new Date().toISOString().split("T")[0] })
+      .eq("id", vinculo.id);
+    setSalvando(null);
+    if (error) { setErro(error.message); return; }
+    onSave();
+  };
+
+  const filtrados = usuarios.filter(u =>
+    u.nome.toLowerCase().includes(busca.toLowerCase()) ||
+    u.email.toLowerCase().includes(busca.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="relative w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl bg-white shadow-2xl">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b px-5 py-4">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Alocar Colaborador</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{cargo.titulo} · {vagasOcupadas}/{cargo.vagas_total} vagas ocupadas</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-gray-100"><X className="h-5 w-5 text-gray-400" /></button>
+        </div>
+
+        {/* Barra de progresso vagas */}
+        <div className="px-5 pt-3 pb-2">
+          <div className="h-1.5 rounded-full bg-gray-100">
+            <div className="h-full rounded-full bg-[#1a6b2f] transition-all"
+              style={{ width: `${cargo.vagas_total > 0 ? (vagasOcupadas / cargo.vagas_total) * 100 : 0}%` }} />
+          </div>
+        </div>
+
+        {/* Busca */}
+        <div className="px-5 pb-2 relative">
+          <Search className="absolute left-8 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar colaborador..."
+            className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]" />
+        </div>
+
+        {erro && <div className="mx-5 mb-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{erro}</div>}
+
+        {/* Lista de usuários */}
+        <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-2">
+          {carregando ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-300" /></div>
+          ) : filtrados.length === 0 ? (
+            <p className="text-center py-8 text-sm text-gray-400">Nenhum colaborador encontrado.</p>
+          ) : filtrados.map(u => {
+            const alocado = idsAlocados.has(u.id);
+            const ocupando = salvando === u.id;
+            return (
+              <div key={u.id} className={cn(
+                "flex items-center gap-3 rounded-xl border p-3 transition-colors",
+                alocado ? "border-[#1a6b2f]/40 bg-[#f0f9f2]" : "border-gray-200 bg-white"
+              )}>
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#1a6b2f]/10 text-sm font-bold text-[#1a6b2f]">
+                  {u.nome.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{u.nome}</p>
+                  <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                </div>
+                {alocado ? (
+                  <button onClick={() => desalocar(u.id)} disabled={ocupando}
+                    className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50">
+                    {ocupando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                    Remover
+                  </button>
+                ) : (
+                  <button onClick={() => alocar(u.id)} disabled={ocupando || vagasLivres <= 0}
+                    className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#155a27] disabled:opacity-40">
+                    {ocupando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                    Alocar
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Card de Cargo ────────────────────────────────────────────────────────────
 function CardCargo({
   cargo,
@@ -871,12 +1002,14 @@ function CardCargo({
   onEditar,
   onCalculadora,
   onExcluir,
+  onAlocar,
 }: {
   cargo: Cargo;
   funcionarios: FuncionarioCargo[];
   onEditar: () => void;
   onCalculadora: () => void;
   onExcluir: () => void;
+  onAlocar: () => void;
 }) {
   const nivel = NIVEIS[cargo.nivel];
   const Icon = nivel.icon;
@@ -966,9 +1099,10 @@ function CardCargo({
             </div>
           ))}
           {vagasLivres > 0 && Array.from({ length: vagasLivres }).map((_, i) => (
-            <div key={i} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-dashed border-gray-300 text-xs text-gray-400">
+            <button key={i} onClick={onAlocar} title="Alocar colaborador"
+              className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-dashed border-gray-300 text-xs text-gray-400 hover:border-[#1a6b2f] hover:text-[#1a6b2f] hover:bg-[#f0f9f2] transition-colors">
               +
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -1160,6 +1294,7 @@ function OrganogramaPage() {
   const [visualizacao, setVisualizacao] = useState<VisualizacaoTipo>("lista");
   const [modalCargo, setModalCargo] = useState<Cargo | null | "novo">(null);
   const [calculadora, setCalculadora] = useState<Cargo | null>(null);
+  const [modalAlocar, setModalAlocar] = useState<Cargo | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroNivel, setFiltroNivel] = useState<NivelCargo | "todos">("todos");
 
@@ -1300,6 +1435,7 @@ function OrganogramaPage() {
                   onEditar={() => setModalCargo(cargo)}
                   onCalculadora={() => setCalculadora(cargo)}
                   onExcluir={() => excluirCargo(cargo.id)}
+                  onAlocar={() => setModalAlocar(cargo)}
                 />
               ))}
             </div>
@@ -1334,6 +1470,14 @@ function OrganogramaPage() {
       )}
       {calculadora && (
         <CalculadoraSalarial cargo={calculadora} onClose={() => setCalculadora(null)} />
+      )}
+      {modalAlocar && (
+        <ModalAlocar
+          cargo={modalAlocar}
+          alocados={funcionarios.filter(f => f.cargo_id === modalAlocar.id)}
+          onClose={() => setModalAlocar(null)}
+          onSave={() => { carregar(); }}
+        />
       )}
     </div>
   );
