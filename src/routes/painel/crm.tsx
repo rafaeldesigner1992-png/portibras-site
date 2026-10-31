@@ -3863,14 +3863,6 @@ function CrmPage() {
                         {uploadandoDte ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                         Anexar DTE
                       </button>
-                      {isAdmin && (
-                        <button onClick={apagarTodoHistorico}
-                          className="ml-auto flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
-                          title="Apagar todo o histórico">
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Apagar histórico
-                        </button>
-                      )}
                     </div>
                     {/* Área de texto */}
                     <div className="flex gap-3">
