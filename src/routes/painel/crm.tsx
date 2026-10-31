@@ -3198,6 +3198,8 @@ function CrmPage() {
 
   // Mapa leadId → { tipo, valor } derivado das propostas/orçamentos reais
   const [valoresPorLead, setValoresPorLead] = useState<Record<string, { tipo: "orcamento" | "manutencao"; valor: number }>>({});
+  // Set de lead_ids que têm pelo menos uma proposta enviada para logística (mostra selo de vistoria)
+  const [leadsEmLogistica, setLeadsEmLogistica] = useState<Set<string>>(new Set());
 
   const { lead: leadIdParam } = useSearch({ from: "/painel/crm" });
 
@@ -3232,19 +3234,21 @@ function CrmPage() {
       setLeads(data as Lead[]);
       // Busca propostas e orçamentos em paralelo para calcular valores reais
       const [{ data: props }, { data: orcs }] = await Promise.all([
-        supabase.from("crm_propostas").select("lead_id, tipo, conteudo, status").neq("status", "descontinuado"),
+        supabase.from("crm_propostas").select("lead_id, tipo, conteudo, status, enviado_logistica").neq("status", "descontinuado"),
         supabase.from("crm_orcamentos").select("lead_id, preco_final"),
       ]);
       const mapa: Record<string, { tipo: "orcamento" | "manutencao"; valor: number }> = {};
+      const emLogistica = new Set<string>();
       // Propostas de manutenção: parcela × 12
       if (props) {
-        for (const p of props as Array<{ lead_id: string; tipo: string; conteudo: ConteudoProposta | null; status: string }>) {
+        for (const p of props as Array<{ lead_id: string; tipo: string; conteudo: ConteudoProposta | null; status: string; enviado_logistica: boolean }>) {
           if (p.tipo === "manutencao" && p.conteudo?.parcela) {
             const val = p.conteudo.parcela * 12;
             if (!mapa[p.lead_id] || val > mapa[p.lead_id].valor) {
               mapa[p.lead_id] = { tipo: "manutencao", valor: val };
             }
           }
+          if (p.enviado_logistica) emLogistica.add(p.lead_id);
         }
       }
       // Orçamentos avulsos: preco_final (só preenche se ainda não tiver manutenção)
@@ -3256,6 +3260,7 @@ function CrmPage() {
         }
       }
       setValoresPorLead(mapa);
+      setLeadsEmLogistica(emLogistica);
     }
     setCarregando(false);
   }
@@ -3766,7 +3771,7 @@ function CrmPage() {
                       <tr key={lead.id} className="hover:bg-gray-50/60 cursor-pointer" onClick={() => abrirCard(lead)}>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
-                            {(lead.etapa as any) === "vistoria" && (
+                            {leadsEmLogistica.has(lead.id) && (
                               <img src="/selo-vistoria.png" alt="Em Vistoria" className="w-12 h-auto flex-shrink-0" />
                             )}
                             <div>
@@ -3860,7 +3865,7 @@ function CrmPage() {
                       return (
                         <div key={lead.id} onClick={() => abrirCard(lead)}
                           className="relative rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
-                          {(lead.etapa as any) === "vistoria" && (
+                          {leadsEmLogistica.has(lead.id) && (
                             <img src="/selo-vistoria.png" alt="Em Vistoria"
                               className="absolute -top-2 -left-2 w-20 h-auto pointer-events-none z-10" />
                           )}
