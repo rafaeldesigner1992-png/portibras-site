@@ -3543,9 +3543,16 @@ function CrmPage() {
                     return (
                       <tr key={lead.id} className="hover:bg-gray-50/60 cursor-pointer" onClick={() => abrirCard(lead)}>
                         <td className="px-5 py-4">
-                          <p className="text-sm font-semibold text-gray-900">{lead.nome}</p>
-                          <p className="text-xs text-gray-400">{lead.empresa}</p>
-                          {lead.cnpj && <p className="text-xs text-gray-300 font-mono">{formatCNPJ(lead.cnpj)}</p>}
+                          <div className="flex items-center gap-2">
+                            {(lead.etapa as any) === "vistoria" && (
+                              <img src="/selo-vistoria.png" alt="Em Vistoria" className="w-12 h-auto flex-shrink-0" />
+                            )}
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{lead.nome}</p>
+                              <p className="text-xs text-gray-400">{lead.empresa}</p>
+                              {lead.cnpj && <p className="text-xs text-gray-300 font-mono">{formatCNPJ(lead.cnpj)}</p>}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-5 py-4 hidden sm:table-cell">
                           <div className="flex flex-col gap-0.5">
@@ -3627,7 +3634,11 @@ function CrmPage() {
                       const vencido = lead.prazo && lead.prazo < hoje;
                       return (
                         <div key={lead.id} onClick={() => abrirCard(lead)}
-                          className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
+                          className="relative rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:shadow-md cursor-pointer transition-shadow">
+                          {(lead.etapa as any) === "vistoria" && (
+                            <img src="/selo-vistoria.png" alt="Em Vistoria"
+                              className="absolute -top-2 -left-2 w-20 h-auto pointer-events-none z-10" />
+                          )}
                           <div className="flex items-start justify-between gap-1">
                             <p className="text-sm font-semibold text-gray-900 leading-tight">{lead.nome}</p>
                             {(valoresPorLead[lead.id]?.tipo ?? lead.tipo_negocio) === "manutencao" && (
