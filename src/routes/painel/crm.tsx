@@ -2982,11 +2982,26 @@ function CrmPage() {
   const [uploadandoDte, setUploadandoDte] = useState(false);
   const dtsInputRef = useRef<HTMLInputElement>(null);
   const dteInputRef = useRef<HTMLInputElement>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Mapa leadId → { tipo, valor } derivado das propostas/orçamentos reais
   const [valoresPorLead, setValoresPorLead] = useState<Record<string, { tipo: "orcamento" | "manutencao"; valor: number }>>({});
 
   useEffect(() => { carregar(); }, []);
+
+  useEffect(() => {
+    async function verificarPerfil() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data } = await supabase
+        .from("usuarios")
+        .select("perfil")
+        .eq("id", session.user.id)
+        .single();
+      setIsAdmin(data?.perfil === "admin");
+    }
+    verificarPerfil();
+  }, []);
 
   async function carregar() {
     setCarregando(true);
@@ -3275,6 +3290,12 @@ function CrmPage() {
       }
       return <span key={i}>{parte}</span>;
     });
+  }
+
+  async function apagarMensagem(id: string) {
+    if (!cardAberto) return;
+    await supabase.from("crm_conversas").delete().eq("id", id);
+    await carregarConversas(cardAberto.id);
   }
 
   async function uploadDocumento(file: File, tipo: "DTS" | "DTE") {
@@ -3799,10 +3820,20 @@ function CrmPage() {
                         <p className="text-sm">Nenhuma conversa registrada</p>
                       </div>
                     ) : conversas.map(c => (
-                      <div key={c.id} className="rounded-xl bg-gray-50 px-4 py-3">
+                      <div key={c.id} className="group rounded-xl bg-gray-50 px-4 py-3 relative">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-semibold text-gray-700">{c.autor}</span>
-                          <span className="text-xs text-gray-400">{new Date(c.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400">{new Date(c.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                            {isAdmin && (
+                              <button
+                                onClick={() => { if (confirm("Apagar esta mensagem?")) apagarMensagem(c.id); }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-100 text-gray-300 hover:text-red-500"
+                                title="Apagar mensagem">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">{renderTextoComLinks(c.texto)}</p>
                       </div>
