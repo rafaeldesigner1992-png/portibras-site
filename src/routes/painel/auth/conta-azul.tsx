@@ -37,15 +37,18 @@ function ContaAzulCallback() {
   async function trocarCodigo(code: string) {
     setStatus("loading");
     try {
+      // Conta Azul exige Basic Auth no header, não no body
+      const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
       const res = await fetch(TOKEN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": `Basic ${basicAuth}`,
+        },
         body: new URLSearchParams({
           grant_type: "authorization_code",
           code,
           redirect_uri: REDIRECT_URI,
-          client_id: CLIENT_ID,
-          client_secret: CLIENT_SECRET,
         }),
       });
 

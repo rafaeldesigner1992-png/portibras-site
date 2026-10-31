@@ -48,14 +48,17 @@ async function getAccessToken(): Promise<string> {
     .single();
 
   if (cfgRefresh?.valor) {
+    // Conta Azul exige Basic Auth no header
+    const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
     const res = await fetch(TOKEN_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${basicAuth}`,
+      },
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: cfgRefresh.valor,
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
       }),
     });
 
