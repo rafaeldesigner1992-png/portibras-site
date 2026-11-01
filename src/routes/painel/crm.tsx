@@ -297,6 +297,8 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [enderecoEscritorio, setEnderecoEscritorio] = useState("");
   const [enderecoCasa, setEnderecoCasa] = useState("");
   const [origemRota, setOrigemRota] = useState<"escritorio" | "casa">("escritorio");
+  const [calculandoRota, setCalculandoRota] = useState(false);
+  const [rotaResultado, setRotaResultado] = useState<{ distancia_km: number; distancia_ida_volta_km: number; duracao_min: number } | null>(null);
 
   // Forma de pagamento
   const [pagamento, setPagamento] = useState<FormaPagamento>({
@@ -448,6 +450,40 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   function removeMoManual(id: number) { setMoManual(prev => prev.filter(m => m.id !== id)); }
   function setMoDesc(id: number, desc: string) { setMoManual(prev => prev.map(m => m.id === id ? { ...m, descricao: desc } : m)); }
   function setMoValor(id: number, val: number) { setMoManual(prev => prev.map(m => m.id === id ? { ...m, valor: val } : m)); }
+
+  // Calcula rota automaticamente via edge function (OSRM + Nominatim, sem API key)
+  async function calcularRotaAuto() {
+    const enderecoCliente = lead.endereco_atendimento || lead.endereco_fiscal || "";
+    const origemAddr = origemRota === "escritorio" ? enderecoEscritorio : enderecoCasa;
+    if (!origemAddr || !enderecoCliente) return;
+    setCalculandoRota(true);
+    setRotaResultado(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("calcular-rota", {
+        body: { origem: origemAddr, destino: enderecoCliente },
+      });
+      if (error || !data) throw new Error(error?.message || "Erro ao calcular rota");
+      setRotaResultado(data);
+      // Preenche automaticamente o custo de combustível (ida e volta)
+      if (custoPorKmVeiculo > 0 && data.distancia_ida_volta_km > 0) {
+        const custoCombus = Math.round(custoPorKmVeiculo * data.distancia_ida_volta_km * 100) / 100;
+        const descricaoCombus = `Combustível (${data.distancia_ida_volta_km}km ida+volta)`;
+        // Remove linha de combustível anterior se existir, adiciona nova
+        setDeslocamento(prev => {
+          const semCombus = prev.filter(d => !d.descricao.startsWith("Combustível"));
+          const id = proximoDeslocId;
+          setProximoDeslocId(n => n + 1);
+          return [...semCombus, { id, descricao: descricaoCombus, valor: custoCombus }];
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("calcularRotaAuto:", msg);
+      // fallback: abre Maps
+    } finally {
+      setCalculandoRota(false);
+    }
+  }
 
   // Deslocamento helpers
   function addDeslocamento(descricaoInicial?: string, valorInicial?: number) {
@@ -1017,32 +1053,43 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                     </button>
                   </div>
 
-                  {/* Seletor de origem + botão rota */}
+                  {/* Seletor de origem + botões de ação */}
                   <div className="flex items-center gap-1 flex-wrap">
                     {temEnderecos && (
                       <div className="flex rounded border border-orange-200 overflow-hidden text-[8px] font-semibold">
                         {enderecoEscritorio && (
                           <button
-                            onClick={() => setOrigemRota("escritorio")}
+                            onClick={() => { setOrigemRota("escritorio"); setRotaResultado(null); }}
                             className={cn("px-1.5 py-0.5", origemRota === "escritorio" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
                             🏢 Escritório
                           </button>
                         )}
                         {enderecoCasa && (
                           <button
-                            onClick={() => setOrigemRota("casa")}
+                            onClick={() => { setOrigemRota("casa"); setRotaResultado(null); }}
                             className={cn("px-1.5 py-0.5 border-l border-orange-200", origemRota === "casa" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
                             🏠 Casa
                           </button>
                         )}
                       </div>
                     )}
-                    {mapsUrl ? (
+                    {/* Botão calcular rota automático */}
+                    {temEnderecos && enderecoCliente && (
+                      <button
+                        onClick={calcularRotaAuto}
+                        disabled={calculandoRota}
+                        className="flex items-center gap-0.5 rounded border border-orange-400 bg-orange-500 px-1.5 py-0.5 text-[8px] font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
+                        {calculandoRota ? "⏳ Calculando…" : "📍 Calcular rota"}
+                      </button>
+                    )}
+                    {/* Fallback: link Maps quando sem endereços configurados */}
+                    {!temEnderecos && mapsUrl && (
                       <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-0.5 rounded border border-orange-300 bg-orange-500 px-1.5 py-0.5 text-[8px] font-semibold text-white hover:bg-orange-600">
-                        📍 Ver rota no Maps
+                        className="flex items-center gap-0.5 rounded border border-orange-300 bg-white px-1.5 py-0.5 text-[8px] font-semibold text-orange-600 hover:bg-orange-50">
+                        📍 Ver no Maps
                       </a>
-                    ) : (
+                    )}
+                    {!temEnderecos && !enderecoCliente && (
                       <span className="text-[8px] text-orange-300 italic">
                         {!enderecoCliente ? "Endereço do cliente não cadastrado" : "Configure origens em Financeiro → Veículo"}
                       </span>
@@ -1051,6 +1098,21 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                       <span className="text-[8px] text-orange-400 ml-auto">{custoPorKmVeiculo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/km</span>
                     )}
                   </div>
+
+                  {/* Resultado da rota calculada */}
+                  {rotaResultado && (
+                    <div className="flex items-center gap-2 rounded border border-orange-200 bg-orange-50 px-2 py-1 text-[8px]">
+                      <span className="font-bold text-orange-700">🛣 {rotaResultado.distancia_km} km</span>
+                      <span className="text-orange-400">·</span>
+                      <span className="text-orange-600">ida+volta: {rotaResultado.distancia_ida_volta_km} km</span>
+                      <span className="text-orange-400">·</span>
+                      <span className="text-orange-500">~{rotaResultado.duracao_min} min</span>
+                      {mapsUrl && (
+                        <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                          className="ml-auto text-orange-400 underline hover:text-orange-600">ver no Maps</a>
+                      )}
+                    </div>
+                  )}
 
                   {/* Linhas de custo */}
                   {deslocamento.map(d => (
@@ -1063,8 +1125,8 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                       <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-3 w-3" /></button>
                     </div>
                   ))}
-                  {deslocamento.length === 0 && (
-                    <p className="text-[9px] text-orange-400 text-center">Veja a rota → preencha km e pedágios</p>
+                  {deslocamento.length === 0 && !rotaResultado && (
+                    <p className="text-[9px] text-orange-400 text-center">Clique em "Calcular rota" para preencher automaticamente</p>
                   )}
                   {custoDeslocamentoTotal > 0 && (
                     <div className="flex justify-between pt-0.5 border-t border-orange-100">
