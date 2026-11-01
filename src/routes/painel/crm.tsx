@@ -290,6 +290,9 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [moManual, setMoManual] = useState<MOManual[]>([]);
   const [proximoMoId, setProximoMoId] = useState(1);
 
+  // Profissionais terceirizados adicionados manualmente (além dos vinculados a suprimentos)
+  const [profsManuaisIds, setProfsManuaisIds] = useState<string[]>([]);
+
   // Custos de deslocamento
   const [deslocamento, setDeslocamento] = useState<ItemDeslocamento[]>([]);
   const [proximoDeslocId, setProximoDeslocId] = useState(1);
@@ -515,8 +518,11 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     (sup?.profissionais_ids ?? []).forEach(pid => profIdsNecessarios.add(pid));
   });
 
+  // Merge: auto-detectados por suprimentos + adicionados manualmente (sem duplicata)
+  const profIdsMerge = new Set<string>([...profIdsNecessarios, ...profsManuaisIds]);
+
   const custoPorProfissional = profissionais
-    .filter(p => profIdsNecessarios.has(p.id))
+    .filter(p => profIdsMerge.has(p.id))
     .map(p => {
       let total = 0;
       let descCobranca = "";
@@ -1021,6 +1027,21 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                   <span className="text-[8px] font-semibold uppercase tracking-wide text-blue-600">MO / Logística</span>
                   <div className="flex items-center gap-1">
                     {custoMOTotal > 0 && <span className="text-[9px] font-bold text-blue-700">{fmt(custoMOTotal)}</span>}
+                    {/* Dropdown para adicionar profissional terceirizado manualmente */}
+                    {profissionais.filter(p => !profIdsMerge.has(p.id) && p.ativo).length > 0 && (
+                      <select defaultValue="" onChange={e => {
+                        const pid = e.target.value;
+                        if (pid && !profsManuaisIds.includes(pid)) {
+                          setProfsManuaisIds(prev => [...prev, pid]);
+                          e.target.value = "";
+                        }
+                      }} className="rounded border border-blue-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-blue-600 hover:bg-blue-50 cursor-pointer">
+                        <option value="" disabled>+ Prof.</option>
+                        {profissionais.filter(p => !profIdsMerge.has(p.id) && p.ativo).map(p => (
+                          <option key={p.id} value={p.id}>{p.especialidade || p.nome}</option>
+                        ))}
+                      </select>
+                    )}
                     <button onClick={addMoManual}
                       className="flex items-center gap-0.5 rounded border border-blue-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-blue-600 hover:bg-blue-50">
                       <Plus className="h-2 w-2" /> Add
@@ -1032,6 +1053,13 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                     <span className="flex-1 text-[8px] text-gray-600 font-semibold truncate">{p.especialidade || p.nome}</span>
                     <span className="text-[8px] text-gray-400 shrink-0">({p.descCobranca})</span>
                     <span className="text-[9px] font-bold text-blue-700 shrink-0">{fmt(p.total)}</span>
+                    {/* X para remover profissionais adicionados manualmente */}
+                    {profsManuaisIds.includes(p.id) && (
+                      <button onClick={() => setProfsManuaisIds(prev => prev.filter(id => id !== p.id))}
+                        className="text-gray-300 hover:text-red-400 ml-0.5">
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
                 {moManual.map(m => (
