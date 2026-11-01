@@ -164,6 +164,14 @@ function FinanceiroPage() {
   const [salvandoVeiculo, setSalvandoVeiculo] = useState(false);
   const [veiculoSalvo, setVeiculoSalvo] = useState(false);
 
+  // ── Pedágios ──
+  interface Pedagio { id: string; nome: string; valor: number; }
+  const [pedagogios, setPedagios] = useState<Pedagio[]>([]);
+  const [salvandoPedagios, setSalvandoPedagios] = useState(false);
+  const [pedagogiosSalvos, setPedagiosSalvos] = useState(false);
+  const [novoPedagioNome, setNovoPedagioNome] = useState("");
+  const [novoPedagioValor, setNovoPedagioValor] = useState("");
+
   // ── Custos Fixos ──
   const [custosFixos, setCustosFixos] = useState<CustoFixo[]>([]);
   const [carregandoCF, setCarregandoCF] = useState(true);
@@ -354,7 +362,7 @@ function FinanceiroPage() {
     const { data } = await supabase.from("configuracoes").select("*")
       .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "margem_meta_pct",
         "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km",
-        "veiculo_endereco_escritorio", "veiculo_endereco_casa"]);
+        "veiculo_endereco_escritorio", "veiculo_endereco_casa", "pedagogios_lista"]);
     if (data) {
       for (const row of data) {
         if (row.chave === "imposto_padrao_pct") { setAliquota(Number(row.valor)); setAliquotaInput(String(Number(row.valor))); setConfigId(row.id); }
@@ -366,8 +374,37 @@ function FinanceiroPage() {
         if (row.chave === "veiculo_custo_manut_km") setCustoManutInput(String(Number(row.valor)));
         if (row.chave === "veiculo_endereco_escritorio") setEnderecoEscritorioInput(row.valor || "");
         if (row.chave === "veiculo_endereco_casa") setEnderecoCasaInput(row.valor || "");
+        if (row.chave === "pedagogios_lista") {
+          try { setPedagios(JSON.parse(row.valor || "[]")); } catch { setPedagios([]); }
+        }
       }
     }
+  }
+
+  async function salvarPedagios(lista: { id: string; nome: string; valor: number }[]) {
+    setSalvandoPedagios(true);
+    await supabase.from("configuracoes").upsert(
+      { chave: "pedagogios_lista", valor: JSON.stringify(lista), descricao: "Lista de pedágios pré-cadastrados" },
+      { onConflict: "chave" }
+    );
+    setPedagios(lista);
+    setSalvandoPedagios(false);
+    setPedagiosSalvos(true);
+    setTimeout(() => setPedagiosSalvos(false), 2000);
+  }
+
+  function adicionarPedagio() {
+    const nome = novoPedagioNome.trim();
+    const valor = Number(novoPedagioValor);
+    if (!nome || valor <= 0) return;
+    const nova = [...pedagogios, { id: crypto.randomUUID(), nome, valor }];
+    setNovoPedagioNome("");
+    setNovoPedagioValor("");
+    salvarPedagios(nova);
+  }
+
+  function removerPedagio(id: string) {
+    salvarPedagios(pedagogios.filter(p => p.id !== id));
   }
 
   async function carregarCustosFixos() {
@@ -1089,6 +1126,69 @@ function FinanceiroPage() {
             )}
             <SalvarBtn loading={salvandoVeiculo} salvo={veiculoSalvo} onClick={salvarVeiculo} className="mt-3" />
           </div>
+
+          {/* Pedágios pré-cadastrados */}
+          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-1.5 mb-3">
+              <span className="text-base">🛣</span>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Pedágios</p>
+            </div>
+            <p className="text-xs text-gray-400 mb-3">Cadastre os pedágios da sua rota para selecionar rapidamente no orçamento.</p>
+
+            {/* Lista existente */}
+            <div className="space-y-1.5 mb-3">
+              {pedagogios.length === 0 && (
+                <p className="text-xs text-gray-300 text-center py-2">Nenhum pedágio cadastrado</p>
+              )}
+              {pedagogios.map(p => (
+                <div key={p.id} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5">
+                  <span className="text-sm font-medium text-gray-700">{p.nome}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-orange-600">
+                      {p.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                    <button onClick={() => removerPedagio(p.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Adicionar novo */}
+            <div className="flex gap-1.5 items-end border-t border-gray-200 pt-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={novoPedagioNome}
+                  onChange={e => setNovoPedagioNome(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && adicionarPedagio()}
+                  placeholder="Ex: Pedágio Linha Amarela"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Valor (R$)</label>
+                <input
+                  type="number" min={0} step={0.50}
+                  value={novoPedagioValor}
+                  onChange={e => setNovoPedagioValor(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && adicionarPedagio()}
+                  placeholder="5,00"
+                  className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]"
+                />
+              </div>
+              <button
+                onClick={adicionarPedagio}
+                disabled={salvandoPedagios || !novoPedagioNome.trim() || Number(novoPedagioValor) <= 0}
+                className="flex items-center gap-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors">
+                {salvandoPedagios ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {pedagogiosSalvos ? "Salvo!" : "Add"}
+              </button>
+            </div>
+          </div>
+
         </div>
       </Secao>
 
