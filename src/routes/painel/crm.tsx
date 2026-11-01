@@ -3348,15 +3348,33 @@ function CrmPage() {
       });
     }
 
-    // 4. Atualiza estado local
+    // 4. Cria card em Logística para tratamento
+    await supabase.from("logistica_pedidos").insert({
+      crm_lead_id: lead.id,
+      cliente_nome: lead.nome,
+      cliente_empresa: lead.empresa,
+      cliente_telefone: lead.telefone,
+      cliente_email: lead.email,
+      cliente_endereco: lead.endereco,
+      tipo_servico: lead.tipo_negocio,
+      valor_venda: valorVenda || null,
+      custo_estimado: custoVenda,
+      margem_pct: margemReal,
+      observacoes_crm: lead.observacoes,
+      portas: null,          // preenchido pela logística se necessário
+      etapa: "tratamento",
+      tipo_cobranca: "antes", // padrão — logística decide
+    });
+
+    // 5. Atualiza estado local
     const updatedLead = { ...lead, etapa: "fechado" as Etapa, data_fechamento: agora, valor_estimado: valorVenda || lead.valor_estimado };
     if (cardAberto?.id === lead.id) setCardAberto(updatedLead);
     setLeads(ls => ls.map(l => l.id === lead.id ? updatedLead : l));
 
-    // 5. Toast com resumo
+    // 6. Toast com resumo
     const toastMsg = valorVenda > 0
-      ? `Venda registrada — ${valorVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${margemReal != null ? ` | Margem: ${margemReal.toFixed(1)}%` : ""}`
-      : "Lead fechado com sucesso.";
+      ? `Venda registrada — ${valorVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${margemReal != null ? ` | Margem: ${margemReal.toFixed(1)}%` : ""} · Card criado em Logística`
+      : "Lead fechado · Card criado em Logística.";
     setToast({ msg: toastMsg, tipo: "sucesso" });
 
     // 6. Atualiza meta BPO em background

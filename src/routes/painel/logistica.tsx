@@ -102,7 +102,50 @@ const PRIORIDADE_CORES: Record<string, string> = {
   urgente:"bg-red-100 text-red-700",
 };
 
-// ─── Pedidos Fechados (do CRM) ────────────────────────────────────────────────
+// ─── Pedidos Logísticos (vindos do CRM) ───────────────────────────────────────
+type EtapaLogistica = "tratamento" | "aguard_material" | "aguard_cobranca" | "em_execucao" | "concluido" | "cancelado";
+type TipoCobranca   = "antes" | "apos" | "sem_cobranca";
+
+interface PedidoLogistico {
+  id: string;
+  crm_lead_id: string | null;
+  cliente_nome: string | null;
+  cliente_empresa: string | null;
+  cliente_telefone: string | null;
+  cliente_email: string | null;
+  cliente_endereco: string | null;
+  tipo_servico: string | null;
+  valor_venda: number | null;
+  custo_estimado: number | null;
+  margem_pct: number | null;
+  observacoes_crm: string | null;
+  portas: number | null;
+  parcela_mensal: number | null;
+  etapa: EtapaLogistica;
+  tipo_cobranca: TipoCobranca;
+  cobrado: boolean;
+  cobrado_em: string | null;
+  responsavel: string | null;
+  observacoes: string | null;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+interface ItemAquisicao {
+  id: string;
+  pedido_id: string;
+  nome: string;
+  quantidade: number;
+  unidade: string;
+  custo_unitario: number | null;
+  fornecedor: string | null;
+  link_compra: string | null;
+  status: "pendente" | "pedido" | "recebido";
+  observacoes: string | null;
+  criado_em: string;
+}
+
+// ─── Pedidos Fechados (legado — mantido para compatibilidade) ─────────────────
 interface PedidoFechado {
   id: string;
   lead_id: string;
@@ -507,7 +550,18 @@ function GanttView({ atendimentos, carregando }: { atendimentos: Atendimento[]; 
 }
 
 function LogisticaPage() {
-  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras" | "gantt" | "vistorias">("atendimentos");
+  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras" | "gantt" | "vistorias" | "pedidos">("pedidos");
+
+  // ── Pedidos Logísticos ─────────────────────────────────────────────────────
+  const [pedidosLog, setPedidosLog] = useState<PedidoLogistico[]>([]);
+  const [carregandoPedLog, setCarregandoPedLog] = useState(false);
+  const [pedidoAberto, setPedidoAberto] = useState<PedidoLogistico | null>(null);
+  const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao">("info");
+  const [aquisicoes, setAquisicoes] = useState<ItemAquisicao[]>([]);
+  const [carregandoAquis, setCarregandoAquis] = useState(false);
+  const [formAquis, setFormAquis] = useState({ nome: "", quantidade: "1", unidade: "un", custo_unitario: "", fornecedor: "", link_compra: "", observacoes: "" });
+  const [salvandoAquis, setSalvandoAquis] = useState(false);
+  const [atualizandoEtapa, setAtualizandoEtapa] = useState<string | null>(null);
 
   // ── Estoque ────────────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemEstoque[]>([]);
@@ -554,6 +608,7 @@ function LogisticaPage() {
   const [atendFiltroCompras, setAtendFiltroCompras] = useState<string | null>(null);
 
   useEffect(() => {
+    if (aba === "pedidos") carregarPedidosLog();
     if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); }
     if (aba === "gantt") carregarAtendimentos();
     if (aba === "compras") { carregarAtendimentos(); carregarMateriais(); }
@@ -653,6 +708,74 @@ function LogisticaPage() {
     const { data } = await supabase.from("atendimentos").select("*").order("data_agendada", { ascending: false });
     if (data) setAtendimentos(data as Atendimento[]);
     setCarregandoAtend(false);
+  }
+
+  async function carregarPedidosLog() {
+    setCarregandoPedLog(true);
+    const { data } = await supabase
+      .from("logistica_pedidos")
+      .select("*")
+      .not("etapa", "in", "(concluido,cancelado)")
+      .order("criado_em", { ascending: false });
+    if (data) setPedidosLog(data as PedidoLogistico[]);
+    setCarregandoPedLog(false);
+  }
+
+  async function carregarAquisicoes(pedidoId: string) {
+    setCarregandoAquis(true);
+    const { data } = await supabase
+      .from("logistica_aquisicoes")
+      .select("*")
+      .eq("pedido_id", pedidoId)
+      .order("criado_em", { ascending: true });
+    if (data) setAquisicoes(data as ItemAquisicao[]);
+    setCarregandoAquis(false);
+  }
+
+  async function abrirPedido(p: PedidoLogistico) {
+    setPedidoAberto(p);
+    setAbaPedido("info");
+    setAquisicoes([]);
+    carregarAquisicoes(p.id);
+  }
+
+  async function moverEtapa(pedido: PedidoLogistico, novaEtapa: EtapaLogistica) {
+    setAtualizandoEtapa(pedido.id);
+    const updates: Partial<PedidoLogistico> = { etapa: novaEtapa };
+    if (novaEtapa === "aguard_cobranca") updates.tipo_cobranca = "apos";
+    await supabase.from("logistica_pedidos").update(updates).eq("id", pedido.id);
+    setPedidosLog(ps => ps.map(p => p.id === pedido.id ? { ...p, ...updates } : p));
+    if (pedidoAberto?.id === pedido.id) setPedidoAberto(p => p ? { ...p, ...updates } : p);
+    setAtualizandoEtapa(null);
+  }
+
+  async function salvarAquisicao() {
+    if (!pedidoAberto || !formAquis.nome.trim()) return;
+    setSalvandoAquis(true);
+    const { data } = await supabase.from("logistica_aquisicoes").insert({
+      pedido_id: pedidoAberto.id,
+      nome: formAquis.nome.trim(),
+      quantidade: parseFloat(formAquis.quantidade) || 1,
+      unidade: formAquis.unidade || "un",
+      custo_unitario: formAquis.custo_unitario ? parseFloat(formAquis.custo_unitario.replace(",", ".")) : null,
+      fornecedor: formAquis.fornecedor || null,
+      link_compra: formAquis.link_compra || null,
+      observacoes: formAquis.observacoes || null,
+      status: "pendente",
+    }).select().single();
+    if (data) setAquisicoes(aq => [...aq, data as ItemAquisicao]);
+    setFormAquis({ nome: "", quantidade: "1", unidade: "un", custo_unitario: "", fornecedor: "", link_compra: "", observacoes: "" });
+    setSalvandoAquis(false);
+  }
+
+  async function atualizarStatusAquis(id: string, status: ItemAquisicao["status"]) {
+    await supabase.from("logistica_aquisicoes").update({ status }).eq("id", id);
+    setAquisicoes(aq => aq.map(a => a.id === id ? { ...a, status } : a));
+  }
+
+  async function removerAquisicao(id: string) {
+    await supabase.from("logistica_aquisicoes").delete().eq("id", id);
+    setAquisicoes(aq => aq.filter(a => a.id !== id));
   }
 
   async function carregarPedidosFechados() {
@@ -1113,10 +1236,11 @@ function LogisticaPage() {
       <div className="mb-6">
         <div className="flex gap-1 overflow-x-auto border-b border-gray-200 scrollbar-none pb-px">
           {([
+            { key: "pedidos",      label: "Pedidos",      icon: FileCheck },
+            { key: "compras",      label: "Compras",      icon: ShoppingBag },
             { key: "atendimentos", label: "Atendimentos", icon: ClipboardList },
             { key: "vistorias",    label: "Vistorias",    icon: ClipboardCheck },
             { key: "gantt",        label: "Gantt",        icon: BarChart2 },
-            { key: "compras",      label: "Compras",      icon: ShoppingBag },
             { key: "estoque",      label: "Estoque",      icon: Package },
             { key: "suprimentos",  label: "Catálogo",     icon: ShoppingCart },
             { key: "equipe",       label: "Equipe",       icon: HardHat },
@@ -1124,13 +1248,19 @@ function LogisticaPage() {
           ] as const).map(({ key, label, icon: Icon }) => {
             const ativo = aba === key;
             const badges: { count: number; cor: string; title?: string }[] = [];
+            if (key === "pedidos") {
+              const tratamento = pedidosLog.filter(p => p.etapa === "tratamento").length;
+              if (tratamento > 0) badges.push({ count: tratamento, cor: "bg-orange-500", title: "Em tratamento" });
+            }
+            if (key === "compras") {
+              // badge de itens pendentes de compra (buscado via pedidosLog indiretamente — simplificado)
+            }
             if (key === "estoque" && abaixoMinimo.length > 0) badges.push({ count: abaixoMinimo.length, cor: "bg-orange-500" });
             if (key === "suprimentos" && precosDesatualizados.length > 0) badges.push({ count: precosDesatualizados.length, cor: "bg-amber-500" });
             if (key === "vistorias") { const n = vistorias.filter(v => v.status === "pendente" || v.status === "agendada").length; if (n > 0) badges.push({ count: n, cor: "bg-orange-500" }); }
             if (key === "atendimentos") {
               const ativos = atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length;
               if (ativos > 0) badges.push({ count: ativos, cor: "bg-emerald-500" });
-              if (pedidosFechados.length > 0) badges.push({ count: pedidosFechados.length, cor: "bg-green-600", title: "Pedidos fechados" });
             }
             if (key === "tecnico" && ticketsAbertos.length > 0) badges.push({ count: ticketsAbertos.length, cor: "bg-blue-500" });
             return (
@@ -1157,6 +1287,320 @@ function LogisticaPage() {
           })}
         </div>
       </div>
+
+      {/* ═══════ ABA PEDIDOS (Kanban de Tratamento) ═══════ */}
+      {aba === "pedidos" && (() => {
+        const ETAPAS: { key: EtapaLogistica; label: string; cor: string; bg: string }[] = [
+          { key: "tratamento",      label: "Tratamento",         cor: "text-orange-700",  bg: "bg-orange-50 border-orange-200" },
+          { key: "aguard_material", label: "Aguard. Material",   cor: "text-amber-700",   bg: "bg-amber-50 border-amber-200" },
+          { key: "aguard_cobranca", label: "Aguard. Cobrança",   cor: "text-blue-700",    bg: "bg-blue-50 border-blue-200" },
+          { key: "em_execucao",     label: "Em Execução",        cor: "text-purple-700",  bg: "bg-purple-50 border-purple-200" },
+          { key: "concluido",       label: "Concluído",          cor: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+        ];
+        const PROX: Record<EtapaLogistica, EtapaLogistica | null> = {
+          tratamento: "aguard_material", aguard_material: "em_execucao",
+          aguard_cobranca: "em_execucao", em_execucao: "concluido",
+          concluido: null, cancelado: null,
+        };
+        const TIPO_COB_LABEL: Record<TipoCobranca, string> = {
+          antes: "Cobrar antes", apos: "Cobrar após", sem_cobranca: "Sem cobrança",
+        };
+        const fmt = (v: number | null) => v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+
+        return (
+          <>
+            {/* Cabeçalho */}
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Pedidos em Tratamento</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Pedidos fechados no CRM aguardando execução</p>
+              </div>
+              {carregandoPedLog && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+            </div>
+
+            {/* Kanban */}
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {ETAPAS.map(etapa => {
+                const cards = pedidosLog.filter(p => p.etapa === etapa.key);
+                return (
+                  <div key={etapa.key} className="flex-shrink-0 w-72">
+                    {/* Cabeçalho coluna */}
+                    <div className={cn("flex items-center justify-between rounded-t-xl border px-3 py-2", etapa.bg)}>
+                      <span className={cn("text-xs font-semibold", etapa.cor)}>{etapa.label}</span>
+                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", etapa.bg, etapa.cor)}>
+                        {cards.length}
+                      </span>
+                    </div>
+                    {/* Cards */}
+                    <div className="min-h-[120px] space-y-2.5 rounded-b-xl border border-t-0 border-gray-200 bg-gray-50/60 p-2.5">
+                      {cards.length === 0 && (
+                        <p className="text-center text-[11px] text-gray-300 py-6">Nenhum pedido</p>
+                      )}
+                      {cards.map(p => {
+                        const cliente = p.cliente_empresa || p.cliente_nome || "—";
+                        const tipo = p.tipo_servico === "manutencao" ? "Manutenção" : p.tipo_servico === "orcamento" ? "Orçamento" : "Serviço";
+                        const prox = PROX[p.etapa];
+                        return (
+                          <div
+                            key={p.id}
+                            className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                            onClick={() => abrirPedido(p)}
+                          >
+                            <div className="flex items-start justify-between gap-1 mb-1.5">
+                              <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2">{cliente}</p>
+                              <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-500">{tipo}</span>
+                            </div>
+                            {p.valor_venda != null && (
+                              <p className="text-sm font-bold text-[#1a6b2f] mb-1">{fmt(p.valor_venda)}</p>
+                            )}
+                            <div className="flex items-center justify-between mt-2">
+                              <span className={cn(
+                                "text-[9px] font-semibold px-1.5 py-0.5 rounded-full",
+                                p.tipo_cobranca === "antes" ? "bg-blue-100 text-blue-700"
+                                  : p.tipo_cobranca === "apos" ? "bg-purple-100 text-purple-700"
+                                  : "bg-gray-100 text-gray-500"
+                              )}>
+                                {TIPO_COB_LABEL[p.tipo_cobranca]}
+                              </span>
+                              {prox && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); moverEtapa(p, prox); }}
+                                  disabled={atualizandoEtapa === p.id}
+                                  className="flex items-center gap-0.5 text-[10px] font-medium text-[#1a6b2f] hover:underline disabled:opacity-40"
+                                >
+                                  {atualizandoEtapa === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronRight className="h-3 w-3" />}
+                                  Avançar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Painel lateral do card */}
+            {pedidoAberto && (
+              <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/30" onClick={e => e.target === e.currentTarget && setPedidoAberto(null)}>
+                <div className="relative h-full w-full max-w-xl bg-white shadow-2xl flex flex-col">
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
+                    <div>
+                      <p className="font-semibold text-gray-900">{pedidoAberto.cliente_empresa || pedidoAberto.cliente_nome || "Pedido"}</p>
+                      <p className="text-xs text-gray-400">{pedidoAberto.tipo_servico === "manutencao" ? "Manutenção" : "Orçamento"}</p>
+                    </div>
+                    <button onClick={() => setPedidoAberto(null)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                  </div>
+
+                  {/* Abas internas */}
+                  <div className="flex border-b border-gray-100 shrink-0">
+                    {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }] as const).map(t => (
+                      <button
+                        key={t.key}
+                        onClick={() => setAbaPedido(t.key)}
+                        className={cn(
+                          "px-5 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors",
+                          abaPedido === t.key ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-700"
+                        )}
+                      >
+                        {t.key === "aquisicao" && aquisicoes.filter(a => a.status === "pendente").length > 0 && (
+                          <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-bold text-white">
+                            {aquisicoes.filter(a => a.status === "pendente").length}
+                          </span>
+                        )}
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    {/* ─ ABA INFORMAÇÕES ─ */}
+                    {abaPedido === "info" && (
+                      <>
+                        {/* Etapa + cobrança */}
+                        <div className="flex gap-3">
+                          <div className="flex-1 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Etapa</p>
+                            <select
+                              value={pedidoAberto.etapa}
+                              onChange={e => moverEtapa(pedidoAberto, e.target.value as EtapaLogistica)}
+                              className="text-sm font-semibold text-gray-800 bg-transparent w-full outline-none"
+                            >
+                              {(["tratamento","aguard_material","aguard_cobranca","em_execucao","concluido","cancelado"] as EtapaLogistica[]).map(e => (
+                                <option key={e} value={e}>{
+                                  { tratamento:"Tratamento", aguard_material:"Aguard. Material",
+                                    aguard_cobranca:"Aguard. Cobrança", em_execucao:"Em Execução",
+                                    concluido:"Concluído", cancelado:"Cancelado" }[e]
+                                }</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex-1 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Tipo de Cobrança</p>
+                            <select
+                              value={pedidoAberto.tipo_cobranca}
+                              onChange={async e => {
+                                const tc = e.target.value as TipoCobranca;
+                                await supabase.from("logistica_pedidos").update({ tipo_cobranca: tc }).eq("id", pedidoAberto.id);
+                                setPedidoAberto(p => p ? { ...p, tipo_cobranca: tc } : p);
+                                setPedidosLog(ps => ps.map(p => p.id === pedidoAberto.id ? { ...p, tipo_cobranca: tc } : p));
+                              }}
+                              className="text-sm font-semibold text-gray-800 bg-transparent w-full outline-none"
+                            >
+                              <option value="antes">Cobrar antes</option>
+                              <option value="apos">Cobrar após</option>
+                              <option value="sem_cobranca">Sem cobrança</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Valores */}
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Valor Venda</p>
+                            <p className="text-sm font-bold text-[#1a6b2f]">{fmt(pedidoAberto.valor_venda)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Custo Est.</p>
+                            <p className="text-sm font-bold text-gray-700">{fmt(pedidoAberto.custo_estimado)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Margem</p>
+                            <p className="text-sm font-bold text-emerald-600">{pedidoAberto.margem_pct != null ? `${pedidoAberto.margem_pct.toFixed(1)}%` : "—"}</p>
+                          </div>
+                        </div>
+
+                        {/* Dados do cliente */}
+                        <div className="rounded-xl border border-gray-100 bg-white p-4 space-y-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Cliente</p>
+                          <div className="space-y-1.5 text-sm">
+                            {pedidoAberto.cliente_nome && (
+                              <div className="flex items-center gap-2 text-gray-700"><User className="h-3.5 w-3.5 text-gray-400 shrink-0" />{pedidoAberto.cliente_nome}</div>
+                            )}
+                            {pedidoAberto.cliente_empresa && (
+                              <div className="flex items-center gap-2 text-gray-700"><Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />{pedidoAberto.cliente_empresa}</div>
+                            )}
+                            {pedidoAberto.cliente_telefone && (
+                              <div className="flex items-center gap-2 text-gray-700"><Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />{pedidoAberto.cliente_telefone}</div>
+                            )}
+                            {pedidoAberto.cliente_email && (
+                              <div className="flex items-center gap-2 text-gray-700"><Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />{pedidoAberto.cliente_email}</div>
+                            )}
+                            {pedidoAberto.cliente_endereco && (
+                              <div className="flex items-center gap-2 text-gray-700"><MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />{pedidoAberto.cliente_endereco}</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Obs do CRM */}
+                        {pedidoAberto.observacoes_crm && (
+                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Observações do CRM</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{pedidoAberto.observacoes_crm}</p>
+                          </div>
+                        )}
+
+                        {/* Link CRM */}
+                        {pedidoAberto.crm_lead_id && (
+                          <a
+                            href={`/painel/crm?lead=${pedidoAberto.crm_lead_id}`}
+                            className="flex items-center gap-1.5 text-xs text-[#1a6b2f] hover:underline"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" /> Ver lead no CRM
+                          </a>
+                        )}
+                      </>
+                    )}
+
+                    {/* ─ ABA AQUISIÇÃO ─ */}
+                    {abaPedido === "aquisicao" && (
+                      <>
+                        <p className="text-xs text-gray-400">Peças e materiais que precisam ser comprados para este pedido.</p>
+
+                        {/* Lista de itens */}
+                        {carregandoAquis ? (
+                          <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</div>
+                        ) : aquisicoes.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-sm text-gray-300">
+                            Nenhuma peça lançada ainda
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {aquisicoes.map(a => (
+                              <div key={a.id} className="flex items-start gap-3 rounded-xl border border-gray-100 bg-white p-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <p className="text-sm font-medium text-gray-900 truncate">{a.nome}</p>
+                                    <span className="text-xs text-gray-400">{a.quantidade} {a.unidade}</span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                                    {a.custo_unitario != null && <span>{fmt(a.custo_unitario)}/un</span>}
+                                    {a.fornecedor && <span>{a.fornecedor}</span>}
+                                    {a.link_compra && <a href={a.link_compra} target="_blank" rel="noopener noreferrer" className="text-[#1a6b2f] hover:underline flex items-center gap-0.5"><ExternalLink className="h-3 w-3" />Link</a>}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <select
+                                    value={a.status}
+                                    onChange={e => atualizarStatusAquis(a.id, e.target.value as ItemAquisicao["status"])}
+                                    className={cn(
+                                      "text-[10px] font-semibold rounded-full px-2 py-0.5 border-0 outline-none cursor-pointer",
+                                      a.status === "pendente" ? "bg-orange-100 text-orange-700"
+                                        : a.status === "pedido" ? "bg-blue-100 text-blue-700"
+                                        : "bg-emerald-100 text-emerald-700"
+                                    )}
+                                  >
+                                    <option value="pendente">Pendente</option>
+                                    <option value="pedido">Pedido</option>
+                                    <option value="recebido">Recebido</option>
+                                  </select>
+                                  <button onClick={() => removerAquisicao(a.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Formulário novo item */}
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Adicionar peça</p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-2">
+                              <input className="input-field text-sm" placeholder="Nome da peça *" value={formAquis.nome} onChange={e => setFormAquis(f => ({ ...f, nome: e.target.value }))} />
+                            </div>
+                            <div className="flex gap-1">
+                              <input className="input-field text-sm w-16" placeholder="Qtd" type="number" min="1" step="any" value={formAquis.quantidade} onChange={e => setFormAquis(f => ({ ...f, quantidade: e.target.value }))} />
+                              <input className="input-field text-sm w-14" placeholder="un" value={formAquis.unidade} onChange={e => setFormAquis(f => ({ ...f, unidade: e.target.value }))} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input className="input-field text-sm" placeholder="Custo unit. (R$)" value={formAquis.custo_unitario} onChange={e => setFormAquis(f => ({ ...f, custo_unitario: e.target.value }))} />
+                            <input className="input-field text-sm" placeholder="Fornecedor" value={formAquis.fornecedor} onChange={e => setFormAquis(f => ({ ...f, fornecedor: e.target.value }))} />
+                          </div>
+                          <input className="input-field text-sm" placeholder="Link de compra (opcional)" value={formAquis.link_compra} onChange={e => setFormAquis(f => ({ ...f, link_compra: e.target.value }))} />
+                          <button
+                            onClick={salvarAquisicao}
+                            disabled={salvandoAquis || !formAquis.nome.trim()}
+                            className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors"
+                          >
+                            {salvandoAquis ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                            Adicionar
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* ═══════ ABA ATENDIMENTOS ═══════ */}
       {aba === "atendimentos" && (

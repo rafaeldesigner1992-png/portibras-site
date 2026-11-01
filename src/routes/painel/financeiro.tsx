@@ -200,6 +200,49 @@ function FinanceiroPage() {
   const [carregandoVendas, setCarregandoVendas] = useState(false);
   const [filtroMesVendas, setFiltroMesVendas] = useState(() => new Date().toISOString().slice(0, 7));
 
+  // ── A Faturar (pedidos logísticos aguardando cobrança) ─────────────────
+  interface PedidoFaturar {
+    id: string;
+    cliente_nome: string | null;
+    cliente_empresa: string | null;
+    cliente_telefone: string | null;
+    tipo_servico: string | null;
+    valor_venda: number | null;
+    tipo_cobranca: "antes" | "apos" | "sem_cobranca";
+    etapa: string;
+    cobrado: boolean;
+    criado_em: string;
+    crm_lead_id: string | null;
+  }
+  const [pedidosFaturar, setPedidosFaturar] = useState<PedidoFaturar[]>([]);
+  const [carregandoFaturar, setCarregandoFaturar] = useState(false);
+  const [marcandoCobrado, setMarcandoCobrado] = useState<string | null>(null);
+
+  async function carregarPedidosFaturar() {
+    setCarregandoFaturar(true);
+    const { data } = await supabase
+      .from("logistica_pedidos")
+      .select("id,cliente_nome,cliente_empresa,cliente_telefone,tipo_servico,valor_venda,tipo_cobranca,etapa,cobrado,criado_em,crm_lead_id")
+      .eq("cobrado", false)
+      .not("tipo_cobranca", "eq", "sem_cobranca")
+      .not("etapa", "in", "(cancelado)")
+      .order("criado_em", { ascending: false });
+    setPedidosFaturar((data ?? []) as PedidoFaturar[]);
+    setCarregandoFaturar(false);
+  }
+
+  async function marcarCobrado(id: string) {
+    setMarcandoCobrado(id);
+    await supabase.from("logistica_pedidos").update({ cobrado: true, cobrado_em: new Date().toISOString() }).eq("id", id);
+    setPedidosFaturar(ps => ps.filter(p => p.id !== id));
+    setMarcandoCobrado(null);
+  }
+
+  useEffect(() => {
+    if (abaAtiva === "vendas") { carregarVendas(); carregarPedidosFaturar(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaAtiva]);
+
   async function carregarVendas() {
     setCarregandoVendas(true);
     const inicio = `${filtroMesVendas}-01`;
@@ -219,7 +262,7 @@ function FinanceiroPage() {
   useEffect(() => {
     if (abaAtiva === "vendas") carregarVendas();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [abaAtiva, filtroMesVendas]);
+  }, [filtroMesVendas]);
   // ─────────────────────────────────────────────────────────────────────────
 
   // ── Conta Azul state ──
@@ -536,7 +579,91 @@ function FinanceiroPage() {
 
       {/* ══════════ ABA VENDAS ══════════ */}
       {abaAtiva === "vendas" && (
-        <div className="space-y-4">
+        <div className="space-y-6">
+
+          {/* ── A FATURAR ──────────────────────────────────────────────── */}
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100">
+                <span className="text-[10px] font-bold text-blue-700">$</span>
+              </div>
+              <h2 className="text-sm font-semibold text-gray-900">A Faturar</h2>
+              {carregandoFaturar ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-blue-500" />
+              ) : pedidosFaturar.length > 0 ? (
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{pedidosFaturar.length}</span>
+              ) : null}
+              <span className="text-xs text-gray-400">— pedidos aguardando cobrança</span>
+            </div>
+
+            {pedidosFaturar.length === 0 && !carregandoFaturar ? (
+              <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-300">
+                Nenhum pedido pendente de cobrança
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell">Tipo</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Cobrança</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Etapa Log.</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
+                      <th className="px-4 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {pedidosFaturar.map(p => {
+                      const cliente = p.cliente_empresa || p.cliente_nome || "—";
+                      const etapaLabel: Record<string, string> = {
+                        tratamento: "Tratamento", aguard_material: "Aguard. Material",
+                        aguard_cobranca: "Aguard. Cobrança", em_execucao: "Em Execução",
+                      };
+                      const cobLabel = p.tipo_cobranca === "antes" ? "Antes da execução" : "Após a execução";
+                      const cobColor = p.tipo_cobranca === "antes" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700";
+                      return (
+                        <tr key={p.id} className="hover:bg-gray-50/60">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-gray-900">{cliente}</p>
+                            {p.cliente_telefone && <p className="text-xs text-gray-400">{p.cliente_telefone}</p>}
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                              {p.tipo_servico === "manutencao" ? "Manutenção" : "Orçamento"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", cobColor)}>{cobLabel}</span>
+                          </td>
+                          <td className="px-4 py-3 hidden lg:table-cell text-xs text-gray-500">
+                            {etapaLabel[p.etapa] || p.etapa}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-[#1a6b2f]">
+                            {p.valor_venda != null ? p.valor_venda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => marcarCobrado(p.id)}
+                              disabled={marcandoCobrado === p.id}
+                              className="flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 transition-colors whitespace-nowrap"
+                            >
+                              {marcandoCobrado === p.id
+                                ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+                                : <Check className="h-3 w-3" />}
+                              Cobrado
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── REGISTRO DE VENDAS ────────────────────────────────────── */}
           {/* Header com filtro de mês */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
