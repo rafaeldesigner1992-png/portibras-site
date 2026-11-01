@@ -3900,69 +3900,96 @@ function CrmPage() {
 
         {/* ── Banner BPO Meta de Vendas ─────────────────────────────── */}
         {(metaBPO || carregandoMeta) && (
-          <div className="mb-4 rounded-xl border border-[#1a6b2f]/20 bg-gradient-to-r from-[#1a6b2f]/5 to-emerald-50 p-4">
+          <div className="mb-4 overflow-hidden rounded-2xl border border-[#1a6b2f]/15 bg-white shadow-sm">
             {carregandoMeta ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="flex items-center gap-2 px-5 py-3.5 text-sm text-gray-400">
                 <Loader2 className="h-4 w-4 animate-spin" /> Carregando meta de vendas…
               </div>
-            ) : metaBPO ? (
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                {/* Números */}
-                <div className="flex flex-wrap gap-4">
-                  <div className="flex items-center gap-2">
-                    <Target className="h-5 w-5 text-[#1a6b2f] shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Meta do mês</p>
-                      <p className="text-lg font-bold text-[#1a6b2f]">
-                        {metaBPO.metaVendas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-emerald-600 shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Realizado</p>
-                      <p className="text-lg font-bold text-emerald-700">
-                        {metaBPO.receitaAtual.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-5 w-5 flex items-center justify-center shrink-0">
-                      <span className="text-xs font-bold text-orange-500">%</span>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Progresso</p>
-                      <p className="text-lg font-bold text-gray-800">
-                        {Math.min(Math.round((metaBPO.receitaAtual / metaBPO.metaVendas) * 100), 100)}%
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                {/* Barra + botão */}
-                <div className="flex flex-col gap-2 sm:min-w-[260px]">
-                  <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+            ) : metaBPO ? (() => {
+              const pct = Math.min((metaBPO.receitaAtual / metaBPO.metaVendas) * 100, 100);
+              const pctRound = Math.round(pct);
+              const faltam = Math.max(metaBPO.metaVendas - metaBPO.receitaAtual, 0);
+              const atingida = pct >= 100;
+              return (
+                <>
+                  {/* Topo: faixa verde fina */}
+                  <div className="h-1 w-full bg-gray-100">
                     <div
-                      className="h-full rounded-full bg-[#1a6b2f] transition-all"
-                      style={{ width: `${Math.min((metaBPO.receitaAtual / metaBPO.metaVendas) * 100, 100)}%` }}
+                      className={cn("h-full transition-all duration-700", atingida ? "bg-emerald-500" : "bg-[#1a6b2f]")}
+                      style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">
-                      Faltam {Math.max(metaBPO.metaVendas - metaBPO.receitaAtual, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </span>
+
+                  {/* Corpo */}
+                  <div className="flex items-center gap-0 px-5 py-3">
+
+                    {/* Meta */}
+                    <div className="flex items-center gap-2.5 pr-5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1a6b2f]/10 shrink-0">
+                        <Target className="h-4 w-4 text-[#1a6b2f]" />
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400">Meta do mês</p>
+                        <p className="text-sm font-bold text-[#1a6b2f] leading-tight">
+                          {metaBPO.metaVendas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mx-1 h-8 w-px bg-gray-100 shrink-0" />
+
+                    {/* Realizado */}
+                    <div className="flex items-center gap-2.5 px-5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 shrink-0">
+                        <TrendingUp className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400">Realizado</p>
+                        <p className="text-sm font-bold text-emerald-700 leading-tight">
+                          {metaBPO.receitaAtual.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mx-1 h-8 w-px bg-gray-100 shrink-0" />
+
+                    {/* Progresso circular mini */}
+                    <div className="flex items-center gap-2.5 px-5">
+                      <div className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-lg shrink-0 text-[11px] font-extrabold",
+                        atingida ? "bg-emerald-500 text-white" : pctRound >= 70 ? "bg-amber-50 text-amber-600" : "bg-orange-50 text-orange-500"
+                      )}>
+                        {pctRound}%
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400">Progresso</p>
+                        <p className="text-sm font-medium text-gray-700 leading-tight">
+                          {atingida ? "Meta atingida 🎉" : `Faltam ${faltam.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Spacer */}
+                    <div className="flex-1" />
+
+                    {/* Botão BPO */}
                     <button
                       onClick={() => setChatBPOAberto(v => !v)}
-                      className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824]"
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-all",
+                        chatBPOAberto
+                          ? "bg-[#1a6b2f] text-white shadow-md shadow-[#1a6b2f]/20"
+                          : "bg-[#1a6b2f]/8 text-[#1a6b2f] hover:bg-[#1a6b2f]/15"
+                      )}
                     >
                       <Bot className="h-3.5 w-3.5" />
                       Consultar BPO
                       {chatBPOAberto ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                     </button>
                   </div>
-                </div>
-              </div>
-            ) : null}
+                </>
+              );
+            })() : null}
 
             {/* Chat BPO inline */}
             {chatBPOAberto && (
