@@ -807,15 +807,29 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               </div>
             ) : itens.map(item => {
               const uid = (item as ItemOrcamento & { _uid: number })._uid;
-              // Busca o preço de referência do catálogo
               const supRef = suprimentos.find(s => s.id === item.suprimento_id);
+
+              // Cálculos por item usando margem + imposto globais
+              const custoItem   = item.custo_unitario * item.quantidade;
+              // MO proporcional deste item (pelo tempo de instalação do suprimento)
+              const moItemMin   = (supRef?.tempo_instalacao_min ?? 0) * item.quantidade;
+              const moTotalMin  = itens.reduce((s, i) => s + (suprimentos.find(x => x.id === i.suprimento_id)?.tempo_instalacao_min ?? 0) * i.quantidade, 0);
+              const moItemValor = moTotalMin > 0 && custoMOTotal > 0 ? (moItemMin / moTotalMin) * custoMOTotal : 0;
+              const custoItemComMO = custoItem + moItemValor;
+              const margemItemValor = custoItemComMO * (margemPct / 100);
+              const subtItemComMargem = custoItemComMO + margemItemValor;
+              const impostoItemValor = subtItemComMargem * (impostoPct / 100);
+              const vendaItem   = subtItemComMargem + impostoItemValor;
+              const margemItemPct = vendaItem > 0 ? ((vendaItem - custoItemComMO - impostoItemValor) / vendaItem) * 100 : 0;
+              const abaixoMin = margemItemPct < margemMin;
+              const abaixoIdeal = margemItemPct < margemIdeal;
+
               return (
-                <div key={uid} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-2">
-                  {/* Linha 1: nome + controles de qtd + total + remover */}
-                  <div className="flex items-start gap-2">
+                <div key={uid} className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                  {/* Cabeçalho do item */}
+                  <div className="flex items-start gap-2 px-3 pt-2.5 pb-2 bg-gray-50 border-b border-gray-100">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-800 leading-tight">{item.nome}</p>
-                      {/* Campo de descrição/variação */}
                       <input
                         type="text"
                         value={item.descricao}
@@ -824,7 +838,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                         className="mt-1 w-full rounded border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-600 outline-none focus:border-[#1a6b2f] placeholder:text-gray-300"
                       />
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
                       <button onClick={() => setQtd(uid, item.quantidade - 1)} className="w-5 h-5 rounded bg-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-300 flex items-center justify-center">−</button>
                       <input type="number" min={1} value={item.quantidade} onChange={e => setQtd(uid, Number(e.target.value))}
                         className="w-10 text-center text-xs border border-gray-200 rounded px-1 py-0.5 bg-white outline-none focus:border-[#1a6b2f]" />
@@ -833,27 +847,50 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                     </div>
                   </div>
 
-                  {/* Linha 2: preço de compra editável + subtotal */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 flex-1">
-                      <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Preço compra</label>
+                  {/* Grid de 4 métricas por item */}
+                  <div className="grid grid-cols-4 divide-x divide-gray-100 text-center">
+                    {/* Preço Compra */}
+                    <div className="px-2 py-2">
+                      <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Compra/un</p>
                       <input
                         type="number" min={0} step={0.01}
                         value={item.custo_unitario}
                         onChange={e => setPreco(uid, Number(e.target.value))}
-                        className="w-24 rounded border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]"
+                        className="w-full rounded border border-gray-200 bg-white px-1 py-0.5 text-xs font-bold text-center text-gray-700 outline-none focus:border-[#1a6b2f]"
                       />
-                      <span className="text-[10px] text-gray-400">/{item.unidade}</span>
-                      {supRef && supRef.custo_unitario !== item.custo_unitario && (
-                        <span className="text-[10px] text-amber-500 font-medium">
-                          ref: {fmt(supRef.custo_unitario)}
-                        </span>
+                      {supRef && supRef.custo_unitario > 0 && supRef.custo_unitario !== item.custo_unitario && (
+                        <p className="text-[9px] text-amber-500 mt-0.5">ref {fmt(supRef.custo_unitario)}</p>
                       )}
-                      {supRef && supRef.custo_unitario === item.custo_unitario && supRef.custo_unitario > 0 && (
-                        <span className="text-[10px] text-gray-300">ref: {fmt(supRef.custo_unitario)}</span>
-                      )}
+                      <p className="text-[9px] text-gray-400 mt-0.5">total {fmt(custoItem)}</p>
                     </div>
-                    <span className="text-xs font-bold text-gray-700 flex-shrink-0">{fmt(item.custo_unitario * item.quantidade)}</span>
+
+                    {/* MO proporcional */}
+                    <div className="px-2 py-2">
+                      <p className="text-[9px] font-semibold uppercase tracking-wide text-blue-400 mb-1">MO</p>
+                      <p className="text-xs font-bold text-blue-600">{fmt(moItemValor)}</p>
+                      {moItemMin > 0 && (
+                        <p className="text-[9px] text-blue-300 mt-0.5">
+                          {moItemMin < 60 ? `${moItemMin}min` : `${Math.floor(moItemMin/60)}h${moItemMin%60>0?moItemMin%60+"m":""}`}
+                        </p>
+                      )}
+                      {moItemMin === 0 && <p className="text-[9px] text-gray-300 mt-0.5">—</p>}
+                    </div>
+
+                    {/* Margem */}
+                    <div className="px-2 py-2">
+                      <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Margem</p>
+                      <p className={cn("text-xs font-bold", abaixoMin ? "text-red-600" : abaixoIdeal ? "text-amber-600" : "text-[#1a6b2f]")}>
+                        {margemItemPct.toFixed(1)}%
+                      </p>
+                      <p className="text-[9px] text-green-600 mt-0.5">+{fmt(margemItemValor)}</p>
+                    </div>
+
+                    {/* Preço Venda */}
+                    <div className="px-2 py-2 bg-gray-50/80">
+                      <p className="text-[9px] font-semibold uppercase tracking-wide text-[#1a6b2f] mb-1">Venda</p>
+                      <p className="text-sm font-bold text-[#1a6b2f]">{fmt(vendaItem)}</p>
+                      <p className="text-[9px] text-gray-400 mt-0.5">{item.quantidade > 1 ? `${fmt(vendaItem/item.quantidade)}/un` : `/${item.unidade}`}</p>
+                    </div>
                   </div>
                 </div>
               );
