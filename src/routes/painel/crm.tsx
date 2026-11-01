@@ -3245,7 +3245,51 @@ function CrmPage() {
   const [clienteNaoEncontrado, setClienteNaoEncontrado] = useState(false);
 
   const [cardAberto, setCardAberto] = useState<Lead | null>(null);
-  const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao" | "propostas">("historico");
+  const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao" | "propostas" | "estrategista">("historico");
+
+  // ── Estrategista Comercial ─────────────────────────────────────────────
+  const [analiseEstrategista, setAnaliseEstrategista] = useState<string | null>(null);
+  const [carregandoAnalise, setCarregandoAnalise] = useState(false);
+  const [chatEstrategista, setChatEstrategista] = useState<{role: string; content: string}[]>([]);
+  const [msgEstrategista, setMsgEstrategista] = useState("");
+  const [enviandoEstrategista, setEnviandoEstrategista] = useState(false);
+  const chatEstrategistaRef = useRef<HTMLDivElement>(null);
+
+  async function buscarAnalise(leadId: string) {
+    setCarregandoAnalise(true);
+    setAnaliseEstrategista(null);
+    setChatEstrategista([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("estrategista-lead", {
+        body: { mode: "analise", leadId },
+      });
+      if (!error && data?.analise) setAnaliseEstrategista(data.analise);
+    } catch { /* silencioso */ }
+    finally { setCarregandoAnalise(false); }
+  }
+
+  async function enviarMsgEstrategista() {
+    if (!msgEstrategista.trim() || enviandoEstrategista || !cardAberto) return;
+    const msg = msgEstrategista.trim();
+    setMsgEstrategista("");
+    const novoHist = [...chatEstrategista, { role: "user", content: msg }];
+    setChatEstrategista(novoHist);
+    setEnviandoEstrategista(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("estrategista-lead", {
+        body: { mode: "chat", leadId: cardAberto.id, mensagem: msg, historico: chatEstrategista },
+      });
+      if (!error && data?.resposta) {
+        setChatEstrategista(prev => [...prev, { role: "assistant", content: data.resposta }]);
+      }
+    } catch { /* silencioso */ }
+    finally { setEnviandoEstrategista(false); }
+  }
+
+  useEffect(() => {
+    if (chatEstrategistaRef.current) chatEstrategistaRef.current.scrollTop = chatEstrategistaRef.current.scrollHeight;
+  }, [chatEstrategista, enviandoEstrategista]);
+  // ─────────────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<{ msg: string; tipo: "sucesso" | "erro" } | null>(null);
   const [propostas, setPropostas] = useState<PropostaSalva[]>([]);
   const [carregandoPropostas, setCarregandoPropostas] = useState(false);
@@ -3464,6 +3508,8 @@ function CrmPage() {
   function abrirCard(lead: Lead) {
     setCardAberto(lead);
     setAbaCard("historico");
+    setAnaliseEstrategista(null);
+    setChatEstrategista([]);
     setPropostas([]);
     carregarConversas(lead.id);
     carregarPropostas(lead.id);
@@ -4494,6 +4540,11 @@ function CrmPage() {
                     </span>
                   )}
                 </button>
+                <button onClick={() => { setAbaCard("estrategista"); buscarAnalise(cardAberto.id); }}
+                  className={cn("flex items-center gap-1.5 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                    abaCard === "estrategista" ? "border-purple-600 text-purple-600" : "border-transparent text-gray-400 hover:text-gray-600")}>
+                  <Bot className="h-4 w-4" /> Estrategista
+                </button>
               </div>
 
               {/* Conteúdo da aba */}
@@ -4586,6 +4637,100 @@ function CrmPage() {
                   />
                 </div>
               )}
+
+              {/* ── Aba Estrategista Comercial ──────────────────────────── */}
+              {abaCard === "estrategista" && (
+                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                  {/* Análise automática */}
+                  <div className="flex-shrink-0 border-b border-gray-100 bg-purple-50/40 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Bot className="h-4 w-4 text-purple-600" />
+                        <span className="text-sm font-semibold text-purple-800">Análise Estratégica</span>
+                      </div>
+                      <button
+                        onClick={() => buscarAnalise(cardAberto.id)}
+                        disabled={carregandoAnalise}
+                        className="flex items-center gap-1 rounded-lg border border-purple-200 bg-white px-2.5 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 disabled:opacity-50"
+                      >
+                        {carregandoAnalise ? <Loader2 className="h-3 w-3 animate-spin" /> : <TrendingUp className="h-3 w-3" />}
+                        {carregandoAnalise ? "Analisando…" : "Reanalisar"}
+                      </button>
+                    </div>
+                    {carregandoAnalise && (
+                      <div className="flex items-center gap-2 py-3 text-sm text-purple-500">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Analisando histórico, proposta e etapa do lead…
+                      </div>
+                    )}
+                    {!carregandoAnalise && analiseEstrategista && (
+                      <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+                        {analiseEstrategista}
+                      </div>
+                    )}
+                    {!carregandoAnalise && !analiseEstrategista && (
+                      <p className="text-xs text-gray-400 py-2">Clique em "Reanalisar" para gerar a análise.</p>
+                    )}
+                  </div>
+
+                  {/* Chat com o estrategista */}
+                  <div className="flex flex-col flex-1 min-h-0 p-3 gap-2">
+                    <p className="text-xs font-medium text-gray-500 flex-shrink-0">Converse com o Estrategista:</p>
+                    <div
+                      ref={chatEstrategistaRef}
+                      className="flex-1 overflow-y-auto space-y-2 min-h-0"
+                    >
+                      {chatEstrategista.length === 0 && (
+                        <p className="text-xs text-gray-300 text-center py-4">
+                          Pergunte sobre objeções, abordagem, precificação ou timing para fechar esse lead.
+                        </p>
+                      )}
+                      {chatEstrategista.map((m, i) => (
+                        <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                          <div className={cn(
+                            "max-w-[88%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed",
+                            m.role === "user" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-800"
+                          )}>
+                            {m.role === "assistant" && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <Bot className="h-3 w-3 text-purple-600" />
+                                <span className="text-[10px] font-semibold text-purple-600">Estrategista</span>
+                              </div>
+                            )}
+                            {m.content}
+                          </div>
+                        </div>
+                      ))}
+                      {enviandoEstrategista && (
+                        <div className="flex justify-start">
+                          <div className="bg-gray-100 rounded-lg px-3 py-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <input
+                        type="text"
+                        value={msgEstrategista}
+                        onChange={e => setMsgEstrategista(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && !e.shiftKey && enviarMsgEstrategista()}
+                        placeholder="Como abordar esse cliente…"
+                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20"
+                        disabled={enviandoEstrategista}
+                      />
+                      <button
+                        onClick={enviarMsgEstrategista}
+                        disabled={!msgEstrategista.trim() || enviandoEstrategista}
+                        className="rounded-lg bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        <Send className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* ──────────────────────────────────────────────────────── */}
             </div>
           </div>
         </div>
