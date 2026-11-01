@@ -182,7 +182,45 @@ function FinanceiroPage() {
 
   // ── UI state ──
   const [secaoAberta, setSecaoAberta] = useState<"config" | "custos" | "dividas" | "saude" | null>("saude");
-  const [abaAtiva, setAbaAtiva] = useState<"interno" | "conta-azul">("interno");
+  const [abaAtiva, setAbaAtiva] = useState<"interno" | "conta-azul" | "vendas">("interno");
+
+  // ── Vendas fechadas do CRM ─────────────────────────────────────────────
+  interface VendaCRM {
+    id: string;
+    descricao: string;
+    valor: number;
+    data: string;
+    pago: boolean;
+    categoria: string;
+    observacoes: string | null;
+    crm_lead_id: string | null;
+    criado_em: string;
+  }
+  const [vendas, setVendas] = useState<VendaCRM[]>([]);
+  const [carregandoVendas, setCarregandoVendas] = useState(false);
+  const [filtroMesVendas, setFiltroMesVendas] = useState(() => new Date().toISOString().slice(0, 7));
+
+  async function carregarVendas() {
+    setCarregandoVendas(true);
+    const inicio = `${filtroMesVendas}-01`;
+    const fim = new Date(filtroMesVendas + "-01");
+    fim.setMonth(fim.getMonth() + 1);
+    const { data } = await supabase
+      .from("financeiro_lancamentos")
+      .select("*")
+      .eq("tipo", "receita")
+      .gte("data", inicio)
+      .lt("data", fim.toISOString().slice(0, 10))
+      .order("data", { ascending: false });
+    setVendas((data ?? []) as VendaCRM[]);
+    setCarregandoVendas(false);
+  }
+
+  useEffect(() => {
+    if (abaAtiva === "vendas") carregarVendas();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaAtiva, filtroMesVendas]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   // ── Conta Azul state ──
   const [caVendas, setCaVendas] = useState<CaVenda[]>([]);
@@ -478,6 +516,7 @@ function FinanceiroPage() {
       <div className="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 w-fit">
         {([
           { key: "interno", label: "Lançamentos internos" },
+          { key: "vendas", label: "📦 Vendas" },
           { key: "conta-azul", label: "💙 Conta Azul" },
         ] as const).map(({ key, label }) => (
           <button
@@ -494,6 +533,110 @@ function FinanceiroPage() {
           </button>
         ))}
       </div>
+
+      {/* ══════════ ABA VENDAS ══════════ */}
+      {abaAtiva === "vendas" && (
+        <div className="space-y-4">
+          {/* Header com filtro de mês */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Registro de Vendas</h2>
+              <p className="text-sm text-gray-500">Receitas registradas ao fechar leads no CRM</p>
+            </div>
+            <input
+              type="month"
+              value={filtroMesVendas}
+              onChange={e => setFiltroMesVendas(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]"
+            />
+          </div>
+
+          {/* KPIs do mês */}
+          {!carregandoVendas && vendas.length > 0 && (() => {
+            const total = vendas.reduce((s, v) => s + v.valor, 0);
+            const pagas = vendas.filter(v => v.pago).reduce((s, v) => s + v.valor, 0);
+            return (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl border border-gray-100 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Total de Vendas</p>
+                  <p className="mt-1 text-xl font-bold text-gray-900">{vendas.length}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Volume Total</p>
+                  <p className="mt-1 text-xl font-bold text-[#1a6b2f]">{total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Recebido</p>
+                  <p className="mt-1 text-xl font-bold text-emerald-600">{pagas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Lista de vendas */}
+          <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+            {carregandoVendas ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-gray-400">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-[#1a6b2f]" />
+                Carregando vendas…
+              </div>
+            ) : vendas.length === 0 ? (
+              <div className="py-16 text-center">
+                <p className="text-2xl mb-2">📦</p>
+                <p className="text-sm font-medium text-gray-500">Nenhuma venda registrada neste mês</p>
+                <p className="text-xs text-gray-400 mt-1">As vendas aparecem aqui quando um lead é fechado no CRM</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Data</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente / Serviço</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Categoria</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-400">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {vendas.map(v => (
+                    <tr key={v.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                        {new Date(v.data + "T12:00:00").toLocaleDateString("pt-BR")}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-900">{v.descricao}</p>
+                        {v.observacoes && <p className="text-xs text-gray-400 mt-0.5">{v.observacoes}</p>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                          {v.categoria || "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-[#1a6b2f]">
+                        {v.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${v.pago ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                          {v.pago ? "Recebido" : "Pendente"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-gray-200 bg-gray-50">
+                  <tr>
+                    <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-600">Total do mês</td>
+                    <td className="px-4 py-3 text-right text-base font-bold text-[#1a6b2f]">
+                      {vendas.reduce((s, v) => s + v.valor, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ══════════ ABA CONTA AZUL ══════════ */}
       {abaAtiva === "conta-azul" && (
