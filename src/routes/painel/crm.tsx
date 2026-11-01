@@ -504,16 +504,16 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   function setDeslocDesc(id: number, desc: string) { setDeslocamento(prev => prev.map(d => d.id === id ? { ...d, descricao: desc } : d)); }
   function setDeslocValor(id: number, val: number) { setDeslocamento(prev => prev.map(d => d.id === id ? { ...d, valor: val } : d)); }
 
-  // Cálculos de tempo e mão de obra
+  // Tempo total de instalação (todos os itens) — usado apenas para exibição no painel
   const totalMinInstalacao = itens.reduce((acc, i) => {
     const sup = suprimentos.find(s => s.id === i.suprimento_id);
     return acc + (sup?.tempo_instalacao_min ?? 0) * i.quantidade;
   }, 0);
-  const diasCampo = totalMinInstalacao > 0 ? Math.ceil(totalMinInstalacao / MIN_DIA) : 0;
+  const diasCampoTotal = totalMinInstalacao > 0 ? Math.ceil(totalMinInstalacao / MIN_DIA) : 0;
 
   // Custo MO por profissional — dois modelos:
-  // "diaria"      → custo_diario × diasCampo (pedreiro, técnico, ajudante)
-  // "por_unidade" → custo_unitario × quantidade total de portas vinculadas ao profissional (pintor)
+  // "diaria"      → custo_diario × dias calculados APENAS pelos suprimentos vinculados ao profissional
+  // "por_unidade" → custo_unitario × quantidade total de itens vinculados ao profissional
   const profIdsNecessarios = new Set<string>();
   itens.forEach(i => {
     const sup = suprimentos.find(s => s.id === i.suprimento_id);
@@ -537,8 +537,19 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
         total = p.custo_unitario * qtdTotal;
         descCobranca = `${qtdTotal} un × ${fmt(p.custo_unitario)}`;
       } else {
-        total = p.custo_diario * diasCampo;
-        descCobranca = `${diasCampo}d × ${fmt(p.custo_diario)}`;
+        // diária: dias = ceil(minutos dos suprimentos VINCULADOS a este profissional / MIN_DIA)
+        // profissionais manuais (não vinculados a suprimentos) usam o tempo total de todos os itens
+        const minProf = profIdsNecessarios.has(p.id)
+          ? itens.reduce((acc, i) => {
+              const sup = suprimentos.find(s => s.id === i.suprimento_id);
+              return (sup?.profissionais_ids ?? []).includes(p.id)
+                ? acc + (sup?.tempo_instalacao_min ?? 0) * i.quantidade
+                : acc;
+            }, 0)
+          : totalMinInstalacao; // profissional manual: usa tempo total
+        const diasProf = minProf > 0 ? Math.ceil(minProf / MIN_DIA) : 1;
+        total = p.custo_diario * diasProf;
+        descCobranca = `${diasProf}d × ${fmt(p.custo_diario)}`;
       }
       return { id: p.id, nome: p.nome, especialidade: p.especialidade, total, descCobranca };
     });
@@ -1018,7 +1029,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                   <span className="font-semibold">
                     {totalMinInstalacao < 60 ? `${totalMinInstalacao}min` : `${Math.floor(totalMinInstalacao/60)}h${totalMinInstalacao%60>0?totalMinInstalacao%60+"m":""}`}
                   </span>
-                  <span className="text-blue-400">· {diasCampo}d{custoMO>0?` · ${fmt(custoMO)}`:""}</span>
+                  <span className="text-blue-400">· {diasCampoTotal}d{custoMO>0?` · ${fmt(custoMO)}`:""}</span>
                 </div>
               )}
             </div>
