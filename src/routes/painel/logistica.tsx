@@ -35,6 +35,7 @@ interface Profissional {
   custo_diario: number;     // usado quando tipo_cobranca = "diaria"
   custo_unitario: number;   // usado quando tipo_cobranca = "por_unidade"
   ativo: boolean;
+  terceirizado: boolean;    // false = Rafael Nunes (próprio, sem custo); true = profissional externo
 }
 
 // ─── Suprimentos ──────────────────────────────────────────────────────────────
@@ -969,7 +970,7 @@ function LogisticaPage() {
   const [modalProf, setModalProf] = useState(false);
   const [selProf, setSelProf] = useState<Profissional | null>(null);
   const [formProf, setFormProf] = useState<Partial<Profissional>>({
-    nome: "", especialidade: "", tipo_cobranca: "diaria", custo_diario: 0, custo_unitario: 0, ativo: true,
+    nome: "", especialidade: "", tipo_cobranca: "diaria", custo_diario: 0, custo_unitario: 0, ativo: true, terceirizado: true,
   });
 
   // ── Valor de MO Padrão (para orçamentos CRM) ───────────────────────────────
@@ -1005,7 +1006,7 @@ function LogisticaPage() {
 
   function abrirProf(p?: Profissional) {
     if (p) { setSelProf(p); setFormProf({ ...p }); }
-    else { setSelProf(null); setFormProf({ nome: "", especialidade: "", tipo_cobranca: "diaria", custo_diario: 0, custo_unitario: 0, ativo: true }); }
+    else { setSelProf(null); setFormProf({ nome: "", especialidade: "", tipo_cobranca: "diaria", custo_diario: 0, custo_unitario: 0, ativo: true, terceirizado: true }); }
     setModalProf(true);
   }
 
@@ -3160,13 +3161,17 @@ function LogisticaPage() {
                     <span className="text-xs text-gray-400">
                       {p.tipo_cobranca === "por_unidade" ? "Custo por unidade" : "Custo diário"}
                     </span>
-                    <span className="text-sm font-bold text-[#1a6b2f]">
-                      {(p.tipo_cobranca === "por_unidade" ? p.custo_unitario : p.custo_diario)
-                        .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      <span className="text-xs font-normal text-gray-400 ml-1">
-                        {p.tipo_cobranca === "por_unidade" ? "/un" : "/dia"}
+                    {p.terceirizado === false ? (
+                      <span className="text-xs font-semibold text-gray-400 italic">próprio — R$ 0</span>
+                    ) : (
+                      <span className="text-sm font-bold text-[#1a6b2f]">
+                        {(p.tipo_cobranca === "por_unidade" ? p.custo_unitario : p.custo_diario)
+                          .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        <span className="text-xs font-normal text-gray-400 ml-1">
+                          {p.tipo_cobranca === "por_unidade" ? "/un" : "/dia"}
+                        </span>
                       </span>
-                    </span>
+                    )}
                   </div>
                   {!p.ativo && (
                     <span className="mt-2 block text-[10px] text-gray-300 font-medium text-center">Inativo — não entra nos orçamentos</span>
@@ -3297,6 +3302,15 @@ function LogisticaPage() {
                   onChange={e => setFormProf({ ...formProf, ativo: e.target.checked })}
                   className="rounded border-gray-300 text-[#1a6b2f]" />
                 <label htmlFor="ativo-prof" className="text-sm text-gray-700">Profissional ativo (entra nos orçamentos)</label>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="terceirizado-prof" checked={formProf.terceirizado ?? true}
+                  onChange={e => setFormProf({ ...formProf, terceirizado: e.target.checked })}
+                  className="rounded border-gray-300 text-[#1a6b2f]" />
+                <label htmlFor="terceirizado-prof" className="text-sm text-gray-700">
+                  Terceirizado (tem custo)
+                  <span className="ml-1 text-xs text-gray-400">— desmarque para "próprio" (R$ 0, tempo conta)</span>
+                </label>
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setModalProf(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>

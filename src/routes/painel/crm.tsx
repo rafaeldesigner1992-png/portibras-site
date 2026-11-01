@@ -82,10 +82,11 @@ interface Profissional {
   id: string;
   nome: string;
   especialidade: string;
-  tipo_cobranca: "diaria" | "por_unidade";  // diária = × diasCampo; por_unidade = × qtd de portas
+  tipo_cobranca: "diaria" | "por_unidade";  // diária = × dias do profissional; por_unidade = × qtd
   custo_diario: number;      // usado quando tipo_cobranca = "diaria"
   custo_unitario: number;    // usado quando tipo_cobranca = "por_unidade"
   ativo: boolean;
+  terceirizado: boolean;     // false = Rafael Nunes (sem custo, tempo conta); true = terceirizado (tem custo)
 }
 
 interface ItemOrcamento {
@@ -534,8 +535,13 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
           const sup = suprimentos.find(s => s.id === i.suprimento_id);
           return (sup?.profissionais_ids ?? []).includes(p.id) ? acc + i.quantidade : acc;
         }, 0);
-        total = p.custo_unitario * qtdTotal;
-        descCobranca = `${qtdTotal} un × ${fmt(p.custo_unitario)}`;
+        if (p.terceirizado === false) {
+          total = 0;
+          descCobranca = `${qtdTotal} un (próprio)`;
+        } else {
+          total = p.custo_unitario * qtdTotal;
+          descCobranca = `${qtdTotal} un × ${fmt(p.custo_unitario)}`;
+        }
       } else {
         // diária: dias = ceil(minutos dos suprimentos VINCULADOS a este profissional / MIN_DIA)
         // profissionais manuais (não vinculados a suprimentos) usam o tempo total de todos os itens
@@ -548,10 +554,16 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
             }, 0)
           : totalMinInstalacao; // profissional manual: usa tempo total
         const diasProf = minProf > 0 ? Math.ceil(minProf / MIN_DIA) : 1;
-        total = p.custo_diario * diasProf;
-        descCobranca = `${diasProf}d × ${fmt(p.custo_diario)}`;
+        // Profissional próprio (terceirizado=false): sem custo financeiro, só conta o tempo
+        if (p.terceirizado === false) {
+          total = 0;
+          descCobranca = `${diasProf}d (próprio)`;
+        } else {
+          total = p.custo_diario * diasProf;
+          descCobranca = `${diasProf}d × ${fmt(p.custo_diario)}`;
+        }
       }
-      return { id: p.id, nome: p.nome, especialidade: p.especialidade, total, descCobranca };
+      return { id: p.id, nome: p.nome, especialidade: p.especialidade, total, descCobranca, terceirizado: p.terceirizado ?? true };
     });
   const custoMO = custoPorProfissional.reduce((acc, p) => acc + p.total, 0);
 
@@ -1063,10 +1075,13 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                   </div>
                 </div>
                 {custoPorProfissional.length > 0 && custoPorProfissional.map(p => (
-                  <div key={p.id} className="flex items-center gap-1 rounded border border-blue-100 bg-white px-1.5 py-0.5">
+                  <div key={p.id} className={cn("flex items-center gap-1 rounded border px-1.5 py-0.5", p.terceirizado === false ? "border-gray-100 bg-gray-50" : "border-blue-100 bg-white")}>
                     <span className="flex-1 text-[8px] text-gray-600 font-semibold truncate">{p.especialidade || p.nome}</span>
                     <span className="text-[8px] text-gray-400 shrink-0">({p.descCobranca})</span>
-                    <span className="text-[9px] font-bold text-blue-700 shrink-0">{fmt(p.total)}</span>
+                    {p.terceirizado === false
+                      ? <span className="text-[8px] font-semibold text-gray-400 shrink-0">próprio</span>
+                      : <span className="text-[9px] font-bold text-blue-700 shrink-0">{fmt(p.total)}</span>
+                    }
                     {/* X para remover profissionais adicionados manualmente */}
                     {profsManuaisIds.includes(p.id) && (
                       <button onClick={() => setProfsManuaisIds(prev => prev.filter(id => id !== p.id))}
