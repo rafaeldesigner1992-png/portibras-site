@@ -172,6 +172,14 @@ function FinanceiroPage() {
   const [novoPedagioNome, setNovoPedagioNome] = useState("");
   const [novoPedagioValor, setNovoPedagioValor] = useState("");
 
+  // Combustível / Custos de deslocamento fixos
+  interface CombustivelItem { id: string; nome: string; valor: number; }
+  const [combustiveis, setCombustiveis] = useState<CombustivelItem[]>([]);
+  const [salvandoComb, setSalvandoComb] = useState(false);
+  const [combSalvo, setCombSalvo] = useState(false);
+  const [novoCombNome, setNovoCombNome] = useState("");
+  const [novoCombValor, setNovoCombValor] = useState("");
+
   // ── Custos Fixos ──
   const [custosFixos, setCustosFixos] = useState<CustoFixo[]>([]);
   const [carregandoCF, setCarregandoCF] = useState(true);
@@ -362,7 +370,7 @@ function FinanceiroPage() {
     const { data } = await supabase.from("configuracoes").select("*")
       .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "margem_meta_pct",
         "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km",
-        "veiculo_endereco_escritorio", "veiculo_endereco_casa", "pedagogios_lista"]);
+        "veiculo_endereco_escritorio", "veiculo_endereco_casa", "pedagogios_lista", "combustiveis_lista"]);
     if (data) {
       for (const row of data) {
         if (row.chave === "imposto_padrao_pct") { setAliquota(Number(row.valor)); setAliquotaInput(String(Number(row.valor))); setConfigId(row.id); }
@@ -377,9 +385,33 @@ function FinanceiroPage() {
         if (row.chave === "pedagogios_lista") {
           try { setPedagios(JSON.parse(row.valor || "[]")); } catch { setPedagios([]); }
         }
+        if (row.chave === "combustiveis_lista") {
+          try { setCombustiveis(JSON.parse(row.valor || "[]")); } catch { setCombustiveis([]); }
+        }
       }
     }
   }
+
+  async function salvarCombustiveis(lista: CombustivelItem[]) {
+    setSalvandoComb(true);
+    await supabase.from("configuracoes").upsert(
+      { chave: "combustiveis_lista", valor: JSON.stringify(lista), descricao: "Custos fixos de combustível/deslocamento" },
+      { onConflict: "chave" }
+    );
+    setCombustiveis(lista);
+    setSalvandoComb(false);
+    setCombSalvo(true);
+    setTimeout(() => setCombSalvo(false), 2000);
+  }
+  function adicionarCombustivel() {
+    const nome = novoCombNome.trim();
+    const valor = Number(novoCombValor);
+    if (!nome || valor <= 0) return;
+    const nova = [...combustiveis, { id: crypto.randomUUID(), nome, valor }];
+    setNovoCombNome(""); setNovoCombValor("");
+    salvarCombustiveis(nova);
+  }
+  function removerCombustivel(id: string) { salvarCombustiveis(combustiveis.filter(c => c.id !== id)); }
 
   async function salvarPedagios(lista: { id: string; nome: string; valor: number }[]) {
     setSalvandoPedagios(true);
@@ -1125,6 +1157,64 @@ function FinanceiroPage() {
               </div>
             )}
             <SalvarBtn loading={salvandoVeiculo} salvo={veiculoSalvo} onClick={salvarVeiculo} className="mt-3" />
+          </div>
+
+          {/* Combustível / Deslocamento Fixo */}
+          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-1.5 mb-3">
+              <span className="text-base">⛽</span>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Combustível</p>
+            </div>
+            <p className="text-xs text-gray-400 mb-3">Cadastre custos fixos de combustível por trajeto para selecionar rapidamente no orçamento.</p>
+            <div className="space-y-1.5 mb-3">
+              {combustiveis.length === 0 && (
+                <p className="text-xs text-gray-300 text-center py-2">Nenhum custo cadastrado</p>
+              )}
+              {combustiveis.map(c => (
+                <div key={c.id} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5">
+                  <span className="text-sm font-medium text-gray-700">{c.nome}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-orange-600">
+                      {c.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                    <button onClick={() => removerCombustivel(c.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-1.5 items-end border-t border-gray-200 pt-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Descrição</label>
+                <input
+                  type="text"
+                  value={novoCombNome}
+                  onChange={e => setNovoCombNome(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && adicionarCombustivel()}
+                  placeholder="Ex: Combustível Rio → SP"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Valor (R$)</label>
+                <input
+                  type="number" min={0} step={1}
+                  value={novoCombValor}
+                  onChange={e => setNovoCombValor(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && adicionarCombustivel()}
+                  placeholder="180,00"
+                  className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]"
+                />
+              </div>
+              <button
+                onClick={adicionarCombustivel}
+                disabled={salvandoComb || !novoCombNome.trim() || Number(novoCombValor) <= 0}
+                className="flex items-center gap-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors">
+                {salvandoComb ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {combSalvo ? "Salvo!" : "Add"}
+              </button>
+            </div>
           </div>
 
           {/* Pedágios pré-cadastrados */}

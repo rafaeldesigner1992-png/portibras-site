@@ -303,6 +303,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [calculandoRota, setCalculandoRota] = useState(false);
   const [rotaResultado, setRotaResultado] = useState<{ distancia_km: number; distancia_ida_volta_km: number; duracao_min: number } | null>(null);
   const [pedagogiosCadastrados, setPedagiosCadastrados] = useState<{ id: string; nome: string; valor: number }[]>([]);
+  const [combustiveisCadastrados, setCombustiveisCadastrados] = useState<{ id: string; nome: string; valor: number }[]>([]);
 
   // Forma de pagamento
   const [pagamento, setPagamento] = useState<FormaPagamento>({
@@ -332,7 +333,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       const [{ data: sups }, { data: orc }, { data: cfgs }, { data: profs }] = await Promise.all([
         supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario, tempo_instalacao_min, profissionais_ids").order("nome"),
         supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
-        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "mo_padrao_valor", "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km", "veiculo_endereco_escritorio", "veiculo_endereco_casa", "pedagogios_lista"]),
+        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "mo_padrao_valor", "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km", "veiculo_endereco_escritorio", "veiculo_endereco_casa", "pedagogios_lista", "combustiveis_lista"]),
         supabase.from("logistica_profissionais").select("*").eq("ativo", true).order("nome"),
       ]);
       if (sups) setSuprimentos(sups as Suprimento[]);
@@ -352,6 +353,9 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
           if (row.chave === "veiculo_endereco_casa") setEnderecoCasa(row.valor || "");
           if (row.chave === "pedagogios_lista") {
             try { setPedagiosCadastrados(JSON.parse(row.valor || "[]")); } catch { /* ignore */ }
+          }
+          if (row.chave === "combustiveis_lista") {
+            try { setCombustiveisCadastrados(JSON.parse(row.valor || "[]")); } catch { /* ignore */ }
           }
         }
         // custoPorKm = (precoComb / consumoKm) + custoManut
@@ -1133,6 +1137,27 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                     )}
                     <div className="flex items-center gap-1 ml-auto">
                       {custoDeslocamentoTotal > 0 && <span className="text-[9px] font-bold text-orange-700">{fmt(custoDeslocamentoTotal)}</span>}
+                      {/* Dropdown combustível pré-cadastrado */}
+                      {combustiveisCadastrados.length > 0 && (
+                        <select
+                          defaultValue=""
+                          onChange={e => {
+                            const c = combustiveisCadastrados.find(x => x.id === e.target.value);
+                            if (c) {
+                              setDeslocamento(prev => [...prev, { id: proximoDeslocId, descricao: `⛽ ${c.nome}`, valor: c.valor }]);
+                              setProximoDeslocId(n => n + 1);
+                              e.target.value = "";
+                            }
+                          }}
+                          className="rounded border border-orange-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-orange-600 outline-none focus:border-orange-400 max-w-[90px]">
+                          <option value="" disabled>⛽ Comb.</option>
+                          {combustiveisCadastrados.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.nome} · {c.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       {/* Dropdown pedágios pré-cadastrados */}
                       {pedagogiosCadastrados.length > 0 && (
                         <select
