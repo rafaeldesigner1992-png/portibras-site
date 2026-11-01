@@ -2,9 +2,12 @@
 -- e cria tabelas logistica_pedidos + logistica_aquisicoes
 -- Execute no Supabase Dashboard > SQL Editor
 
--- ─── 1. Coluna crm_lead_id em financeiro_lancamentos ───────────────────────
+-- ─── 1. Colunas faltantes em financeiro_lancamentos ────────────────────────
 ALTER TABLE financeiro_lancamentos
-  ADD COLUMN IF NOT EXISTS crm_lead_id uuid REFERENCES crm_leads(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS crm_lead_id  uuid REFERENCES crm_leads(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS observacoes  text,
+  ADD COLUMN IF NOT EXISTS categoria    text,
+  ADD COLUMN IF NOT EXISTS pago         boolean NOT NULL DEFAULT false;
 
 CREATE INDEX IF NOT EXISTS fin_lanc_crm_lead_idx ON financeiro_lancamentos(crm_lead_id);
 
