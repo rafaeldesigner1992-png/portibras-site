@@ -165,20 +165,21 @@ function FinanceiroPage() {
   const [veiculoSalvo, setVeiculoSalvo] = useState(false);
 
   // ── Pedágios ──
-  interface Pedagio { id: string; nome: string; valor: number; }
-  const [pedagogios, setPedagios] = useState<Pedagio[]>([]);
-  const [salvandoPedagios, setSalvandoPedagios] = useState(false);
-  const [pedagogiosSalvos, setPedagiosSalvos] = useState(false);
-  const [novoPedagioNome, setNovoPedagioNome] = useState("");
-  const [novoPedagioValor, setNovoPedagioValor] = useState("");
-
-  // Combustível / Custos de deslocamento fixos
-  interface CombustivelItem { id: string; nome: string; valor: number; }
-  const [combustiveis, setCombustiveis] = useState<CombustivelItem[]>([]);
-  const [salvandoComb, setSalvandoComb] = useState(false);
-  const [combSalvo, setCombSalvo] = useState(false);
-  const [novoCombNome, setNovoCombNome] = useState("");
-  const [novoCombValor, setNovoCombValor] = useState("");
+  // Trajetos pré-cadastrados (combustível + pedágios vinculados)
+  interface PedagioTrajeto { id: string; nome: string; valor: number; }
+  interface Trajeto { id: string; nome: string; combustivel: number; pedagogios: PedagioTrajeto[]; }
+  const [trajetos, setTrajetos] = useState<Trajeto[]>([]);
+  const [salvandoTrajeto, setSalvandoTrajeto] = useState(false);
+  const [trajetoSalvo, setTrajetoSalvo] = useState(false);
+  // Formulário novo trajeto
+  const [novoTrajetoNome, setNovoTrajetoNome] = useState("");
+  const [novoTrajComb, setNovoTrajComb] = useState("");
+  // Pedágios dentro do formulário de novo trajeto
+  const [novoTrajPedNome, setNovoTrajPedNome] = useState("");
+  const [novoTrajPedValor, setNovoTrajPedValor] = useState("");
+  const [novoTrajPedsTemp, setNovoTrajPedsTemp] = useState<PedagioTrajeto[]>([]);
+  // Expansão/edição de trajeto existente
+  const [trajetoExpandido, setTrajetoExpandido] = useState<string | null>(null);
 
   // ── Custos Fixos ──
   const [custosFixos, setCustosFixos] = useState<CustoFixo[]>([]);
@@ -370,7 +371,7 @@ function FinanceiroPage() {
     const { data } = await supabase.from("configuracoes").select("*")
       .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "margem_meta_pct",
         "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km",
-        "veiculo_endereco_escritorio", "veiculo_endereco_casa", "pedagogios_lista", "combustiveis_lista"]);
+        "veiculo_endereco_escritorio", "veiculo_endereco_casa", "trajetos_lista"]);
     if (data) {
       for (const row of data) {
         if (row.chave === "imposto_padrao_pct") { setAliquota(Number(row.valor)); setAliquotaInput(String(Number(row.valor))); setConfigId(row.id); }
@@ -382,61 +383,45 @@ function FinanceiroPage() {
         if (row.chave === "veiculo_custo_manut_km") setCustoManutInput(String(Number(row.valor)));
         if (row.chave === "veiculo_endereco_escritorio") setEnderecoEscritorioInput(row.valor || "");
         if (row.chave === "veiculo_endereco_casa") setEnderecoCasaInput(row.valor || "");
-        if (row.chave === "pedagogios_lista") {
-          try { setPedagios(JSON.parse(row.valor || "[]")); } catch { setPedagios([]); }
-        }
-        if (row.chave === "combustiveis_lista") {
-          try { setCombustiveis(JSON.parse(row.valor || "[]")); } catch { setCombustiveis([]); }
+        if (row.chave === "trajetos_lista") {
+          try { setTrajetos(JSON.parse(row.valor || "[]")); } catch { setTrajetos([]); }
         }
       }
     }
   }
 
-  async function salvarCombustiveis(lista: CombustivelItem[]) {
-    setSalvandoComb(true);
+  async function salvarTrajetos(lista: Trajeto[]) {
+    setSalvandoTrajeto(true);
     await supabase.from("configuracoes").upsert(
-      { chave: "combustiveis_lista", valor: JSON.stringify(lista), descricao: "Custos fixos de combustível/deslocamento" },
+      { chave: "trajetos_lista", valor: JSON.stringify(lista), descricao: "Trajetos pré-cadastrados (combustível + pedágios)" },
       { onConflict: "chave" }
     );
-    setCombustiveis(lista);
-    setSalvandoComb(false);
-    setCombSalvo(true);
-    setTimeout(() => setCombSalvo(false), 2000);
+    setTrajetos(lista);
+    setSalvandoTrajeto(false);
+    setTrajetoSalvo(true);
+    setTimeout(() => setTrajetoSalvo(false), 2000);
   }
-  function adicionarCombustivel() {
-    const nome = novoCombNome.trim();
-    const valor = Number(novoCombValor);
+
+  function adicionarPedagioTemp() {
+    const nome = novoTrajPedNome.trim();
+    const valor = Number(novoTrajPedValor);
     if (!nome || valor <= 0) return;
-    const nova = [...combustiveis, { id: crypto.randomUUID(), nome, valor }];
-    setNovoCombNome(""); setNovoCombValor("");
-    salvarCombustiveis(nova);
-  }
-  function removerCombustivel(id: string) { salvarCombustiveis(combustiveis.filter(c => c.id !== id)); }
-
-  async function salvarPedagios(lista: { id: string; nome: string; valor: number }[]) {
-    setSalvandoPedagios(true);
-    await supabase.from("configuracoes").upsert(
-      { chave: "pedagogios_lista", valor: JSON.stringify(lista), descricao: "Lista de pedágios pré-cadastrados" },
-      { onConflict: "chave" }
-    );
-    setPedagios(lista);
-    setSalvandoPedagios(false);
-    setPedagiosSalvos(true);
-    setTimeout(() => setPedagiosSalvos(false), 2000);
+    setNovoTrajPedsTemp(prev => [...prev, { id: crypto.randomUUID(), nome, valor }]);
+    setNovoTrajPedNome(""); setNovoTrajPedValor("");
   }
 
-  function adicionarPedagio() {
-    const nome = novoPedagioNome.trim();
-    const valor = Number(novoPedagioValor);
-    if (!nome || valor <= 0) return;
-    const nova = [...pedagogios, { id: crypto.randomUUID(), nome, valor }];
-    setNovoPedagioNome("");
-    setNovoPedagioValor("");
-    salvarPedagios(nova);
+  function salvarNovoTrajeto() {
+    const nome = novoTrajetoNome.trim();
+    const comb = Number(novoTrajComb);
+    if (!nome) return;
+    const novo: Trajeto = { id: crypto.randomUUID(), nome, combustivel: comb, pedagogios: novoTrajPedsTemp };
+    setNovoTrajetoNome(""); setNovoTrajComb(""); setNovoTrajPedsTemp([]);
+    salvarTrajetos([...trajetos, novo]);
   }
 
-  function removerPedagio(id: string) {
-    salvarPedagios(pedagogios.filter(p => p.id !== id));
+  function removerTrajeto(id: string) { salvarTrajetos(trajetos.filter(t => t.id !== id)); }
+  function removerPedagioDoTrajeto(trajetoId: string, pedId: string) {
+    salvarTrajetos(trajetos.map(t => t.id === trajetoId ? { ...t, pedagogios: t.pedagogios.filter(p => p.id !== pedId) } : t));
   }
 
   async function carregarCustosFixos() {
@@ -1159,122 +1144,116 @@ function FinanceiroPage() {
             <SalvarBtn loading={salvandoVeiculo} salvo={veiculoSalvo} onClick={salvarVeiculo} className="mt-3" />
           </div>
 
-          {/* Combustível / Deslocamento Fixo */}
-          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4 sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center gap-1.5 mb-3">
-              <span className="text-base">⛽</span>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Combustível</p>
+          {/* Trajetos pré-cadastrados */}
+          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4 sm:col-span-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-base">🗺</span>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Trajetos</p>
             </div>
-            <p className="text-xs text-gray-400 mb-3">Cadastre custos fixos de combustível por trajeto para selecionar rapidamente no orçamento.</p>
-            <div className="space-y-1.5 mb-3">
-              {combustiveis.length === 0 && (
-                <p className="text-xs text-gray-300 text-center py-2">Nenhum custo cadastrado</p>
+            <p className="text-xs text-gray-400 mb-4">Cada trajeto agrupa o custo de combustível + pedágios. No orçamento, basta selecionar o trajeto e tudo é adicionado de uma vez.</p>
+
+            {/* Lista de trajetos existentes */}
+            <div className="space-y-2 mb-4">
+              {trajetos.length === 0 && (
+                <p className="text-xs text-gray-300 text-center py-2">Nenhum trajeto cadastrado</p>
               )}
-              {combustiveis.map(c => (
-                <div key={c.id} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5">
-                  <span className="text-sm font-medium text-gray-700">{c.nome}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-orange-600">
-                      {c.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </span>
-                    <button onClick={() => removerCombustivel(c.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+              {trajetos.map(t => {
+                const totalTrajeto = t.combustivel + t.pedagogios.reduce((acc, p) => acc + p.valor, 0);
+                const expandido = trajetoExpandido === t.id;
+                return (
+                  <div key={t.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-gray-50"
+                      onClick={() => setTrajetoExpandido(expandido ? null : t.id)}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-800">{t.nome}</span>
+                        <span className="text-xs text-gray-400">
+                          ⛽ {t.combustivel.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          {t.pedagogios.length > 0 && ` · ${t.pedagogios.length} pedágio${t.pedagogios.length > 1 ? "s" : ""}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-orange-600">
+                          {totalTrajeto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                        <button onClick={e => { e.stopPropagation(); removerTrajeto(t.id); }}
+                          className="text-gray-300 hover:text-red-500 transition-colors">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    {expandido && t.pedagogios.length > 0 && (
+                      <div className="border-t border-gray-100 px-3 py-2 space-y-1">
+                        {t.pedagogios.map(p => (
+                          <div key={p.id} className="flex items-center justify-between text-xs text-gray-500">
+                            <span>🛣 {p.nome}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-orange-500">{p.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                              <button onClick={() => removerPedagioDoTrajeto(t.id, p.id)} className="text-gray-300 hover:text-red-400">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+
+            {/* Formulário novo trajeto */}
+            <div className="border-t border-gray-200 pt-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500">Novo trajeto</p>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nome do trajeto</label>
+                  <input type="text" value={novoTrajetoNome} onChange={e => setNovoTrajetoNome(e.target.value)}
+                    placeholder="Ex: Rio → obra SP"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
-              ))}
-            </div>
-            <div className="flex gap-1.5 items-end border-t border-gray-200 pt-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Descrição</label>
-                <input
-                  type="text"
-                  value={novoCombNome}
-                  onChange={e => setNovoCombNome(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && adicionarCombustivel()}
-                  placeholder="Ex: Combustível Rio → SP"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]"
-                />
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">⛽ Combustível (R$)</label>
+                  <input type="number" min={0} step={1} value={novoTrajComb} onChange={e => setNovoTrajComb(e.target.value)}
+                    placeholder="180,00"
+                    className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]" />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Valor (R$)</label>
-                <input
-                  type="number" min={0} step={1}
-                  value={novoCombValor}
-                  onChange={e => setNovoCombValor(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && adicionarCombustivel()}
-                  placeholder="180,00"
-                  className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]"
-                />
-              </div>
-              <button
-                onClick={adicionarCombustivel}
-                disabled={salvandoComb || !novoCombNome.trim() || Number(novoCombValor) <= 0}
-                className="flex items-center gap-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors">
-                {salvandoComb ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {combSalvo ? "Salvo!" : "Add"}
-              </button>
-            </div>
-          </div>
 
-          {/* Pedágios pré-cadastrados */}
-          <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4 sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center gap-1.5 mb-3">
-              <span className="text-base">🛣</span>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Pedágios</p>
-            </div>
-            <p className="text-xs text-gray-400 mb-3">Cadastre os pedágios da sua rota para selecionar rapidamente no orçamento.</p>
-
-            {/* Lista existente */}
-            <div className="space-y-1.5 mb-3">
-              {pedagogios.length === 0 && (
-                <p className="text-xs text-gray-300 text-center py-2">Nenhum pedágio cadastrado</p>
-              )}
-              {pedagogios.map(p => (
-                <div key={p.id} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5">
-                  <span className="text-sm font-medium text-gray-700">{p.nome}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-orange-600">
-                      {p.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </span>
-                    <button onClick={() => removerPedagio(p.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+              {/* Pedágios do novo trajeto */}
+              <div className="rounded-lg border border-dashed border-gray-200 p-3 space-y-2">
+                <p className="text-xs text-gray-400">🛣 Pedágios do trajeto (opcional)</p>
+                {novoTrajPedsTemp.map(p => (
+                  <div key={p.id} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-600">{p.nome}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-orange-500">{p.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                      <button onClick={() => setNovoTrajPedsTemp(prev => prev.filter(x => x.id !== p.id))} className="text-gray-300 hover:text-red-400">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
+                ))}
+                <div className="flex gap-1.5 items-end">
+                  <input type="text" value={novoTrajPedNome} onChange={e => setNovoTrajPedNome(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && adicionarPedagioTemp()}
+                    placeholder="Nome do pedágio"
+                    className="flex-1 rounded border border-gray-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-[#1a6b2f]" />
+                  <input type="number" min={0} step={0.5} value={novoTrajPedValor} onChange={e => setNovoTrajPedValor(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && adicionarPedagioTemp()}
+                    placeholder="R$"
+                    className="w-20 rounded border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold outline-none focus:border-[#1a6b2f]" />
+                  <button onClick={adicionarPedagioTemp} disabled={!novoTrajPedNome.trim() || Number(novoTrajPedValor) <= 0}
+                    className="rounded border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40">
+                    <Plus className="h-3 w-3" />
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
 
-            {/* Adicionar novo */}
-            <div className="flex gap-1.5 items-end border-t border-gray-200 pt-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
-                <input
-                  type="text"
-                  value={novoPedagioNome}
-                  onChange={e => setNovoPedagioNome(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && adicionarPedagio()}
-                  placeholder="Ex: Pedágio Linha Amarela"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Valor (R$)</label>
-                <input
-                  type="number" min={0} step={0.50}
-                  value={novoPedagioValor}
-                  onChange={e => setNovoPedagioValor(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && adicionarPedagio()}
-                  placeholder="5,00"
-                  className="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#1a6b2f]"
-                />
-              </div>
-              <button
-                onClick={adicionarPedagio}
-                disabled={salvandoPedagios || !novoPedagioNome.trim() || Number(novoPedagioValor) <= 0}
-                className="flex items-center gap-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors">
-                {salvandoPedagios ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {pedagogiosSalvos ? "Salvo!" : "Add"}
+              <button onClick={salvarNovoTrajeto}
+                disabled={salvandoTrajeto || !novoTrajetoNome.trim()}
+                className="flex items-center gap-1 rounded-lg bg-[#1a6b2f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors">
+                {salvandoTrajeto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {trajetoSalvo ? "Salvo!" : "Salvar Trajeto"}
               </button>
             </div>
           </div>
