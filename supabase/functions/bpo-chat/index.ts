@@ -67,17 +67,16 @@ serve(async (req) => {
       // Meta = ponto_equilíbrio × (1 + margem/100)
       const metaVendas = pontoEquilibrio * (1 + margemPct / 100);
 
-      // Receitas pagas no mês atual
-      const inicioMes = new Date();
-      inicioMes.setDate(1);
-      inicioMes.setHours(0, 0, 0, 0);
+      // Receitas do mês atual (campo data é tipo DATE — comparar como YYYY-MM-DD)
+      const agora = new Date();
+      const anoMes = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
+      const inicioMesStr = `${anoMes}-01`;
 
       const { data: lancamentos } = await sb
         .from("financeiro_lancamentos")
         .select("valor")
         .eq("tipo", "receita")
-        .eq("pago", true)
-        .gte("data", inicioMes.toISOString());
+        .gte("data", inicioMesStr);
       const receitaAtual = (lancamentos ?? []).reduce((s: number, l: { valor: number }) => s + l.valor, 0);
 
       return { totalCustos, totalDividas, pontoEquilibrio, margemPct, metaVendas, receitaAtual };
