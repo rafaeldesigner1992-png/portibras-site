@@ -6,7 +6,7 @@ import {
   ExternalLink, Clock, Pencil, Trash2, AlertCircle,
   Wrench, CalendarDays as CalendarIcon, Ticket, ChevronRight, MapPin, User, HardHat, Check,
   ClipboardList, ShoppingBag, ChevronDown, ChevronUp, Loader2, BarChart2, FileCheck,
-  ClipboardCheck, Upload, FileText, Phone, Mail, Building2,
+  ClipboardCheck, Upload, FileText, Phone, Mail, Building2, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -560,6 +560,9 @@ function LogisticaPage() {
   const [aquisicoes, setAquisicoes] = useState<ItemAquisicao[]>([]);
   const [carregandoAquis, setCarregandoAquis] = useState(false);
   const [formAquis, setFormAquis] = useState({ nome: "", quantidade: "1", unidade: "un", custo_unitario: "", fornecedor: "", link_compra: "", observacoes: "" });
+  const [buscaSupAquis, setBuscaSupAquis] = useState("");
+  const [supAquisAberto, setSupAquisAberto] = useState(false);
+  const [supSelecionado, setSupSelecionado] = useState<Suprimento | null>(null);
   const [salvandoAquis, setSalvandoAquis] = useState(false);
   const [atualizandoEtapa, setAtualizandoEtapa] = useState<string | null>(null);
 
@@ -765,6 +768,8 @@ function LogisticaPage() {
     }).select().single();
     if (data) setAquisicoes(aq => [...aq, data as ItemAquisicao]);
     setFormAquis({ nome: "", quantidade: "1", unidade: "un", custo_unitario: "", fornecedor: "", link_compra: "", observacoes: "" });
+    setSupSelecionado(null);
+    setBuscaSupAquis("");
     setSalvandoAquis(false);
   }
 
@@ -988,6 +993,7 @@ function LogisticaPage() {
   useEffect(() => {
     if (aba === "equipe") { carregarProfissionais(); carregarMoPadrao(); }
     if (aba === "suprimentos") { carregarSuprimentos(); carregarProfissionais(); }
+    if (aba === "pedidos") { carregarSuprimentos(); } // pré-carrega catálogo para o seletor de aquisição
   }, [aba]);
 
   async function carregarProfissionais() {
@@ -1600,23 +1606,116 @@ function LogisticaPage() {
                           </div>
                         )}
 
-                        {/* Formulário novo item */}
+                        {/* Formulário novo item — baseado no Catálogo */}
                         <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
                           <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Adicionar peça</p>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div className="col-span-2">
-                              <input className="input-field text-sm" placeholder="Nome da peça *" value={formAquis.nome} onChange={e => setFormAquis(f => ({ ...f, nome: e.target.value }))} />
+
+                          {/* Seletor do catálogo */}
+                          <div className="relative">
+                            <div
+                              className={cn(
+                                "flex items-center gap-2 rounded-lg border bg-white px-3 py-2 cursor-pointer",
+                                supAquisAberto ? "border-[#1a6b2f] ring-1 ring-[#1a6b2f]/20" : "border-gray-200"
+                              )}
+                              onClick={() => { setSupAquisAberto(o => !o); setBuscaSupAquis(""); }}
+                            >
+                              <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                              {supSelecionado ? (
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-sm font-medium text-gray-900">{supSelecionado.nome}</span>
+                                  <span className="ml-2 text-[10px] text-gray-400">{supSelecionado.codigo}</span>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400 flex-1">Buscar no catálogo…</span>
+                              )}
+                              {supSelecionado && (
+                                <button onClick={e => { e.stopPropagation(); setSupSelecionado(null); setFormAquis(f => ({ ...f, nome: "", unidade: "un", custo_unitario: "", link_compra: "" })); }} className="text-gray-300 hover:text-gray-500">
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
-                            <div className="flex gap-1">
-                              <input className="input-field text-sm w-16" placeholder="Qtd" type="number" min="1" step="any" value={formAquis.quantidade} onChange={e => setFormAquis(f => ({ ...f, quantidade: e.target.value }))} />
-                              <input className="input-field text-sm w-14" placeholder="un" value={formAquis.unidade} onChange={e => setFormAquis(f => ({ ...f, unidade: e.target.value }))} />
+
+                            {supAquisAberto && (
+                              <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg">
+                                <div className="p-2 border-b border-gray-100">
+                                  <input
+                                    autoFocus
+                                    className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm outline-none focus:border-[#1a6b2f]"
+                                    placeholder="Buscar por nome ou código…"
+                                    value={buscaSupAquis}
+                                    onChange={e => setBuscaSupAquis(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                </div>
+                                <div className="max-h-52 overflow-y-auto">
+                                  {suprimentos
+                                    .filter(s => {
+                                      const q = buscaSupAquis.toLowerCase();
+                                      return !q || s.nome.toLowerCase().includes(q) || s.codigo?.toLowerCase().includes(q) || s.categoria?.toLowerCase().includes(q);
+                                    })
+                                    .map(s => (
+                                      <button
+                                        key={s.id}
+                                        className="w-full flex items-start justify-between gap-2 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors"
+                                        onClick={() => {
+                                          setSupSelecionado(s);
+                                          setFormAquis(f => ({
+                                            ...f,
+                                            nome: s.nome,
+                                            unidade: s.unidade || "un",
+                                            custo_unitario: s.custo_unitario ? String(s.custo_unitario) : "",
+                                            link_compra: s.link_compra || "",
+                                          }));
+                                          setSupAquisAberto(false);
+                                        }}
+                                      >
+                                        <div>
+                                          <p className="text-sm font-medium text-gray-900">{s.nome}</p>
+                                          <p className="text-[10px] text-gray-400">{s.codigo} · {s.categoria}</p>
+                                        </div>
+                                        {s.custo_unitario > 0 && (
+                                          <span className="shrink-0 text-xs font-semibold text-[#1a6b2f]">
+                                            R$ {s.custo_unitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                          </span>
+                                        )}
+                                      </button>
+                                    ))}
+                                  {suprimentos.filter(s => {
+                                    const q = buscaSupAquis.toLowerCase();
+                                    return !q || s.nome.toLowerCase().includes(q) || s.codigo?.toLowerCase().includes(q);
+                                  }).length === 0 && (
+                                    <p className="px-3 py-4 text-center text-xs text-gray-400">Nenhum item encontrado</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Quantidade + unidade (sempre visível após seleção) */}
+                          {supSelecionado && (
+                            <div className="space-y-2">
+                              <div className="flex gap-2">
+                                <div className="flex-1">
+                                  <label className="text-[10px] text-gray-400 mb-1 block">Quantidade</label>
+                                  <input className="input-field text-sm" type="number" min="1" step="any" value={formAquis.quantidade} onChange={e => setFormAquis(f => ({ ...f, quantidade: e.target.value }))} />
+                                </div>
+                                <div className="w-20">
+                                  <label className="text-[10px] text-gray-400 mb-1 block">Unidade</label>
+                                  <input className="input-field text-sm" value={formAquis.unidade} onChange={e => setFormAquis(f => ({ ...f, unidade: e.target.value }))} />
+                                </div>
+                                <div className="flex-1">
+                                  <label className="text-[10px] text-gray-400 mb-1 block">Custo unit. (R$)</label>
+                                  <input className="input-field text-sm" value={formAquis.custo_unitario} onChange={e => setFormAquis(f => ({ ...f, custo_unitario: e.target.value }))} />
+                                </div>
+                              </div>
+                              {formAquis.custo_unitario && parseFloat(formAquis.custo_unitario) > 0 && (
+                                <p className="text-[11px] text-[#1a6b2f] font-semibold">
+                                  Total: R$ {(parseFloat(formAquis.custo_unitario.replace(",", ".")) * (parseFloat(formAquis.quantidade) || 1)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </p>
+                              )}
                             </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <input className="input-field text-sm" placeholder="Custo unit. (R$)" value={formAquis.custo_unitario} onChange={e => setFormAquis(f => ({ ...f, custo_unitario: e.target.value }))} />
-                            <input className="input-field text-sm" placeholder="Fornecedor" value={formAquis.fornecedor} onChange={e => setFormAquis(f => ({ ...f, fornecedor: e.target.value }))} />
-                          </div>
-                          <input className="input-field text-sm" placeholder="Link de compra (opcional)" value={formAquis.link_compra} onChange={e => setFormAquis(f => ({ ...f, link_compra: e.target.value }))} />
+                          )}
+
                           <button
                             onClick={salvarAquisicao}
                             disabled={salvandoAquis || !formAquis.nome.trim()}
