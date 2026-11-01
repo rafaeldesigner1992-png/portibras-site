@@ -294,6 +294,9 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [deslocamento, setDeslocamento] = useState<ItemDeslocamento[]>([]);
   const [proximoDeslocId, setProximoDeslocId] = useState(1);
   const [custoPorKmVeiculo, setCustoPorKmVeiculo] = useState(0);
+  const [enderecoEscritorio, setEnderecoEscritorio] = useState("");
+  const [enderecoCasa, setEnderecoCasa] = useState("");
+  const [origemRota, setOrigemRota] = useState<"escritorio" | "casa">("escritorio");
 
   // Forma de pagamento
   const [pagamento, setPagamento] = useState<FormaPagamento>({
@@ -323,7 +326,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       const [{ data: sups }, { data: orc }, { data: cfgs }, { data: profs }] = await Promise.all([
         supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario, tempo_instalacao_min, profissionais_ids").order("nome"),
         supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
-        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "mo_padrao_valor", "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km"]),
+        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "mo_padrao_valor", "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km", "veiculo_endereco_escritorio", "veiculo_endereco_casa"]),
         supabase.from("logistica_profissionais").select("*").eq("ativo", true).order("nome"),
       ]);
       if (sups) setSuprimentos(sups as Suprimento[]);
@@ -339,6 +342,8 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
           if (row.chave === "veiculo_preco_combustivel") precoComb = Number(row.valor) || 0;
           if (row.chave === "veiculo_consumo_km_l") consumoKm = Number(row.valor) || 0;
           if (row.chave === "veiculo_custo_manut_km") custoManut = Number(row.valor) || 0;
+          if (row.chave === "veiculo_endereco_escritorio") setEnderecoEscritorio(row.valor || "");
+          if (row.chave === "veiculo_endereco_casa") setEnderecoCasa(row.valor || "");
         }
         // custoPorKm = (precoComb / consumoKm) + custoManut
         if (consumoKm > 0) setCustoPorKmVeiculo(precoComb / consumoKm + custoManut);
@@ -993,49 +998,83 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
             )}
 
             {/* Custos de Deslocamento */}
-            <div className="rounded-lg border border-orange-100 bg-orange-50/30 px-2 py-1.5 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-semibold uppercase tracking-wide text-orange-600">Deslocamento</span>
-                <div className="flex items-center gap-1">
-                  {custoPorKmVeiculo > 0 && (
-                    <button onClick={() => addDeslocamento("Combustível/km", 0)}
-                      className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-500 hover:bg-orange-50">
-                      ⛽ km
+            {(() => {
+              const enderecoCliente = lead.endereco_atendimento || lead.endereco_fiscal || "";
+              const origemAddr = origemRota === "escritorio" ? enderecoEscritorio : enderecoCasa;
+              const mapsUrl = origemAddr && enderecoCliente
+                ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origemAddr)}&destination=${encodeURIComponent(enderecoCliente)}&travelmode=driving`
+                : enderecoCliente
+                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCliente)}`
+                  : null;
+              const temEnderecos = enderecoEscritorio || enderecoCasa;
+              return (
+                <div className="rounded-lg border border-orange-100 bg-orange-50/30 px-2 py-1.5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-orange-600">Deslocamento</span>
+                    <button onClick={() => addDeslocamento()}
+                      className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-600 hover:bg-orange-50">
+                      <Plus className="h-2 w-2" /> Adicionar
                     </button>
+                  </div>
+
+                  {/* Seletor de origem + botão rota */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {temEnderecos && (
+                      <div className="flex rounded border border-orange-200 overflow-hidden text-[8px] font-semibold">
+                        {enderecoEscritorio && (
+                          <button
+                            onClick={() => setOrigemRota("escritorio")}
+                            className={cn("px-1.5 py-0.5", origemRota === "escritorio" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
+                            🏢 Escritório
+                          </button>
+                        )}
+                        {enderecoCasa && (
+                          <button
+                            onClick={() => setOrigemRota("casa")}
+                            className={cn("px-1.5 py-0.5 border-l border-orange-200", origemRota === "casa" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
+                            🏠 Casa
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {mapsUrl ? (
+                      <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-0.5 rounded border border-orange-300 bg-orange-500 px-1.5 py-0.5 text-[8px] font-semibold text-white hover:bg-orange-600">
+                        📍 Ver rota no Maps
+                      </a>
+                    ) : (
+                      <span className="text-[8px] text-orange-300 italic">
+                        {!enderecoCliente ? "Endereço do cliente não cadastrado" : "Configure origens em Financeiro → Veículo"}
+                      </span>
+                    )}
+                    {custoPorKmVeiculo > 0 && (
+                      <span className="text-[8px] text-orange-400 ml-auto">{custoPorKmVeiculo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/km</span>
+                    )}
+                  </div>
+
+                  {/* Linhas de custo */}
+                  {deslocamento.map(d => (
+                    <div key={d.id} className="flex items-center gap-1">
+                      <input value={d.descricao} onChange={e => setDeslocDesc(d.id, e.target.value)}
+                        placeholder="Ex: Combustível (80km ida+volta), Pedágio"
+                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-[9px] outline-none focus:border-orange-400" />
+                      <input type="number" min={0} step={0.01} value={d.valor} onChange={e => setDeslocValor(d.id, Number(e.target.value))}
+                        className="w-20 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-orange-400" />
+                      <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-3 w-3" /></button>
+                    </div>
+                  ))}
+                  {deslocamento.length === 0 && (
+                    <p className="text-[9px] text-orange-400 text-center">Veja a rota → preencha km e pedágios</p>
                   )}
-                  <button onClick={() => addDeslocamento("Pedágio", 0)}
-                    className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-500 hover:bg-orange-50">
-                    🚧 Pedágio
-                  </button>
-                  <button onClick={() => addDeslocamento()}
-                    className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-600 hover:bg-orange-50">
-                    <Plus className="h-2 w-2" /> Outro
-                  </button>
+                  {custoDeslocamentoTotal > 0 && (
+                    <div className="flex justify-between pt-0.5 border-t border-orange-100">
+                      <span className="text-[9px] font-semibold text-orange-600">Total deslocamento</span>
+                      <span className="text-[10px] font-bold text-orange-700">{fmt(custoDeslocamentoTotal)}</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-              {custoPorKmVeiculo > 0 && (
-                <p className="text-[8px] text-orange-400">Custo/km configurado: {custoPorKmVeiculo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/km</p>
-              )}
-              {deslocamento.map(d => (
-                <div key={d.id} className="flex items-center gap-1">
-                  <input value={d.descricao} onChange={e => setDeslocDesc(d.id, e.target.value)}
-                    placeholder="Ex: Combustível (100km), Pedágio"
-                    className="flex-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-[9px] outline-none focus:border-orange-400" />
-                  <input type="number" min={0} step={0.01} value={d.valor} onChange={e => setDeslocValor(d.id, Number(e.target.value))}
-                    className="w-20 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-orange-400" />
-                  <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-3 w-3" /></button>
-                </div>
-              ))}
-              {deslocamento.length === 0 && (
-                <p className="text-[9px] text-orange-400 text-center">Nenhum custo de deslocamento adicionado</p>
-              )}
-              {custoDeslocamentoTotal > 0 && (
-                <div className="flex justify-between pt-0.5 border-t border-orange-100">
-                  <span className="text-[9px] font-semibold text-orange-600">Total deslocamento</span>
-                  <span className="text-[10px] font-bold text-orange-700">{fmt(custoDeslocamentoTotal)}</span>
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Parâmetros + Tempo instalação em linha */}
             <div className="flex items-end gap-2">

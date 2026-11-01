@@ -159,6 +159,8 @@ function FinanceiroPage() {
   const [precoCombInput, setPrecoCombInput] = useState("6.50");
   const [consumoKmInput, setConsumoKmInput] = useState("10");
   const [custoManutInput, setCustoManutInput] = useState("0.15");
+  const [enderecoEscritorioInput, setEnderecoEscritorioInput] = useState("");
+  const [enderecoCasaInput, setEnderecoCasaInput] = useState("");
   const [salvandoVeiculo, setSalvandoVeiculo] = useState(false);
   const [veiculoSalvo, setVeiculoSalvo] = useState(false);
 
@@ -351,7 +353,8 @@ function FinanceiroPage() {
   async function carregarConfig() {
     const { data } = await supabase.from("configuracoes").select("*")
       .in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "margem_meta_pct",
-        "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km"]);
+        "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km",
+        "veiculo_endereco_escritorio", "veiculo_endereco_casa"]);
     if (data) {
       for (const row of data) {
         if (row.chave === "imposto_padrao_pct") { setAliquota(Number(row.valor)); setAliquotaInput(String(Number(row.valor))); setConfigId(row.id); }
@@ -361,6 +364,8 @@ function FinanceiroPage() {
         if (row.chave === "veiculo_preco_combustivel") setPrecoCombInput(String(Number(row.valor)));
         if (row.chave === "veiculo_consumo_km_l") setConsumoKmInput(String(Number(row.valor)));
         if (row.chave === "veiculo_custo_manut_km") setCustoManutInput(String(Number(row.valor)));
+        if (row.chave === "veiculo_endereco_escritorio") setEnderecoEscritorioInput(row.valor || "");
+        if (row.chave === "veiculo_endereco_casa") setEnderecoCasaInput(row.valor || "");
       }
     }
   }
@@ -419,6 +424,8 @@ function FinanceiroPage() {
       { chave: "veiculo_preco_combustivel", valor: precoCombInput, descricao: "Preço do combustível (R$/litro)" },
       { chave: "veiculo_consumo_km_l", valor: consumoKmInput, descricao: "Consumo médio do veículo (km/litro)" },
       { chave: "veiculo_custo_manut_km", valor: custoManutInput, descricao: "Custo de manutenção por km rodado (R$/km)" },
+      { chave: "veiculo_endereco_escritorio", valor: enderecoEscritorioInput, descricao: "Endereço de origem: escritório" },
+      { chave: "veiculo_endereco_casa", valor: enderecoCasaInput, descricao: "Endereço de origem: casa" },
     ];
     for (const cfg of configs) {
       await supabase.from("configuracoes").upsert({ ...cfg, atualizado_em: new Date().toISOString() }, { onConflict: "chave" });
@@ -1044,6 +1051,21 @@ function FinanceiroPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Veículo / Km Rodado</p>
             </div>
             <div className="space-y-2.5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Endereço do escritório <span className="text-gray-400">(origem padrão)</span></label>
+                <input type="text" value={enderecoEscritorioInput} onChange={e => setEnderecoEscritorioInput(e.target.value)}
+                  placeholder="Ex: Rua das Flores, 100, Rio de Janeiro, RJ"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Endereço de casa <span className="text-gray-400">(origem alternativa)</span></label>
+                <input type="text" value={enderecoCasaInput} onChange={e => setEnderecoCasaInput(e.target.value)}
+                  placeholder="Ex: Av. Principal, 200, Rio de Janeiro, RJ"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div className="border-t border-gray-100 pt-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Custo por km</p>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Preço do combustível (R$/litro)</label>
                 <input type="number" min={0} step={0.05} value={precoCombInput} onChange={e => setPrecoCombInput(e.target.value)}
