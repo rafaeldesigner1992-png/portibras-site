@@ -1290,85 +1290,119 @@ function LogisticaPage() {
 
       {/* ═══════ ABA PEDIDOS (Kanban de Tratamento) ═══════ */}
       {aba === "pedidos" && (() => {
-        const ETAPAS: { key: EtapaLogistica; label: string; cor: string; bg: string }[] = [
-          { key: "tratamento",      label: "Tratamento",         cor: "text-orange-700",  bg: "bg-orange-50 border-orange-200" },
-          { key: "aguard_material", label: "Aguard. Material",   cor: "text-amber-700",   bg: "bg-amber-50 border-amber-200" },
-          { key: "aguard_cobranca", label: "Aguard. Cobrança",   cor: "text-blue-700",    bg: "bg-blue-50 border-blue-200" },
-          { key: "em_execucao",     label: "Em Execução",        cor: "text-purple-700",  bg: "bg-purple-50 border-purple-200" },
-          { key: "concluido",       label: "Concluído",          cor: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+        const ETAPAS: { key: EtapaLogistica; label: string; acento: string; pill: string; dot: string }[] = [
+          { key: "tratamento",      label: "Tratamento",       acento: "border-t-orange-400",  pill: "bg-orange-100 text-orange-700",  dot: "bg-orange-400" },
+          { key: "aguard_material", label: "Aguard. Material", acento: "border-t-amber-400",   pill: "bg-amber-100 text-amber-700",    dot: "bg-amber-400" },
+          { key: "aguard_cobranca", label: "Aguard. Cobrança", acento: "border-t-blue-400",    pill: "bg-blue-100 text-blue-700",      dot: "bg-blue-400" },
+          { key: "em_execucao",     label: "Em Execução",      acento: "border-t-violet-400",  pill: "bg-violet-100 text-violet-700",  dot: "bg-violet-400" },
+          { key: "concluido",       label: "Concluído",        acento: "border-t-emerald-400", pill: "bg-emerald-100 text-emerald-700",dot: "bg-emerald-400" },
         ];
         const PROX: Record<EtapaLogistica, EtapaLogistica | null> = {
           tratamento: "aguard_material", aguard_material: "em_execucao",
           aguard_cobranca: "em_execucao", em_execucao: "concluido",
           concluido: null, cancelado: null,
         };
-        const TIPO_COB_LABEL: Record<TipoCobranca, string> = {
-          antes: "Cobrar antes", apos: "Cobrar após", sem_cobranca: "Sem cobrança",
+        const COB_STYLE: Record<TipoCobranca, { label: string; cls: string }> = {
+          antes:        { label: "Cobrar antes",  cls: "bg-sky-100 text-sky-700" },
+          apos:         { label: "Cobrar após",   cls: "bg-violet-100 text-violet-700" },
+          sem_cobranca: { label: "Sem cobrança",  cls: "bg-gray-100 text-gray-500" },
         };
         const fmt = (v: number | null) => v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+        const totalAtivos = pedidosLog.length;
+        const totalValor  = pedidosLog.reduce((s, p) => s + (p.valor_venda ?? 0), 0);
+        const emExec      = pedidosLog.filter(p => p.etapa === "em_execucao").length;
 
         return (
           <>
-            {/* Cabeçalho */}
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Pedidos em Tratamento</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Pedidos fechados no CRM aguardando execução</p>
-              </div>
-              {carregandoPedLog && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+            {/* ── KPIs ── */}
+            <div className="mb-6 grid grid-cols-3 gap-4">
+              {[
+                { label: "Pedidos ativos",  value: totalAtivos,              fmt: (v: number) => String(v),                             cor: "text-gray-900" },
+                { label: "Volume em aberto",value: totalValor,               fmt: (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), cor: "text-[#1a6b2f]" },
+                { label: "Em execução",     value: emExec,                   fmt: (v: number) => String(v),                             cor: "text-violet-700" },
+              ].map(kpi => (
+                <div key={kpi.label} className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{kpi.label}</p>
+                  <p className={cn("mt-1.5 text-2xl font-bold tabular-nums", kpi.cor)}>
+                    {carregandoPedLog ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-gray-100" /> : kpi.fmt(kpi.value)}
+                  </p>
+                </div>
+              ))}
             </div>
 
-            {/* Kanban */}
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            {/* ── Kanban ── */}
+            <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: 420 }}>
               {ETAPAS.map(etapa => {
                 const cards = pedidosLog.filter(p => p.etapa === etapa.key);
+                const volCol = cards.reduce((s, p) => s + (p.valor_venda ?? 0), 0);
                 return (
-                  <div key={etapa.key} className="flex-shrink-0 w-72">
+                  <div key={etapa.key} className="flex flex-col flex-shrink-0 w-64">
                     {/* Cabeçalho coluna */}
-                    <div className={cn("flex items-center justify-between rounded-t-xl border px-3 py-2", etapa.bg)}>
-                      <span className={cn("text-xs font-semibold", etapa.cor)}>{etapa.label}</span>
-                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", etapa.bg, etapa.cor)}>
-                        {cards.length}
-                      </span>
+                    <div className={cn("rounded-xl border-t-2 border border-gray-200 bg-white px-3 pt-3 pb-2.5 mb-2 shadow-sm", etapa.acento)}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn("h-2 w-2 rounded-full", etapa.dot)} />
+                          <span className="text-xs font-semibold text-gray-700">{etapa.label}</span>
+                        </div>
+                        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", etapa.pill)}>
+                          {cards.length}
+                        </span>
+                      </div>
+                      {volCol > 0 && (
+                        <p className="text-[10px] text-gray-400 tabular-nums">
+                          {volCol.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </p>
+                      )}
                     </div>
+
                     {/* Cards */}
-                    <div className="min-h-[120px] space-y-2.5 rounded-b-xl border border-t-0 border-gray-200 bg-gray-50/60 p-2.5">
+                    <div className="flex-1 space-y-2 overflow-y-auto rounded-xl bg-gray-50/80 p-2">
                       {cards.length === 0 && (
-                        <p className="text-center text-[11px] text-gray-300 py-6">Nenhum pedido</p>
+                        <div className="flex flex-col items-center justify-center gap-1 py-10 text-center">
+                          <span className="text-2xl opacity-20">○</span>
+                          <p className="text-[11px] text-gray-300">Nenhum pedido</p>
+                        </div>
                       )}
                       {cards.map(p => {
                         const cliente = p.cliente_empresa || p.cliente_nome || "—";
-                        const tipo = p.tipo_servico === "manutencao" ? "Manutenção" : p.tipo_servico === "orcamento" ? "Orçamento" : "Serviço";
+                        const tipo = p.tipo_servico === "manutencao" ? "Manut." : "Orç.";
                         const prox = PROX[p.etapa];
+                        const dias = Math.floor((Date.now() - new Date(p.criado_em).getTime()) / 86_400_000);
+                        const cob = COB_STYLE[p.tipo_cobranca];
                         return (
                           <div
                             key={p.id}
-                            className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                            className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm hover:border-[#1a6b2f]/30 hover:shadow-md transition-all cursor-pointer"
                             onClick={() => abrirPedido(p)}
                           >
-                            <div className="flex items-start justify-between gap-1 mb-1.5">
-                              <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2">{cliente}</p>
-                              <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-500">{tipo}</span>
+                            {/* Tipo + dias */}
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-500">{tipo}</span>
+                              <span className={cn("text-[9px] font-medium", dias > 7 ? "text-orange-500" : "text-gray-300")}>
+                                {dias === 0 ? "hoje" : `${dias}d`}
+                              </span>
                             </div>
+
+                            {/* Nome cliente */}
+                            <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2 mb-2">{cliente}</p>
+
+                            {/* Valor */}
                             {p.valor_venda != null && (
-                              <p className="text-sm font-bold text-[#1a6b2f] mb-1">{fmt(p.valor_venda)}</p>
+                              <p className="text-base font-bold text-[#1a6b2f] tabular-nums mb-2">{fmt(p.valor_venda)}</p>
                             )}
-                            <div className="flex items-center justify-between mt-2">
-                              <span className={cn(
-                                "text-[9px] font-semibold px-1.5 py-0.5 rounded-full",
-                                p.tipo_cobranca === "antes" ? "bg-blue-100 text-blue-700"
-                                  : p.tipo_cobranca === "apos" ? "bg-purple-100 text-purple-700"
-                                  : "bg-gray-100 text-gray-500"
-                              )}>
-                                {TIPO_COB_LABEL[p.tipo_cobranca]}
+
+                            {/* Footer: cobrança + avançar */}
+                            <div className="flex items-center justify-between">
+                              <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold", cob.cls)}>
+                                {cob.label}
                               </span>
                               {prox && (
                                 <button
                                   onClick={e => { e.stopPropagation(); moverEtapa(p, prox); }}
                                   disabled={atualizandoEtapa === p.id}
-                                  className="flex items-center gap-0.5 text-[10px] font-medium text-[#1a6b2f] hover:underline disabled:opacity-40"
+                                  className="flex items-center gap-0.5 rounded-full bg-[#1a6b2f]/8 px-2 py-0.5 text-[9px] font-semibold text-[#1a6b2f] hover:bg-[#1a6b2f]/15 disabled:opacity-40 transition-colors opacity-0 group-hover:opacity-100"
                                 >
-                                  {atualizandoEtapa === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronRight className="h-3 w-3" />}
+                                  {atualizandoEtapa === p.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <ChevronRight className="h-2.5 w-2.5" />}
                                   Avançar
                                 </button>
                               )}
