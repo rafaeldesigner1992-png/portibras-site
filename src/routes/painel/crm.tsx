@@ -252,6 +252,13 @@ interface MOManual {
   valor: number;
 }
 
+// Linha de custo de deslocamento
+interface ItemDeslocamento {
+  id: number;
+  descricao: string;
+  valor: number;
+}
+
 // Forma de pagamento do orçamento
 interface FormaPagamento {
   tipo: "avista" | "parcelado";
@@ -283,6 +290,11 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   const [moManual, setMoManual] = useState<MOManual[]>([]);
   const [proximoMoId, setProximoMoId] = useState(1);
 
+  // Custos de deslocamento
+  const [deslocamento, setDeslocamento] = useState<ItemDeslocamento[]>([]);
+  const [proximoDeslocId, setProximoDeslocId] = useState(1);
+  const [custoPorKmVeiculo, setCustoPorKmVeiculo] = useState(0);
+
   // Forma de pagamento
   const [pagamento, setPagamento] = useState<FormaPagamento>({
     tipo: "avista",
@@ -311,19 +323,25 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       const [{ data: sups }, { data: orc }, { data: cfgs }, { data: profs }] = await Promise.all([
         supabase.from("logistica_suprimentos").select("id, nome, codigo, unidade, custo_unitario, tempo_instalacao_min, profissionais_ids").order("nome"),
         supabase.from("crm_orcamentos").select("*").eq("lead_id", lead.id).order("criado_em", { ascending: false }).limit(1),
-        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "mo_padrao_valor"]),
+        supabase.from("configuracoes").select("chave, valor").in("chave", ["imposto_padrao_pct", "margem_minima_pct", "margem_ideal_pct", "mo_padrao_valor", "veiculo_preco_combustivel", "veiculo_consumo_km_l", "veiculo_custo_manut_km"]),
         supabase.from("logistica_profissionais").select("*").eq("ativo", true).order("nome"),
       ]);
       if (sups) setSuprimentos(sups as Suprimento[]);
       if (profs) setProfissionais(profs as Profissional[]);
       let moPadraoValor = 0;
       if (cfgs) {
+        let precoComb = 0, consumoKm = 0, custoManut = 0;
         for (const row of cfgs) {
           if (row.chave === "imposto_padrao_pct") setImpostoPct(Number(row.valor) || 10);
           if (row.chave === "margem_minima_pct") setMargemMin(Number(row.valor) || 25);
           if (row.chave === "margem_ideal_pct") setMargemIdeal(Number(row.valor) || 45);
           if (row.chave === "mo_padrao_valor") moPadraoValor = Number(row.valor) || 0;
+          if (row.chave === "veiculo_preco_combustivel") precoComb = Number(row.valor) || 0;
+          if (row.chave === "veiculo_consumo_km_l") consumoKm = Number(row.valor) || 0;
+          if (row.chave === "veiculo_custo_manut_km") custoManut = Number(row.valor) || 0;
         }
+        // custoPorKm = (precoComb / consumoKm) + custoManut
+        if (consumoKm > 0) setCustoPorKmVeiculo(precoComb / consumoKm + custoManut);
       }
       if (orc && orc.length > 0) {
         const o = orc[0] as Orcamento;
@@ -426,6 +444,16 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   function setMoDesc(id: number, desc: string) { setMoManual(prev => prev.map(m => m.id === id ? { ...m, descricao: desc } : m)); }
   function setMoValor(id: number, val: number) { setMoManual(prev => prev.map(m => m.id === id ? { ...m, valor: val } : m)); }
 
+  // Deslocamento helpers
+  function addDeslocamento(descricaoInicial?: string, valorInicial?: number) {
+    const id = proximoDeslocId;
+    setProximoDeslocId(n => n + 1);
+    setDeslocamento(prev => [...prev, { id, descricao: descricaoInicial ?? "", valor: valorInicial ?? 0 }]);
+  }
+  function removeDeslocamento(id: number) { setDeslocamento(prev => prev.filter(d => d.id !== id)); }
+  function setDeslocDesc(id: number, desc: string) { setDeslocamento(prev => prev.map(d => d.id === id ? { ...d, descricao: desc } : d)); }
+  function setDeslocValor(id: number, val: number) { setDeslocamento(prev => prev.map(d => d.id === id ? { ...d, valor: val } : d)); }
+
   // Cálculos de tempo e mão de obra
   const totalMinInstalacao = itens.reduce((acc, i) => {
     const sup = suprimentos.find(s => s.id === i.suprimento_id);
@@ -466,6 +494,9 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   // Cálculo MO manual
   const custoMOManual = moManual.reduce((acc, m) => acc + m.valor, 0);
 
+  // Cálculo deslocamento
+  const custoDeslocamentoTotal = deslocamento.reduce((acc, d) => acc + d.valor, 0);
+
   // Cálculos financeiros respeitando tipo de orçamento
   const incluiMateriais = tipoOrcamento !== "so_mao_obra";
   const incluiMO = tipoOrcamento !== "so_fornecimento";
@@ -474,7 +505,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     ? itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0)
     : 0;
   const custoMOTotal = incluiMO ? custoMO + custoMOManual : 0;
-  const custoTotal = custoMateriais + custoMOTotal;
+  const custoTotal = custoMateriais + custoMOTotal + custoDeslocamentoTotal;
   const valorMargem = custoTotal * (margemPct / 100);
   const subtotalComMargem = custoTotal + valorMargem;
   const valorImposto = subtotalComMargem * (impostoPct / 100);
@@ -961,6 +992,51 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               </div>
             )}
 
+            {/* Custos de Deslocamento */}
+            <div className="rounded-lg border border-orange-100 bg-orange-50/30 px-2 py-1.5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-orange-600">Deslocamento</span>
+                <div className="flex items-center gap-1">
+                  {custoPorKmVeiculo > 0 && (
+                    <button onClick={() => addDeslocamento("Combustível/km", 0)}
+                      className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-500 hover:bg-orange-50">
+                      ⛽ km
+                    </button>
+                  )}
+                  <button onClick={() => addDeslocamento("Pedágio", 0)}
+                    className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-500 hover:bg-orange-50">
+                    🚧 Pedágio
+                  </button>
+                  <button onClick={() => addDeslocamento()}
+                    className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-600 hover:bg-orange-50">
+                    <Plus className="h-2 w-2" /> Outro
+                  </button>
+                </div>
+              </div>
+              {custoPorKmVeiculo > 0 && (
+                <p className="text-[8px] text-orange-400">Custo/km configurado: {custoPorKmVeiculo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/km</p>
+              )}
+              {deslocamento.map(d => (
+                <div key={d.id} className="flex items-center gap-1">
+                  <input value={d.descricao} onChange={e => setDeslocDesc(d.id, e.target.value)}
+                    placeholder="Ex: Combustível (100km), Pedágio"
+                    className="flex-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-[9px] outline-none focus:border-orange-400" />
+                  <input type="number" min={0} step={0.01} value={d.valor} onChange={e => setDeslocValor(d.id, Number(e.target.value))}
+                    className="w-20 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-orange-400" />
+                  <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-3 w-3" /></button>
+                </div>
+              ))}
+              {deslocamento.length === 0 && (
+                <p className="text-[9px] text-orange-400 text-center">Nenhum custo de deslocamento adicionado</p>
+              )}
+              {custoDeslocamentoTotal > 0 && (
+                <div className="flex justify-between pt-0.5 border-t border-orange-100">
+                  <span className="text-[9px] font-semibold text-orange-600">Total deslocamento</span>
+                  <span className="text-[10px] font-bold text-orange-700">{fmt(custoDeslocamentoTotal)}</span>
+                </div>
+              )}
+            </div>
+
             {/* Parâmetros + Tempo instalação em linha */}
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -998,6 +1074,12 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                 <div className="flex justify-between text-gray-500">
                   <span>Mão de obra</span>
                   <span className="font-semibold text-blue-600">{fmt(custoMOTotal)}</span>
+                </div>
+              )}
+              {custoDeslocamentoTotal > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Deslocamento</span>
+                  <span className="font-semibold text-orange-600">{fmt(custoDeslocamentoTotal)}</span>
                 </div>
               )}
               <div className="flex justify-between text-gray-500">
