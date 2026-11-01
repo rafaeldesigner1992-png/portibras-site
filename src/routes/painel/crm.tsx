@@ -969,71 +969,84 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
             })}
           </div>
 
-          {/* Painel de parâmetros e resultado */}
-          <div className="border-t border-gray-100 px-3 py-2 space-y-2 bg-gray-50/50">
+          {/* Painel de parâmetros e resultado — ultra-compacto */}
+          <div className="border-t border-gray-100 px-2 py-1.5 space-y-1 bg-gray-50/50">
 
-            {/* Tipo de Orçamento */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Tipo</span>
-              <div className="flex gap-1 flex-1">
+            {/* Linha 1: Tipo + Margem + Imposto + Tempo */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[8px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Tipo</span>
+              <div className="flex rounded border border-gray-200 overflow-hidden text-[8px] font-semibold">
                 {([
-                  { v: "completo", label: "Forn. + Serviço" },
-                  { v: "so_fornecimento", label: "Só Forn." },
-                  { v: "so_mao_obra", label: "Só MO" },
-                ] as { v: "completo" | "so_fornecimento" | "so_mao_obra"; label: string }[]).map(({ v, label }) => (
+                  { v: "completo", label: "Forn.+MO" },
+                  { v: "so_fornecimento", label: "Forn." },
+                  { v: "so_mao_obra", label: "MO" },
+                ] as { v: "completo" | "so_fornecimento" | "so_mao_obra"; label: string }[]).map(({ v, label }, i) => (
                   <button key={v} onClick={() => setTipoOrcamento(v)}
                     className={cn(
-                      "flex-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold transition-colors",
-                      tipoOrcamento === v
-                        ? "border-[#1a6b2f] bg-[#1a6b2f] text-white"
-                        : "border-gray-200 bg-white text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
+                      "px-1.5 py-0.5 transition-colors",
+                      i > 0 && "border-l border-gray-200",
+                      tipoOrcamento === v ? "bg-[#1a6b2f] text-white" : "bg-white text-gray-500 hover:text-[#1a6b2f]"
                     )}>
                     {label}
                   </button>
                 ))}
               </div>
+              <span className="text-[8px] text-gray-400 ml-1">Mg%</span>
+              <input type="number" min={0} max={100} step={0.5} value={margemPct}
+                onChange={e => setMargemPct(Number(e.target.value))}
+                className="w-12 rounded border border-gray-200 px-1 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-[#1a6b2f] bg-white" />
+              <span className="text-[8px] text-gray-400">Imp%</span>
+              <input type="number" min={0} max={100} step={0.5} value={impostoPct}
+                onChange={e => setImpostoPct(Number(e.target.value))}
+                className="w-12 rounded border border-gray-200 px-1 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-[#1a6b2f] bg-white" />
+              {totalMinInstalacao > 0 && (
+                <div className="flex items-center gap-0.5 rounded border border-blue-100 bg-blue-50/60 px-1.5 py-0.5 text-[8px] text-blue-600 whitespace-nowrap ml-auto">
+                  <Clock className="h-2.5 w-2.5 flex-shrink-0" />
+                  <span className="font-semibold">
+                    {totalMinInstalacao < 60 ? `${totalMinInstalacao}min` : `${Math.floor(totalMinInstalacao/60)}h${totalMinInstalacao%60>0?totalMinInstalacao%60+"m":""}`}
+                  </span>
+                  <span className="text-blue-400">· {diasCampo}d{custoMO>0?` · ${fmt(custoMO)}`:""}</span>
+                </div>
+              )}
             </div>
 
             {/* Mão de Obra Manual (Logística) — visível em "completo" e "so_mao_obra" */}
             {tipoOrcamento !== "so_fornecimento" && (
-              <div className="rounded-lg border border-blue-100 bg-blue-50/30 px-2 py-1.5 space-y-1">
+              <div className="rounded border border-blue-100 bg-blue-50/30 px-1.5 py-1 space-y-0.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-600">MO / Logística</span>
-                  <button onClick={addMoManual}
-                    className="flex items-center gap-0.5 rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-blue-600 hover:bg-blue-50">
-                    <Plus className="h-2 w-2" /> Adicionar
-                  </button>
+                  <span className="text-[8px] font-semibold uppercase tracking-wide text-blue-600">MO / Logística</span>
+                  <div className="flex items-center gap-1">
+                    {custoMOTotal > 0 && <span className="text-[9px] font-bold text-blue-700">{fmt(custoMOTotal)}</span>}
+                    <button onClick={addMoManual}
+                      className="flex items-center gap-0.5 rounded border border-blue-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-blue-600 hover:bg-blue-50">
+                      <Plus className="h-2 w-2" /> Add
+                    </button>
+                  </div>
                 </div>
                 {custoPorProfissional.length > 0 && custoPorProfissional.map(p => (
-                  <div key={p.id} className="flex items-center gap-1.5 rounded border border-blue-100 bg-white px-2 py-0.5">
-                    <span className="flex-1 text-[9px] text-gray-600 font-semibold">{p.especialidade || p.nome}</span>
-                    <span className="text-[9px] text-gray-400">({p.descCobranca})</span>
-                    <span className="text-[10px] font-bold text-blue-700">{fmt(p.total)}</span>
+                  <div key={p.id} className="flex items-center gap-1 rounded border border-blue-100 bg-white px-1.5 py-0.5">
+                    <span className="flex-1 text-[8px] text-gray-600 font-semibold truncate">{p.especialidade || p.nome}</span>
+                    <span className="text-[8px] text-gray-400 shrink-0">({p.descCobranca})</span>
+                    <span className="text-[9px] font-bold text-blue-700 shrink-0">{fmt(p.total)}</span>
                   </div>
                 ))}
                 {moManual.map(m => (
                   <div key={m.id} className="flex items-center gap-1">
                     <input value={m.descricao} onChange={e => setMoDesc(m.id, e.target.value)}
                       placeholder="Descrição do serviço"
-                      className="flex-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-[9px] outline-none focus:border-blue-400" />
+                      className="flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[8px] outline-none focus:border-blue-400" />
                     <input type="number" min={0} step={0.01} value={m.valor} onChange={e => setMoValor(m.id, Number(e.target.value))}
-                      className="w-20 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-blue-400" />
-                    <button onClick={() => removeMoManual(m.id)} className="text-gray-300 hover:text-red-400"><X className="h-3 w-3" /></button>
+                      className="w-16 rounded border border-gray-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-blue-400" />
+                    <button onClick={() => removeMoManual(m.id)} className="text-gray-300 hover:text-red-400"><X className="h-2.5 w-2.5" /></button>
                   </div>
                 ))}
                 {custoPorProfissional.length === 0 && moManual.length === 0 && (
-                  <p className="text-[9px] text-blue-400 text-center">Nenhuma MO adicionada</p>
-                )}
-                {custoMOTotal > 0 && (
-                  <div className="flex justify-between pt-0.5 border-t border-blue-100">
-                    <span className="text-[9px] font-semibold text-blue-600">Total MO</span>
-                    <span className="text-[10px] font-bold text-blue-700">{fmt(custoMOTotal)}</span>
-                  </div>
+                  <p className="text-[8px] text-blue-300 text-center">Nenhuma MO adicionada</p>
                 )}
               </div>
             )}
 
-            {/* Custos de Deslocamento */}
+            {/* Custos de Deslocamento — compacto */}
             {(() => {
               const enderecoCliente = lead.endereco_atendimento || lead.endereco_fiscal || "";
               const origemAddr = origemRota === "escritorio" ? enderecoEscritorio : enderecoCasa;
@@ -1044,161 +1057,92 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                   : null;
               const temEnderecos = enderecoEscritorio || enderecoCasa;
               return (
-                <div className="rounded-lg border border-orange-100 bg-orange-50/30 px-2 py-1.5 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-semibold uppercase tracking-wide text-orange-600">Deslocamento</span>
-                    <button onClick={() => addDeslocamento()}
-                      className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-orange-600 hover:bg-orange-50">
-                      <Plus className="h-2 w-2" /> Adicionar
-                    </button>
-                  </div>
-
-                  {/* Seletor de origem + botões de ação */}
+                <div className="rounded border border-orange-100 bg-orange-50/30 px-1.5 py-1 space-y-0.5">
+                  {/* Cabeçalho: label + origem + calcular + total */}
                   <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[8px] font-semibold uppercase tracking-wide text-orange-600 shrink-0">Desl.</span>
                     {temEnderecos && (
-                      <div className="flex rounded border border-orange-200 overflow-hidden text-[8px] font-semibold">
+                      <div className="flex rounded border border-orange-200 overflow-hidden text-[7.5px] font-semibold">
                         {enderecoEscritorio && (
                           <button
                             onClick={() => { setOrigemRota("escritorio"); setRotaResultado(null); }}
-                            className={cn("px-1.5 py-0.5", origemRota === "escritorio" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
-                            🏢 Escritório
+                            className={cn("px-1 py-0.5", origemRota === "escritorio" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
+                            🏢
                           </button>
                         )}
                         {enderecoCasa && (
                           <button
                             onClick={() => { setOrigemRota("casa"); setRotaResultado(null); }}
-                            className={cn("px-1.5 py-0.5 border-l border-orange-200", origemRota === "casa" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
-                            🏠 Casa
+                            className={cn("px-1 py-0.5 border-l border-orange-200", origemRota === "casa" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
+                            🏠
                           </button>
                         )}
                       </div>
                     )}
-                    {/* Botão calcular rota automático */}
                     {temEnderecos && enderecoCliente && (
                       <button
                         onClick={calcularRotaAuto}
                         disabled={calculandoRota}
-                        className="flex items-center gap-0.5 rounded border border-orange-400 bg-orange-500 px-1.5 py-0.5 text-[8px] font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
-                        {calculandoRota ? "⏳ Calculando…" : "📍 Calcular rota"}
+                        className="flex items-center gap-0.5 rounded border border-orange-400 bg-orange-500 px-1 py-0.5 text-[7.5px] font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
+                        {calculandoRota ? "⏳" : "📍 Calcular"}
                       </button>
                     )}
-                    {/* Fallback: link Maps quando sem endereços configurados */}
                     {!temEnderecos && mapsUrl && (
                       <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-0.5 rounded border border-orange-300 bg-white px-1.5 py-0.5 text-[8px] font-semibold text-orange-600 hover:bg-orange-50">
-                        📍 Ver no Maps
+                        className="flex items-center gap-0.5 rounded border border-orange-300 bg-white px-1 py-0.5 text-[7.5px] font-semibold text-orange-600 hover:bg-orange-50">
+                        📍 Maps
                       </a>
                     )}
-                    {!temEnderecos && !enderecoCliente && (
-                      <span className="text-[8px] text-orange-300 italic">
-                        {!enderecoCliente ? "Endereço do cliente não cadastrado" : "Configure origens em Financeiro → Veículo"}
+                    {rotaResultado && (
+                      <span className="text-[7.5px] text-orange-600 font-semibold">
+                        🛣 {rotaResultado.distancia_km}km · {rotaResultado.distancia_ida_volta_km}km i+v
+                        {mapsUrl && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="ml-1 underline text-orange-400">maps</a>}
                       </span>
                     )}
-                    {custoPorKmVeiculo > 0 && (
-                      <span className="text-[8px] text-orange-400 ml-auto">{custoPorKmVeiculo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/km</span>
-                    )}
-                  </div>
-
-                  {/* Resultado da rota calculada */}
-                  {rotaResultado && (
-                    <div className="flex items-center gap-2 rounded border border-orange-200 bg-orange-50 px-2 py-1 text-[8px]">
-                      <span className="font-bold text-orange-700">🛣 {rotaResultado.distancia_km} km</span>
-                      <span className="text-orange-400">·</span>
-                      <span className="text-orange-600">ida+volta: {rotaResultado.distancia_ida_volta_km} km</span>
-                      <span className="text-orange-400">·</span>
-                      <span className="text-orange-500">~{rotaResultado.duracao_min} min</span>
-                      {mapsUrl && (
-                        <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                          className="ml-auto text-orange-400 underline hover:text-orange-600">ver no Maps</a>
-                      )}
+                    <div className="flex items-center gap-1 ml-auto">
+                      {custoDeslocamentoTotal > 0 && <span className="text-[9px] font-bold text-orange-700">{fmt(custoDeslocamentoTotal)}</span>}
+                      <button onClick={() => addDeslocamento()}
+                        className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-orange-600 hover:bg-orange-50">
+                        <Plus className="h-2 w-2" /> Add
+                      </button>
                     </div>
-                  )}
+                  </div>
 
                   {/* Linhas de custo */}
                   {deslocamento.map(d => (
                     <div key={d.id} className="flex items-center gap-1">
                       <input value={d.descricao} onChange={e => setDeslocDesc(d.id, e.target.value)}
-                        placeholder="Ex: Combustível (80km ida+volta), Pedágio"
-                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-[9px] outline-none focus:border-orange-400" />
+                        placeholder="Ex: Combustível, Pedágio"
+                        className="flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[8px] outline-none focus:border-orange-400" />
                       <input type="number" min={0} step={0.01} value={d.valor} onChange={e => setDeslocValor(d.id, Number(e.target.value))}
-                        className="w-20 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-orange-400" />
-                      <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-3 w-3" /></button>
+                        className="w-16 rounded border border-gray-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-orange-400" />
+                      <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-2.5 w-2.5" /></button>
                     </div>
                   ))}
-                  {deslocamento.length === 0 && !rotaResultado && (
-                    <p className="text-[9px] text-orange-400 text-center">Clique em "Calcular rota" para preencher automaticamente</p>
-                  )}
-                  {custoDeslocamentoTotal > 0 && (
-                    <div className="flex justify-between pt-0.5 border-t border-orange-100">
-                      <span className="text-[9px] font-semibold text-orange-600">Total deslocamento</span>
-                      <span className="text-[10px] font-bold text-orange-700">{fmt(custoDeslocamentoTotal)}</span>
-                    </div>
+                  {deslocamento.length === 0 && !rotaResultado && !temEnderecos && (
+                    <p className="text-[7.5px] text-orange-300 text-center">Configure origens em Financeiro → Veículo</p>
                   )}
                 </div>
               );
             })()}
 
-            {/* Parâmetros + Tempo instalação em linha */}
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <label className="block text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Margem (%)</label>
-                <input type="number" min={0} max={100} step={0.5} value={margemPct}
-                  onChange={e => setMargemPct(Number(e.target.value))}
-                  className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+            {/* Breakdown de custos + Preço de venda — ultra-compacto */}
+            <div className="rounded border border-gray-200 bg-white px-2 py-1 space-y-0.5 text-[9px]">
+              <div className="flex gap-2 flex-wrap">
+                {incluiMateriais && <span className="text-gray-500">Mat: <b className="text-gray-700">{fmt(custoMateriais)}</b></span>}
+                {incluiMO && custoMOTotal > 0 && <span className="text-gray-500">MO: <b className="text-blue-600">{fmt(custoMOTotal)}</b></span>}
+                {custoDeslocamentoTotal > 0 && <span className="text-gray-500">Desl: <b className="text-orange-600">{fmt(custoDeslocamentoTotal)}</b></span>}
+                <span className="text-gray-500">Mg: <b className="text-green-600">+{fmt(valorMargem)}</b></span>
+                <span className="text-gray-500">Imp: <b className="text-orange-500">+{fmt(valorImposto)}</b></span>
               </div>
-              <div className="flex-1">
-                <label className="block text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Imposto (%)</label>
-                <input type="number" min={0} max={100} step={0.5} value={impostoPct}
-                  onChange={e => setImpostoPct(Number(e.target.value))}
-                  className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-center outline-none focus:border-[#1a6b2f]" />
-              </div>
-              {totalMinInstalacao > 0 && (
-                <div className="flex items-center gap-1 rounded border border-blue-100 bg-blue-50/60 px-2 py-1 text-[9px] text-blue-600 whitespace-nowrap">
-                  <Clock className="h-3 w-3 flex-shrink-0" />
-                  <span className="font-semibold">
-                    {totalMinInstalacao < 60 ? `${totalMinInstalacao}min` : `${Math.floor(totalMinInstalacao/60)}h${totalMinInstalacao%60>0?totalMinInstalacao%60+"m":""}`}
-                  </span>
-                  <span className="text-blue-400">· {diasCampo}d{custoMO>0?` · ${fmt(custoMO)}`:""}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Breakdown de custos — compacto */}
-            <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 space-y-0.5 text-[10px]">
-              {incluiMateriais && (
-                <div className="flex justify-between text-gray-500">
-                  <span>Peças/materiais</span>
-                  <span className="font-semibold text-gray-700">{fmt(custoMateriais)}</span>
-                </div>
-              )}
-              {incluiMO && custoMOTotal > 0 && (
-                <div className="flex justify-between text-gray-500">
-                  <span>Mão de obra</span>
-                  <span className="font-semibold text-blue-600">{fmt(custoMOTotal)}</span>
-                </div>
-              )}
-              {custoDeslocamentoTotal > 0 && (
-                <div className="flex justify-between text-gray-500">
-                  <span>Deslocamento</span>
-                  <span className="font-semibold text-orange-600">{fmt(custoDeslocamentoTotal)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-gray-500">
-                <span>Margem ({margemPct}%)</span>
-                <span className="font-semibold text-green-600">+{fmt(valorMargem)}</span>
-              </div>
-              <div className="flex justify-between text-gray-500">
-                <span>Impostos ({impostoPct}%)</span>
-                <span className="font-semibold text-orange-500">+{fmt(valorImposto)}</span>
-              </div>
-              <div className="flex justify-between border-t border-gray-100 pt-1 text-xs font-bold text-gray-900">
-                <span>Preço de venda</span>
-                <span className="text-[#1a6b2f] text-sm">{fmt(precoFinal)}</span>
+              <div className="flex items-center justify-between border-t border-gray-100 pt-0.5">
+                <span className="text-[9px] font-bold text-gray-700">Preço de venda</span>
+                <span className="text-sm font-bold text-[#1a6b2f]">{fmt(precoFinal)}</span>
               </div>
               {incluiMateriais && custoMateriais > 0 && (
-                <div className="flex justify-between rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 mt-0.5">
-                  <span className="font-semibold text-amber-700">⚠ Entrada mín.</span>
-                  <span className="font-bold text-amber-700">{fmt(entradaMinima)}</span>
+                <div className="flex justify-between rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5">
+                  <span className="font-semibold text-amber-700 text-[8px]">⚠ Entrada mín.</span>
+                  <span className="font-bold text-amber-700 text-[8px]">{fmt(entradaMinima)}</span>
                 </div>
               )}
               {custoTotal > 0 && (() => {
@@ -1208,66 +1152,60 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                 const emoji = abaixoMin ? "🔴" : abaixoIdeal ? "🟡" : "🟢";
                 const msg = abaixoMin ? `Abaixo do mín. (${margemMin}%)` : abaixoIdeal ? `Aceitável · ideal ${margemIdeal}%` : "Margem excelente";
                 return (
-                  <div className={cn("flex items-center justify-between rounded border px-1.5 py-0.5 mt-0.5", cor)}>
-                    <span className="flex items-center gap-1 font-semibold">{emoji} {msg}</span>
-                    <span className="font-bold">{margemRealPct.toFixed(1)}%</span>
+                  <div className={cn("flex items-center justify-between rounded border px-1.5 py-0.5", cor)}>
+                    <span className="flex items-center gap-1 font-semibold text-[8px]">{emoji} {msg}</span>
+                    <span className="font-bold text-[8px]">{margemRealPct.toFixed(1)}%</span>
                   </div>
                 );
               })()}
             </div>
 
-            {/* Forma de Pagamento — inline compacto */}
-            <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap">Pagamento</span>
-                <div className="flex gap-1">
-                  {([{ v: "avista", label: "À vista" }, { v: "parcelado", label: "Parcelado" }] as { v: "avista"|"parcelado"; label: string }[]).map(({ v, label }) => (
-                    <button key={v} onClick={() => setPagamento(p => ({ ...p, tipo: v }))}
-                      className={cn(
-                        "rounded border px-2 py-0.5 text-[9px] font-semibold transition-colors whitespace-nowrap",
-                        pagamento.tipo === v ? "border-[#1a6b2f] bg-[#1a6b2f] text-white" : "border-gray-200 text-gray-500 hover:border-[#1a6b2f] hover:text-[#1a6b2f]"
-                      )}>{label}</button>
-                  ))}
-                </div>
-                {/* Sinal inline */}
-                <button onClick={() => setPagamento(p => ({ ...p, temSinal: !p.temSinal }))}
-                  className={cn("h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0", pagamento.temSinal ? "border-[#1a6b2f] bg-[#1a6b2f]" : "border-gray-300")}>
-                  {pagamento.temSinal && <Check className="h-2 w-2 text-white" />}
-                </button>
-                <span className="text-[9px] text-gray-500 whitespace-nowrap">Sinal</span>
-                {pagamento.temSinal && (
-                  <input type="number" min={0} step={0.01} value={pagamento.valorSinal}
-                    onChange={e => setPagamento(p => ({ ...p, valorSinal: Number(e.target.value) }))}
-                    className="w-20 rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-[#1a6b2f]" />
-                )}
+            {/* Pagamento — linha única */}
+            <div className="flex items-center gap-1.5 flex-wrap rounded border border-gray-200 bg-white px-2 py-1">
+              <span className="text-[8px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap shrink-0">Pgto</span>
+              <div className="flex rounded border border-gray-200 overflow-hidden text-[8px] font-semibold">
+                {([{ v: "avista", label: "À vista" }, { v: "parcelado", label: "Parcelado" }] as { v: "avista"|"parcelado"; label: string }[]).map(({ v, label }, i) => (
+                  <button key={v} onClick={() => setPagamento(p => ({ ...p, tipo: v }))}
+                    className={cn(
+                      "px-1.5 py-0.5 transition-colors whitespace-nowrap",
+                      i > 0 && "border-l border-gray-200",
+                      pagamento.tipo === v ? "bg-[#1a6b2f] text-white" : "bg-white text-gray-500 hover:text-[#1a6b2f]"
+                    )}>{label}</button>
+                ))}
               </div>
-
+              {/* Sinal inline */}
+              <button onClick={() => setPagamento(p => ({ ...p, temSinal: !p.temSinal }))}
+                className={cn("h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0", pagamento.temSinal ? "border-[#1a6b2f] bg-[#1a6b2f]" : "border-gray-300")}>
+                {pagamento.temSinal && <Check className="h-2 w-2 text-white" />}
+              </button>
+              <span className="text-[8px] text-gray-500 whitespace-nowrap">Sinal</span>
+              {pagamento.temSinal && (
+                <input type="number" min={0} step={0.01} value={pagamento.valorSinal}
+                  onChange={e => setPagamento(p => ({ ...p, valorSinal: Number(e.target.value) }))}
+                  className="w-16 rounded border border-gray-200 px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+              )}
               {pagamento.tipo === "parcelado" && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-gray-400 whitespace-nowrap">Parcelas</span>
+                <>
+                  <span className="text-[8px] text-gray-400 whitespace-nowrap">×</span>
                   <input type="number" min={1} max={60} value={pagamento.parcelas}
                     onChange={e => setPagamento(p => ({ ...p, parcelas: Number(e.target.value) }))}
-                    className="w-14 rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-semibold text-center outline-none focus:border-[#1a6b2f]" />
-                  <span className="text-[9px] text-gray-400 whitespace-nowrap">Vencimento</span>
+                    className="w-10 rounded border border-gray-200 px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-[#1a6b2f]" />
+                  <span className="text-[8px] text-gray-400 whitespace-nowrap">parc · dia</span>
                   <select value={pagamento.diaVencimento}
                     onChange={e => setPagamento(p => ({ ...p, diaVencimento: Number(e.target.value) }))}
-                    className="flex-1 rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-semibold outline-none focus:border-[#1a6b2f] bg-white">
-                    {[5, 10, 15, 20, 25].map(d => <option key={d} value={d}>Dia {d}</option>)}
+                    className="w-14 rounded border border-gray-200 px-1 py-0.5 text-[8px] font-semibold outline-none focus:border-[#1a6b2f] bg-white">
+                    {[5, 10, 15, 20, 25].map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
-                </div>
+                </>
               )}
 
               {precoFinal > 0 && (
-                <div className="flex items-center justify-between rounded bg-gray-50 border border-gray-100 px-2 py-1 text-[10px]">
-                  {pagamento.temSinal && (
-                    <span className="text-gray-500">Sinal: <span className="font-semibold text-[#1a6b2f]">{fmt(pagamento.valorSinal)}</span> ·</span>
-                  )}
-                  {pagamento.tipo === "parcelado" ? (
-                    <span className="font-bold text-gray-800 ml-1">{pagamento.parcelas}× <span className="text-[#C94500]">{fmt(valorParcela)}</span> · dia {pagamento.diaVencimento}</span>
-                  ) : (
-                    <span className="font-bold text-gray-800 ml-1">Total: <span className="text-[#1a6b2f]">{fmt(valorRestante)}</span></span>
-                  )}
-                </div>
+                <span className="ml-auto text-[8px] font-bold text-gray-700 whitespace-nowrap shrink-0">
+                  {pagamento.tipo === "parcelado"
+                    ? <>{pagamento.parcelas}× <span className="text-[#C94500]">{fmt(valorParcela)}</span></>
+                    : <>Total: <span className="text-[#1a6b2f]">{fmt(valorRestante)}</span></>
+                  }
+                </span>
               )}
             </div>
 
