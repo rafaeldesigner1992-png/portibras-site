@@ -307,6 +307,10 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
   interface TrajetoCadastrado { id: string; nome: string; combustivel: number; pedagogios: PedagioTrajeto[]; }
   const [trajetosCadastrados, setTrajetosCadastrados] = useState<TrajetoCadastrado[]>([]);
 
+  // Frete
+  const [frete, setFrete] = useState<number>(0);
+  const [freteAtivo, setFreteAtivo] = useState(false);
+
   // Forma de pagamento
   const [pagamento, setPagamento] = useState<FormaPagamento>({
     tipo: "avista",
@@ -581,7 +585,8 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
     ? itens.reduce((acc, i) => acc + i.custo_unitario * i.quantidade, 0)
     : 0;
   const custoMOTotal = incluiMO ? custoMO + custoMOManual : 0;
-  const custoTotal = custoMateriais + custoMOTotal + custoDeslocamentoTotal;
+  const custoFreteTotal = freteAtivo ? frete : 0;
+  const custoTotal = custoMateriais + custoMOTotal + custoDeslocamentoTotal + custoFreteTotal;
   const valorMargem = custoTotal * (margemPct / 100);
   const subtotalComMargem = custoTotal + valorMargem;
   const valorImposto = subtotalComMargem * (impostoPct / 100);
@@ -862,44 +867,244 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       </div>
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Catálogo de suprimentos */}
-        <div className="w-[260px] flex-shrink-0 border-r border-gray-100 flex flex-col">
-          <div className="px-3 pt-3 pb-2">
-            <input type="text" placeholder="Buscar…" value={busca} onChange={e => setBusca(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs outline-none focus:border-[#1a6b2f]" />
+        {/* ── Painel Esquerdo: Catálogo + MO + Deslocamento + Frete ── */}
+        <div className="w-[240px] flex-shrink-0 border-r border-gray-100 flex flex-col overflow-hidden">
+
+          {/* Catálogo — ocupa metade superior com scroll próprio */}
+          <div className="flex flex-col border-b border-gray-100" style={{ maxHeight: "45%" }}>
+            <div className="px-2.5 pt-2.5 pb-1.5">
+              <input type="text" placeholder="Buscar suprimento…" value={busca} onChange={e => setBusca(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs outline-none focus:border-[#1a6b2f]" />
+            </div>
+            <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
+              {supFiltrados.length === 0 && (
+                <div className="py-4 text-center">
+                  <ShoppingCart className="h-5 w-5 text-gray-200 mx-auto mb-1" />
+                  <p className="text-[10px] text-gray-300">Nenhum suprimento</p>
+                </div>
+              )}
+              {supFiltrados.map(s => {
+                const qtdTotal = itens.filter(i => i.suprimento_id === s.id).reduce((acc, i) => acc + i.quantidade, 0);
+                const variacoes = itens.filter(i => i.suprimento_id === s.id).length;
+                const adicionado = qtdTotal > 0;
+                return (
+                  <div key={s.id} className={cn("rounded-lg border transition-colors", adicionado ? "border-green-200 bg-green-50" : "border-transparent")}>
+                    <button onClick={() => addItem(s)} className="w-full text-left px-2.5 py-1.5 hover:bg-green-50/60 rounded-lg">
+                      <p className="text-xs font-medium text-gray-800 leading-tight">{s.nome}</p>
+                      <p className="text-[10px] text-[#1a6b2f] font-semibold mt-0.5">{fmt(s.custo_unitario)}/{s.unidade}</p>
+                      {adicionado && (
+                        <p className="text-[10px] text-green-600 mt-0.5">
+                          ✓ {qtdTotal} {s.unidade}{variacoes > 1 ? ` · ${variacoes} variações` : ""}
+                        </p>
+                      )}
+                    </button>
+                    {adicionado && (
+                      <button onClick={() => addVariacao(s)}
+                        className="w-full text-[10px] text-green-700 font-semibold px-2.5 pb-1.5 text-left hover:text-green-900 flex items-center gap-1">
+                        <Plus className="h-2.5 w-2.5" /> Adicionar variação
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
-            {supFiltrados.length === 0 && (
-              <div className="py-6 text-center">
-                <ShoppingCart className="h-6 w-6 text-gray-200 mx-auto mb-1" />
-                <p className="text-xs text-gray-300">Nenhum suprimento</p>
+
+          {/* MO / Logística + Deslocamento + Frete — metade inferior com scroll */}
+          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-gray-50/40">
+
+            {/* MO / Logística */}
+            {tipoOrcamento !== "so_fornecimento" && (
+              <div className="rounded border border-blue-100 bg-blue-50/30 px-1.5 py-1 space-y-0.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-semibold uppercase tracking-wide text-blue-600">MO / Logística</span>
+                  <div className="flex items-center gap-1">
+                    {custoMOTotal > 0 && <span className="text-[9px] font-bold text-blue-700">{fmt(custoMOTotal)}</span>}
+                    {profissionais.filter(p => !profIdsMerge.has(p.id) && p.ativo).length > 0 && (
+                      <select defaultValue="" onChange={e => {
+                        const pid = e.target.value;
+                        if (pid && !profsManuaisIds.includes(pid)) {
+                          setProfsManuaisIds(prev => [...prev, pid]);
+                          e.target.value = "";
+                        }
+                      }} className="rounded border border-blue-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-blue-600 hover:bg-blue-50 cursor-pointer">
+                        <option value="" disabled>+ Prof.</option>
+                        {profissionais.filter(p => !profIdsMerge.has(p.id) && p.ativo).map(p => (
+                          <option key={p.id} value={p.id}>{p.especialidade || p.nome}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button onClick={addMoManual}
+                      className="flex items-center gap-0.5 rounded border border-blue-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-blue-600 hover:bg-blue-50">
+                      <Plus className="h-2 w-2" /> Add
+                    </button>
+                  </div>
+                </div>
+                {custoPorProfissional.length > 0 && custoPorProfissional.map(p => (
+                  <div key={p.id} className={cn("flex items-center gap-1 rounded border px-1.5 py-0.5", p.terceirizado === false ? "border-gray-100 bg-gray-50" : "border-blue-100 bg-white")}>
+                    <span className="flex-1 text-[8px] text-gray-600 font-semibold truncate">{p.especialidade || p.nome}</span>
+                    <span className="text-[8px] text-gray-400 shrink-0">({p.descCobranca})</span>
+                    {p.terceirizado === false
+                      ? <span className="text-[8px] font-semibold text-gray-400 shrink-0">próprio</span>
+                      : <span className="text-[9px] font-bold text-blue-700 shrink-0">{fmt(p.total)}</span>
+                    }
+                    {profsManuaisIds.includes(p.id) && (
+                      <button onClick={() => setProfsManuaisIds(prev => prev.filter(id => id !== p.id))}
+                        className="text-gray-300 hover:text-red-400 ml-0.5">
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {moManual.map(m => (
+                  <div key={m.id} className="flex items-center gap-1">
+                    <input value={m.descricao} onChange={e => setMoDesc(m.id, e.target.value)}
+                      placeholder="Descrição do serviço"
+                      className="flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[8px] outline-none focus:border-blue-400" />
+                    <input type="number" min={0} step={0.01} value={m.valor} onChange={e => setMoValor(m.id, Number(e.target.value))}
+                      className="w-16 rounded border border-gray-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-blue-400" />
+                    <button onClick={() => removeMoManual(m.id)} className="text-gray-300 hover:text-red-400"><X className="h-2.5 w-2.5" /></button>
+                  </div>
+                ))}
+                {custoPorProfissional.length === 0 && moManual.length === 0 && (
+                  <p className="text-[8px] text-blue-300 text-center">Nenhuma MO adicionada</p>
+                )}
               </div>
             )}
-            {supFiltrados.map(s => {
-              const qtdTotal = itens.filter(i => i.suprimento_id === s.id).reduce((acc, i) => acc + i.quantidade, 0);
-              const variacoes = itens.filter(i => i.suprimento_id === s.id).length;
-              const adicionado = qtdTotal > 0;
+
+            {/* Deslocamento */}
+            {(() => {
+              const enderecoCliente = lead.endereco_atendimento || lead.endereco_fiscal || "";
+              const origemAddr = origemRota === "escritorio" ? enderecoEscritorio : enderecoCasa;
+              const mapsUrl = origemAddr && enderecoCliente
+                ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origemAddr)}&destination=${encodeURIComponent(enderecoCliente)}&travelmode=driving`
+                : enderecoCliente
+                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCliente)}`
+                  : null;
+              const temEnderecos = enderecoEscritorio || enderecoCasa;
               return (
-                <div key={s.id} className={cn("rounded-lg border transition-colors", adicionado ? "border-green-200 bg-green-50" : "border-transparent")}>
-                  <button onClick={() => addItem(s)} className="w-full text-left px-2.5 py-2 hover:bg-green-50/60 rounded-lg">
-                    <p className="text-xs font-medium text-gray-800 leading-tight">{s.nome}</p>
-                    <p className="text-[10px] text-[#1a6b2f] font-semibold mt-0.5">{fmt(s.custo_unitario)}/{s.unidade}</p>
-                    {adicionado && (
-                      <p className="text-[10px] text-green-600 mt-0.5">
-                        ✓ {qtdTotal} {s.unidade}{variacoes > 1 ? ` · ${variacoes} variações` : ""}
-                      </p>
+                <div className="rounded border border-orange-100 bg-orange-50/30 px-1.5 py-1 space-y-0.5">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[8px] font-semibold uppercase tracking-wide text-orange-600 shrink-0">Desl.</span>
+                    {temEnderecos && (
+                      <div className="flex rounded border border-orange-200 overflow-hidden text-[7.5px] font-semibold">
+                        {enderecoEscritorio && (
+                          <button onClick={() => { setOrigemRota("escritorio"); setRotaResultado(null); }}
+                            className={cn("px-1 py-0.5", origemRota === "escritorio" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
+                            🏢
+                          </button>
+                        )}
+                        {enderecoCasa && (
+                          <button onClick={() => { setOrigemRota("casa"); setRotaResultado(null); }}
+                            className={cn("px-1 py-0.5 border-l border-orange-200", origemRota === "casa" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
+                            🏠
+                          </button>
+                        )}
+                      </div>
                     )}
-                  </button>
-                  {/* Botão para adicionar variação separada */}
-                  {adicionado && (
-                    <button onClick={() => addVariacao(s)}
-                      className="w-full text-[10px] text-green-700 font-semibold px-2.5 pb-1.5 text-left hover:text-green-900 flex items-center gap-1">
-                      <Plus className="h-2.5 w-2.5" /> Adicionar variação
-                    </button>
+                    {temEnderecos && enderecoCliente && (
+                      <button onClick={calcularRotaAuto} disabled={calculandoRota}
+                        className="flex items-center gap-0.5 rounded border border-orange-400 bg-orange-500 px-1 py-0.5 text-[7.5px] font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
+                        {calculandoRota ? "⏳" : "📍 Calcular"}
+                      </button>
+                    )}
+                    {!temEnderecos && mapsUrl && (
+                      <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-0.5 rounded border border-orange-300 bg-white px-1 py-0.5 text-[7.5px] font-semibold text-orange-600 hover:bg-orange-50">
+                        📍 Maps
+                      </a>
+                    )}
+                    {rotaResultado && (
+                      <span className="text-[7.5px] text-orange-600 font-semibold">
+                        🛣 {rotaResultado.distancia_km}km
+                        {mapsUrl && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="ml-1 underline text-orange-400">maps</a>}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1 ml-auto">
+                      {custoDeslocamentoTotal > 0 && (
+                        <span className="text-[9px] font-bold text-orange-700">
+                          {fmt(custoDeslocamentoTotal)}
+                          {diasCampoTotal > 1 && <span className="text-[7.5px] font-normal text-orange-400"> ×{diasCampoTotal}d</span>}
+                        </span>
+                      )}
+                      {trajetosCadastrados.length > 0 && (
+                        <select defaultValue="" onChange={e => {
+                          const t = trajetosCadastrados.find(x => x.id === e.target.value);
+                          if (!t) return;
+                          // Remove trajetos anteriores para evitar duplicatas, depois insere multiplicado por diasCampoTotal
+                          const dias = diasCampoTotal > 0 ? diasCampoTotal : 1;
+                          let nextId = proximoDeslocId;
+                          const novosItens: { id: number; descricao: string; valor: number }[] = [];
+                          if (t.combustivel > 0) {
+                            novosItens.push({ id: nextId++, descricao: `⛽ Combustível — ${t.nome}${dias > 1 ? ` (${dias}d)` : ""}`, valor: t.combustivel * dias });
+                          }
+                          t.pedagogios.forEach(p => {
+                            novosItens.push({ id: nextId++, descricao: `🛣 ${p.nome}${dias > 1 ? ` (${dias}d)` : ""}`, valor: p.valor * dias });
+                          });
+                          setDeslocamento(prev => [...prev, ...novosItens]);
+                          setProximoDeslocId(nextId);
+                          e.target.value = "";
+                        }}
+                        className="rounded border border-orange-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-orange-600 outline-none focus:border-orange-400 max-w-[90px]">
+                          <option value="" disabled>🗺 Trajeto</option>
+                          {trajetosCadastrados.map(t => {
+                            const total = t.combustivel + t.pedagogios.reduce((a, p) => a + p.valor, 0);
+                            const dias = diasCampoTotal > 0 ? diasCampoTotal : 1;
+                            return (
+                              <option key={t.id} value={t.id}>
+                                {t.nome} · {(total * dias).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{dias > 1 ? ` (×${dias})` : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      )}
+                      <button onClick={() => addDeslocamento()}
+                        className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-orange-600 hover:bg-orange-50">
+                        <Plus className="h-2 w-2" /> Add
+                      </button>
+                    </div>
+                  </div>
+                  {deslocamento.map(d => (
+                    <div key={d.id} className="flex items-center gap-1">
+                      <input value={d.descricao} onChange={e => setDeslocDesc(d.id, e.target.value)}
+                        placeholder="Ex: Combustível, Pedágio"
+                        className="flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[8px] outline-none focus:border-orange-400" />
+                      <input type="number" min={0} step={0.01} value={d.valor} onChange={e => setDeslocValor(d.id, Number(e.target.value))}
+                        className="w-16 rounded border border-gray-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-orange-400" />
+                      <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-2.5 w-2.5" /></button>
+                    </div>
+                  ))}
+                  {deslocamento.length === 0 && !rotaResultado && !temEnderecos && (
+                    <p className="text-[7.5px] text-orange-300 text-center">Configure origens em Financeiro → Veículo</p>
                   )}
                 </div>
               );
-            })}
+            })()}
+
+            {/* Frete */}
+            <div className="rounded border border-purple-100 bg-purple-50/30 px-1.5 py-1 space-y-0.5">
+              <div className="flex items-center gap-1">
+                <button onClick={() => setFreteAtivo(f => !f)}
+                  className={cn("h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors", freteAtivo ? "border-purple-500 bg-purple-500" : "border-gray-300 bg-white")}>
+                  {freteAtivo && <Check className="h-2 w-2 text-white" />}
+                </button>
+                <span className="text-[8px] font-semibold uppercase tracking-wide text-purple-600">Frete</span>
+                {freteAtivo && custoFreteTotal > 0 && (
+                  <span className="ml-auto text-[9px] font-bold text-purple-700">{fmt(custoFreteTotal)}</span>
+                )}
+              </div>
+              {freteAtivo && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-[8px] text-gray-400">R$</span>
+                  <input type="number" min={0} step={10} value={frete}
+                    onChange={e => setFrete(Number(e.target.value))}
+                    placeholder="0,00"
+                    className="flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[8px] font-semibold outline-none focus:border-purple-400" />
+                  <span className="text-[7.5px] text-gray-400 whitespace-nowrap">entrega porta CF</span>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
 
@@ -1046,177 +1251,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
               )}
             </div>
 
-            {/* Mão de Obra Manual (Logística) — visível em "completo" e "so_mao_obra" */}
-            {tipoOrcamento !== "so_fornecimento" && (
-              <div className="rounded border border-blue-100 bg-blue-50/30 px-1.5 py-1 space-y-0.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[8px] font-semibold uppercase tracking-wide text-blue-600">MO / Logística</span>
-                  <div className="flex items-center gap-1">
-                    {custoMOTotal > 0 && <span className="text-[9px] font-bold text-blue-700">{fmt(custoMOTotal)}</span>}
-                    {/* Dropdown para adicionar profissional terceirizado manualmente */}
-                    {profissionais.filter(p => !profIdsMerge.has(p.id) && p.ativo).length > 0 && (
-                      <select defaultValue="" onChange={e => {
-                        const pid = e.target.value;
-                        if (pid && !profsManuaisIds.includes(pid)) {
-                          setProfsManuaisIds(prev => [...prev, pid]);
-                          e.target.value = "";
-                        }
-                      }} className="rounded border border-blue-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-blue-600 hover:bg-blue-50 cursor-pointer">
-                        <option value="" disabled>+ Prof.</option>
-                        {profissionais.filter(p => !profIdsMerge.has(p.id) && p.ativo).map(p => (
-                          <option key={p.id} value={p.id}>{p.especialidade || p.nome}</option>
-                        ))}
-                      </select>
-                    )}
-                    <button onClick={addMoManual}
-                      className="flex items-center gap-0.5 rounded border border-blue-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-blue-600 hover:bg-blue-50">
-                      <Plus className="h-2 w-2" /> Add
-                    </button>
-                  </div>
-                </div>
-                {custoPorProfissional.length > 0 && custoPorProfissional.map(p => (
-                  <div key={p.id} className={cn("flex items-center gap-1 rounded border px-1.5 py-0.5", p.terceirizado === false ? "border-gray-100 bg-gray-50" : "border-blue-100 bg-white")}>
-                    <span className="flex-1 text-[8px] text-gray-600 font-semibold truncate">{p.especialidade || p.nome}</span>
-                    <span className="text-[8px] text-gray-400 shrink-0">({p.descCobranca})</span>
-                    {p.terceirizado === false
-                      ? <span className="text-[8px] font-semibold text-gray-400 shrink-0">próprio</span>
-                      : <span className="text-[9px] font-bold text-blue-700 shrink-0">{fmt(p.total)}</span>
-                    }
-                    {/* X para remover profissionais adicionados manualmente */}
-                    {profsManuaisIds.includes(p.id) && (
-                      <button onClick={() => setProfsManuaisIds(prev => prev.filter(id => id !== p.id))}
-                        className="text-gray-300 hover:text-red-400 ml-0.5">
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {moManual.map(m => (
-                  <div key={m.id} className="flex items-center gap-1">
-                    <input value={m.descricao} onChange={e => setMoDesc(m.id, e.target.value)}
-                      placeholder="Descrição do serviço"
-                      className="flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[8px] outline-none focus:border-blue-400" />
-                    <input type="number" min={0} step={0.01} value={m.valor} onChange={e => setMoValor(m.id, Number(e.target.value))}
-                      className="w-16 rounded border border-gray-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-blue-400" />
-                    <button onClick={() => removeMoManual(m.id)} className="text-gray-300 hover:text-red-400"><X className="h-2.5 w-2.5" /></button>
-                  </div>
-                ))}
-                {custoPorProfissional.length === 0 && moManual.length === 0 && (
-                  <p className="text-[8px] text-blue-300 text-center">Nenhuma MO adicionada</p>
-                )}
-              </div>
-            )}
-
-            {/* Custos de Deslocamento — compacto */}
-            {(() => {
-              const enderecoCliente = lead.endereco_atendimento || lead.endereco_fiscal || "";
-              const origemAddr = origemRota === "escritorio" ? enderecoEscritorio : enderecoCasa;
-              const mapsUrl = origemAddr && enderecoCliente
-                ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origemAddr)}&destination=${encodeURIComponent(enderecoCliente)}&travelmode=driving`
-                : enderecoCliente
-                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCliente)}`
-                  : null;
-              const temEnderecos = enderecoEscritorio || enderecoCasa;
-              return (
-                <div className="rounded border border-orange-100 bg-orange-50/30 px-1.5 py-1 space-y-0.5">
-                  {/* Cabeçalho: label + origem + calcular + total */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[8px] font-semibold uppercase tracking-wide text-orange-600 shrink-0">Desl.</span>
-                    {temEnderecos && (
-                      <div className="flex rounded border border-orange-200 overflow-hidden text-[7.5px] font-semibold">
-                        {enderecoEscritorio && (
-                          <button
-                            onClick={() => { setOrigemRota("escritorio"); setRotaResultado(null); }}
-                            className={cn("px-1 py-0.5", origemRota === "escritorio" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
-                            🏢
-                          </button>
-                        )}
-                        {enderecoCasa && (
-                          <button
-                            onClick={() => { setOrigemRota("casa"); setRotaResultado(null); }}
-                            className={cn("px-1 py-0.5 border-l border-orange-200", origemRota === "casa" ? "bg-orange-500 text-white" : "bg-white text-orange-600 hover:bg-orange-50")}>
-                            🏠
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {temEnderecos && enderecoCliente && (
-                      <button
-                        onClick={calcularRotaAuto}
-                        disabled={calculandoRota}
-                        className="flex items-center gap-0.5 rounded border border-orange-400 bg-orange-500 px-1 py-0.5 text-[7.5px] font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
-                        {calculandoRota ? "⏳" : "📍 Calcular"}
-                      </button>
-                    )}
-                    {!temEnderecos && mapsUrl && (
-                      <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-0.5 rounded border border-orange-300 bg-white px-1 py-0.5 text-[7.5px] font-semibold text-orange-600 hover:bg-orange-50">
-                        📍 Maps
-                      </a>
-                    )}
-                    {rotaResultado && (
-                      <span className="text-[7.5px] text-orange-600 font-semibold">
-                        🛣 {rotaResultado.distancia_km}km · {rotaResultado.distancia_ida_volta_km}km i+v
-                        {mapsUrl && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="ml-1 underline text-orange-400">maps</a>}
-                      </span>
-                    )}
-                    <div className="flex items-center gap-1 ml-auto">
-                      {custoDeslocamentoTotal > 0 && <span className="text-[9px] font-bold text-orange-700">{fmt(custoDeslocamentoTotal)}</span>}
-                      {/* Dropdown de trajeto — adiciona combustível + pedágios de uma vez */}
-                      {trajetosCadastrados.length > 0 && (
-                        <select
-                          defaultValue=""
-                          onChange={e => {
-                            const t = trajetosCadastrados.find(x => x.id === e.target.value);
-                            if (!t) return;
-                            let nextId = proximoDeslocId;
-                            const novosItens: { id: number; descricao: string; valor: number }[] = [];
-                            if (t.combustivel > 0) {
-                              novosItens.push({ id: nextId++, descricao: `⛽ Combustível — ${t.nome}`, valor: t.combustivel });
-                            }
-                            t.pedagogios.forEach(p => {
-                              novosItens.push({ id: nextId++, descricao: `🛣 ${p.nome}`, valor: p.valor });
-                            });
-                            setDeslocamento(prev => [...prev, ...novosItens]);
-                            setProximoDeslocId(nextId);
-                            e.target.value = "";
-                          }}
-                          className="rounded border border-orange-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-orange-600 outline-none focus:border-orange-400 max-w-[100px]">
-                          <option value="" disabled>🗺 Trajeto</option>
-                          {trajetosCadastrados.map(t => {
-                            const total = t.combustivel + t.pedagogios.reduce((a, p) => a + p.valor, 0);
-                            return (
-                              <option key={t.id} value={t.id}>
-                                {t.nome} · {total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      )}
-                      <button onClick={() => addDeslocamento()}
-                        className="flex items-center gap-0.5 rounded border border-orange-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-orange-600 hover:bg-orange-50">
-                        <Plus className="h-2 w-2" /> Add
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Linhas de custo */}
-                  {deslocamento.map(d => (
-                    <div key={d.id} className="flex items-center gap-1">
-                      <input value={d.descricao} onChange={e => setDeslocDesc(d.id, e.target.value)}
-                        placeholder="Ex: Combustível, Pedágio"
-                        className="flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[8px] outline-none focus:border-orange-400" />
-                      <input type="number" min={0} step={0.01} value={d.valor} onChange={e => setDeslocValor(d.id, Number(e.target.value))}
-                        className="w-16 rounded border border-gray-200 bg-white px-1 py-0.5 text-[8px] font-semibold text-center outline-none focus:border-orange-400" />
-                      <button onClick={() => removeDeslocamento(d.id)} className="text-gray-300 hover:text-red-400"><X className="h-2.5 w-2.5" /></button>
-                    </div>
-                  ))}
-                  {deslocamento.length === 0 && !rotaResultado && !temEnderecos && (
-                    <p className="text-[7.5px] text-orange-300 text-center">Configure origens em Financeiro → Veículo</p>
-                  )}
-                </div>
-              );
-            })()}
+            {/* (MO e Deslocamento movidos para o painel esquerdo) */}
 
             {/* Breakdown de custos + Preço de venda — ultra-compacto */}
             <div className="rounded border border-gray-200 bg-white px-2 py-1 space-y-0.5 text-[9px]">
@@ -1224,6 +1259,7 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
                 {incluiMateriais && <span className="text-gray-500">Mat: <b className="text-gray-700">{fmt(custoMateriais)}</b></span>}
                 {incluiMO && custoMOTotal > 0 && <span className="text-gray-500">MO: <b className="text-blue-600">{fmt(custoMOTotal)}</b></span>}
                 {custoDeslocamentoTotal > 0 && <span className="text-gray-500">Desl: <b className="text-orange-600">{fmt(custoDeslocamentoTotal)}</b></span>}
+                {custoFreteTotal > 0 && <span className="text-gray-500">Frete: <b className="text-purple-600">{fmt(custoFreteTotal)}</b></span>}
                 <span className="text-gray-500">Mg: <b className="text-green-600">+{fmt(valorMargem)}</b></span>
                 <span className="text-gray-500">Imp: <b className="text-orange-500">+{fmt(valorImposto)}</b></span>
               </div>
