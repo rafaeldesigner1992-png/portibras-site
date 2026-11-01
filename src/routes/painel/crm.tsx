@@ -3259,6 +3259,51 @@ function CrmPage() {
   const dteInputRef = useRef<HTMLInputElement>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // ── Modal de Confirmação de Venda Fechada ────────────────────────────────
+  const [modalVenda, setModalVenda] = useState<{ lead: Lead } | null>(null);
+  const [valorVendaInput, setValorVendaInput] = useState("");
+  const [registrandoVenda, setRegistrandoVenda] = useState(false);
+
+  async function confirmarFechamento(etapaDestino: Etapa) {
+    if (!modalVenda) return;
+    const lead = modalVenda.lead;
+    setRegistrandoVenda(true);
+    const agora = new Date().toISOString();
+    const valor = parseFloat(valorVendaInput.replace(",", ".")) || 0;
+
+    // 1. Atualiza etapa do lead
+    await supabase.from("crm_leads").update({ etapa: etapaDestino, data_fechamento: agora, valor_estimado: valor || lead.valor_estimado }).eq("id", lead.id);
+
+    // 2. Registra lançamento de receita no Financeiro
+    if (valor > 0) {
+      const tipoLabel = lead.tipo_negocio === "manutencao" ? "Manutenção" : lead.tipo_negocio === "orcamento" ? "Orçamento" : "Serviço";
+      await supabase.from("financeiro_lancamentos").insert({
+        descricao: `Venda — ${lead.empresa || lead.nome} (${tipoLabel})`,
+        valor,
+        tipo: "receita",
+        data: agora.slice(0, 10),
+        pago: true,
+        categoria: "Vendas CRM",
+        observacoes: `Lead fechado no CRM. ID: ${lead.id}`,
+        crm_lead_id: lead.id,
+      });
+    }
+
+    const updatedLead = { ...lead, etapa: etapaDestino, data_fechamento: agora, valor_estimado: valor || lead.valor_estimado };
+    if (cardAberto?.id === lead.id) setCardAberto(updatedLead);
+    setLeads(ls => ls.map(l => l.id === lead.id ? updatedLead : l));
+    setModalVenda(null);
+    setValorVendaInput("");
+    setRegistrandoVenda(false);
+    setToast({ msg: `Venda de ${valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} registrada!`, tipo: "sucesso" });
+    // Atualiza meta BPO
+    setTimeout(async () => {
+      const { data } = await supabase.functions.invoke("bpo-chat", { body: { mode: "meta" } });
+      if (data) setMetaBPO(data);
+    }, 1500);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   // ── BPO Meta de Vendas ────────────────────────────────────────────────────
   interface MetaBPO {
     totalCustos: number; totalDividas: number; pontoEquilibrio: number;
@@ -3615,6 +3660,12 @@ function CrmPage() {
   }
 
   async function mudarEtapa(lead: Lead, etapa: Etapa) {
+    // Se fechando um lead, abre modal de confirmação de venda
+    if (etapa === "fechado" && lead.etapa !== "fechado") {
+      setValorVendaInput(lead.valor_estimado ? String(lead.valor_estimado) : "");
+      setModalVenda({ lead });
+      return;
+    }
     const agora = new Date().toISOString();
     const updates: Record<string, unknown> = { etapa };
     if ((etapa === "fechado" || etapa === "perdido") && !lead.data_fechamento) {
@@ -3751,6 +3802,60 @@ function CrmPage() {
 
   return (
     <div className="flex h-full">
+      {/* ── Modal de Confirmação de Venda ───────────────────────────── */}
+      {modalVenda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                <Check className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Registrar Venda</h3>
+                <p className="text-sm text-gray-500">{modalVenda.lead.empresa || modalVenda.lead.nome}</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Valor da venda (R$)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={valorVendaInput}
+                onChange={e => setValorVendaInput(e.target.value)}
+                placeholder="0,00"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-lg font-semibold outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20"
+                autoFocus
+              />
+              <p className="mt-1.5 text-xs text-gray-400">
+                Será registrado como receita no Financeiro e considerado pelo BPO na meta do mês.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setModalVenda(null); setValorVendaInput(""); }}
+                className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => confirmarFechamento("fechado")}
+                disabled={registrandoVenda || !valorVendaInput}
+                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50"
+              >
+                {registrandoVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Confirmar Venda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ───────────────────────────────────────────────────────────── */}
+
       {/* Toast de notificação */}
       {toast && (
         <ToastMsg msg={toast.msg} tipo={toast.tipo} onClose={() => setToast(null)} />
