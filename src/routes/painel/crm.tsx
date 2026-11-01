@@ -3307,81 +3307,91 @@ function CrmPage() {
   async function registrarVendaFechamento(lead: Lead) {
     const agora = new Date().toISOString();
 
-    // 1. Busca orçamento mais recente do lead
-    const { data: orcamentos } = await supabase
-      .from("crm_orcamentos")
-      .select("preco_final, custo_total, margem_pct, imposto_pct")
-      .eq("lead_id", lead.id)
-      .order("criado_em", { ascending: false })
-      .limit(1);
+    try {
+      // 1. Busca orçamento mais recente do lead
+      const { data: orcamentos } = await supabase
+        .from("crm_orcamentos")
+        .select("preco_final, custo_total, margem_pct, imposto_pct")
+        .eq("lead_id", lead.id)
+        .order("criado_em", { ascending: false })
+        .limit(1);
 
-    const orc = orcamentos?.[0] ?? null;
-    const valorVenda = orc?.preco_final || lead.valor_estimado || 0;
-    const custoVenda = orc?.custo_total ?? null;
-    const margemReal = orc?.margem_pct ?? null;
+      const orc = orcamentos?.[0] ?? null;
+      const valorVenda = orc?.preco_final || lead.valor_estimado || 0;
+      const custoVenda = orc?.custo_total ?? null;
+      const margemReal = orc?.margem_pct ?? null;
 
-    // 2. Atualiza etapa do lead
-    await supabase.from("crm_leads").update({
-      etapa: "fechado",
-      data_fechamento: agora,
-      ...(valorVenda ? { valor_estimado: valorVenda } : {}),
-    }).eq("id", lead.id);
+      // 2. Atualiza etapa do lead
+      const { error: errLead } = await supabase.from("crm_leads").update({
+        etapa: "fechado",
+        data_fechamento: agora,
+        ...(valorVenda ? { valor_estimado: valorVenda } : {}),
+      }).eq("id", lead.id);
+      if (errLead) throw new Error(`Erro ao fechar lead: ${errLead.message}`);
 
-    // 3. Registra lançamento de receita no Financeiro
-    if (valorVenda > 0) {
-      const tipoLabel = lead.tipo_negocio === "manutencao" ? "Manutenção" : lead.tipo_negocio === "orcamento" ? "Orçamento" : "Serviço";
-      const obsPartes = [
-        `Lead fechado no CRM.`,
-        custoVenda != null ? `Custo: R$ ${custoVenda.toFixed(2)}` : null,
-        margemReal != null ? `Margem: ${margemReal.toFixed(1)}%` : null,
-      ].filter(Boolean).join(" | ");
+      // 3. Registra lançamento de receita no Financeiro
+      if (valorVenda > 0) {
+        const tipoLabel = lead.tipo_negocio === "manutencao" ? "Manutenção" : lead.tipo_negocio === "orcamento" ? "Orçamento" : "Serviço";
+        const obsPartes = [
+          `Lead fechado no CRM.`,
+          custoVenda != null ? `Custo: R$ ${custoVenda.toFixed(2)}` : null,
+          margemReal != null ? `Margem: ${margemReal.toFixed(1)}%` : null,
+        ].filter(Boolean).join(" | ");
 
-      await supabase.from("financeiro_lancamentos").insert({
-        descricao: `Venda — ${lead.empresa || lead.nome} (${tipoLabel})`,
-        valor: valorVenda,
-        tipo: "receita",
-        data: agora.slice(0, 10),
-        pago: true,
-        categoria: "Vendas CRM",
-        observacoes: obsPartes,
+        const { error: errFin } = await supabase.from("financeiro_lancamentos").insert({
+          descricao: `Venda — ${lead.empresa || lead.nome} (${tipoLabel})`,
+          valor: valorVenda,
+          tipo: "receita",
+          data: agora.slice(0, 10),
+          pago: true,
+          categoria: "Vendas CRM",
+          observacoes: obsPartes,
+          crm_lead_id: lead.id,
+        });
+        if (errFin) throw new Error(`Erro ao lançar receita: ${errFin.message}`);
+      }
+
+      // 4. Cria card em Logística para tratamento
+      const { error: errLog } = await supabase.from("logistica_pedidos").insert({
         crm_lead_id: lead.id,
+        cliente_nome: lead.nome,
+        cliente_empresa: lead.empresa,
+        cliente_telefone: lead.telefone,
+        cliente_email: lead.email,
+        cliente_endereco: lead.endereco,
+        tipo_servico: lead.tipo_negocio,
+        valor_venda: valorVenda || null,
+        custo_estimado: custoVenda,
+        margem_pct: margemReal,
+        observacoes_crm: lead.observacoes,
+        portas: null,
+        etapa: "tratamento",
+        tipo_cobranca: "antes",
       });
+      if (errLog) throw new Error(`Erro ao criar pedido logístico: ${errLog.message}`);
+
+      // 5. Atualiza estado local
+      const updatedLead = { ...lead, etapa: "fechado" as Etapa, data_fechamento: agora, valor_estimado: valorVenda || lead.valor_estimado };
+      if (cardAberto?.id === lead.id) setCardAberto(updatedLead);
+      setLeads(ls => ls.map(l => l.id === lead.id ? updatedLead : l));
+
+      // 6. Toast com resumo
+      const toastMsg = valorVenda > 0
+        ? `Venda registrada — ${valorVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${margemReal != null ? ` | Margem: ${margemReal.toFixed(1)}%` : ""} · Card criado em Logística`
+        : "Lead fechado · Card criado em Logística.";
+      setToast({ msg: toastMsg, tipo: "sucesso" });
+
+      // 7. Atualiza meta BPO em background
+      setTimeout(async () => {
+        const { data } = await supabase.functions.invoke("bpo-chat", { body: { mode: "meta" } });
+        if (data) setMetaBPO(data);
+      }, 1500);
+
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[registrarVendaFechamento]", msg);
+      setToast({ msg: `Erro ao fechar lead: ${msg}`, tipo: "erro" });
     }
-
-    // 4. Cria card em Logística para tratamento
-    await supabase.from("logistica_pedidos").insert({
-      crm_lead_id: lead.id,
-      cliente_nome: lead.nome,
-      cliente_empresa: lead.empresa,
-      cliente_telefone: lead.telefone,
-      cliente_email: lead.email,
-      cliente_endereco: lead.endereco,
-      tipo_servico: lead.tipo_negocio,
-      valor_venda: valorVenda || null,
-      custo_estimado: custoVenda,
-      margem_pct: margemReal,
-      observacoes_crm: lead.observacoes,
-      portas: null,          // preenchido pela logística se necessário
-      etapa: "tratamento",
-      tipo_cobranca: "antes", // padrão — logística decide
-    });
-
-    // 5. Atualiza estado local
-    const updatedLead = { ...lead, etapa: "fechado" as Etapa, data_fechamento: agora, valor_estimado: valorVenda || lead.valor_estimado };
-    if (cardAberto?.id === lead.id) setCardAberto(updatedLead);
-    setLeads(ls => ls.map(l => l.id === lead.id ? updatedLead : l));
-
-    // 6. Toast com resumo
-    const toastMsg = valorVenda > 0
-      ? `Venda registrada — ${valorVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${margemReal != null ? ` | Margem: ${margemReal.toFixed(1)}%` : ""} · Card criado em Logística`
-      : "Lead fechado · Card criado em Logística.";
-    setToast({ msg: toastMsg, tipo: "sucesso" });
-
-    // 6. Atualiza meta BPO em background
-    setTimeout(async () => {
-      const { data } = await supabase.functions.invoke("bpo-chat", { body: { mode: "meta" } });
-      if (data) setMetaBPO(data);
-    }, 1500);
   }
   // ─────────────────────────────────────────────────────────────────────────
 
