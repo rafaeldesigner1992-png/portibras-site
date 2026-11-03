@@ -1,7 +1,7 @@
 /**
  * hunter-scrape — Edge Function
- * Busca empresas no Google Maps via Apify (Google Maps Scraper Actor).
- * Chamada pelo Hunter do site; o token Apify fica só aqui, nunca no frontend.
+ * Busca empresas no Google Maps via Apify (run-sync-get-dataset-items).
+ * Usa o endpoint síncrono do Apify: retorna os itens direto, sem polling.
  *
  * POST /functions/v1/hunter-scrape
  * Body: { query: string, cidade: string, bairro?: string, maxItems?: number }
@@ -15,7 +15,6 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Actor oficial do Apify para Google Maps
 const APIFY_ACTOR = "compass~crawler-google-places";
 const APIFY_BASE  = "https://api.apify.com/v2";
 
@@ -52,8 +51,7 @@ interface Resultado {
 }
 
 function mapPlace(p: ApifyPlace): Resultado {
-  const partes = [p.street, p.address].filter(Boolean);
-  const endFull = partes.length ? partes[0]! : "";
+  const endFull = p.street || p.address || "";
   return {
     nome:      p.title || p.name || "",
     telefone:  p.phoneUnformatted || p.phone || "",
@@ -69,71 +67,7 @@ function mapPlace(p: ApifyPlace): Resultado {
   };
 }
 
-async function runApify(query: string, maxItems: number, token: string): Promise<Resultado[]> {
-  // 1. Inicia o actor
-  const runResp = await fetch(
-    `${APIFY_BASE}/acts/${APIFY_ACTOR}/runs?token=${token}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        searchStringsArray: [query],
-        maxCrawledPlacesPerSearch: maxItems,
-        language: "pt",
-        countryCode: "BR",
-        includeHistogram: false,
-        includeOpeningHours: false,
-        includePeopleAlsoSearch: false,
-        maxImages: 0,
-        exportPlaceUrls: false,
-        additionalInfo: false,
-        scrapeDirectories: false,
-        deeperCityScrape: false,
-      }),
-    }
-  );
-
-  if (!runResp.ok) {
-    const err = await runResp.text();
-    throw new Error(`Apify run failed: ${runResp.status} ${err}`);
-  }
-
-  const runData = await runResp.json();
-  const runId   = runData?.data?.id;
-  if (!runId) throw new Error("Apify não retornou run ID.");
-
-  // 2. Aguarda conclusão (poll até 3 min)
-  let status = "RUNNING";
-  let attempts = 0;
-  while (status === "RUNNING" || status === "READY") {
-    await new Promise(r => setTimeout(r, 6000));
-    attempts++;
-    if (attempts > 30) throw new Error("Timeout aguardando Apify (3 min).");
-
-    const statusResp = await fetch(
-      `${APIFY_BASE}/actor-runs/${runId}?token=${token}`
-    );
-    const statusData = await statusResp.json();
-    status = statusData?.data?.status ?? "RUNNING";
-
-    if (status === "FAILED" || status === "ABORTED" || status === "TIMED-OUT") {
-      throw new Error(`Apify run ${status}.`);
-    }
-  }
-
-  // 3. Baixa os resultados do dataset
-  const datasetId = runData?.data?.defaultDatasetId;
-  const itemsResp = await fetch(
-    `${APIFY_BASE}/datasets/${datasetId}/items?token=${token}&format=json&limit=${maxItems}`
-  );
-  if (!itemsResp.ok) throw new Error("Erro ao baixar dataset do Apify.");
-
-  const items: ApifyPlace[] = await itemsResp.json();
-  return items.map(mapPlace).filter(r => r.nome);
-}
-
 serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
   }
@@ -161,7 +95,41 @@ serve(async (req) => {
       ? `${query} em ${bairro}, ${cidade}, Brasil`
       : `${query} em ${cidade}, Brasil`;
 
-    const results = await runApify(searchQuery, Math.min(maxItems, 50), token);
+    const max = Math.min(maxItems, 50);
+
+    // Endpoint síncrono: bloqueia até terminar e retorna os itens diretamente
+    // timeout=120 segundos (limite seguro para Edge Function do Supabase Free)
+    const url = `${APIFY_BASE}/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${token}&timeout=120&memory=256`;
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        searchStringsArray: [searchQuery],
+        maxCrawledPlacesPerSearch: max,
+        language: "pt",
+        countryCode: "BR",
+        includeHistogram: false,
+        includeOpeningHours: false,
+        includePeopleAlsoSearch: false,
+        maxImages: 0,
+        exportPlaceUrls: false,
+        additionalInfo: false,
+        scrapeDirectories: false,
+        deeperCityScrape: false,
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return new Response(
+        JSON.stringify({ error: `Apify retornou ${resp.status}: ${errText}` }),
+        { status: 502, headers: { ...CORS, "Content-Type": "application/json" } }
+      );
+    }
+
+    const items: ApifyPlace[] = await resp.json();
+    const results = items.map(mapPlace).filter(r => r.nome);
 
     return new Response(
       JSON.stringify({ results, total: results.length }),
