@@ -81,7 +81,14 @@ serve(async (req) => {
       );
     }
 
-    const body = await req.json();
+    const rawText = await req.text();
+    if (!rawText || rawText.trim() === "") {
+      return new Response(
+        JSON.stringify({ error: "Body vazio recebido pela Edge Function." }),
+        { status: 400, headers: { ...CORS, "Content-Type": "application/json" } }
+      );
+    }
+    const body = JSON.parse(rawText);
     const { query, cidade, bairro, maxItems = 20 } = body;
 
     if (!query || !cidade) {
