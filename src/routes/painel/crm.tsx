@@ -3752,14 +3752,10 @@ function CrmPage() {
 
   useEffect(() => {
     async function verificarPerfil() {
+      const ADMIN_UID = "b90953f7-2f32-46b2-b1fe-6be7572fc9c7"; // rafaeldesigner1992@gmail.com
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      const { data } = await supabase
-        .from("usuarios")
-        .select("perfil")
-        .eq("id", session.user.id)
-        .single();
-      setIsAdmin(data?.perfil === "admin");
+      setIsAdmin(session.user.id === ADMIN_UID);
     }
     verificarPerfil();
   }, []);
