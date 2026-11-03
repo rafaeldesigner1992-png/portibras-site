@@ -114,7 +114,7 @@ serve(async (req) => {
       body: JSON.stringify({
         searchStringsArray: [searchQuery],
         maxCrawledPlacesPerSearch: max,
-        language: "pt",
+        language: "pt-BR",
         countryCode: "BR",
         includeHistogram: false,
         includeOpeningHours: false,
