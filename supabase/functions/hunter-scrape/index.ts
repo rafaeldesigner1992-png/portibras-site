@@ -115,7 +115,7 @@ serve(async (req) => {
         searchStringsArray: [searchQuery],
         maxCrawledPlacesPerSearch: max,
         language: "pt-BR",
-        countryCode: "BR",
+        countryCode: "br",
         includeHistogram: false,
         includeOpeningHours: false,
         includePeopleAlsoSearch: false,
