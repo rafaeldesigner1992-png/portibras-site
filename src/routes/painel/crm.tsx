@@ -1749,7 +1749,7 @@ function PropostaDetalhe({
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;font-size:11pt;line-height:1.65}
-@media print{body{font-size:10pt}@page{size:A4;margin:22mm 20mm 24mm 20mm}.no-print{display:none!important}}
+@page{size:A4;margin:22mm 20mm 24mm 20mm}@media print{body{font-size:10pt}.no-print{display:none!important}}
 .ct-page{max-width:780px;margin:0 auto;padding:32px 44px 60px}
 .btn-print{display:block;margin:0 auto 28px;padding:10px 28px;background:#1a6b2f;color:#fff;border:none;border-radius:6px;font-size:13px;font-family:Arial,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.3px}
 .ct-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
@@ -1800,7 +1800,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 <div class="ct-header">
   <div>
     <img src="${LOGO_PORTIBRAS_B64}" alt="Portibras" style="height:52px;max-width:220px;object-fit:contain;margin-bottom:6px;display:block;">
-    <div class="ct-logo-cnpj">CNPJ: 63.823.452/0001-93 · Ipanema, Rio de Janeiro – RJ</div>
+    <div class="ct-logo-cnpj">CNPJ: 63823452000193 · Ipanema, Rio de Janeiro – RJ</div>
     <div class="ct-logo-contato">(22) 99104-8162 · vendas@portibras.com.br</div>
   </div>
   <div class="ct-header-right">
@@ -1821,7 +1821,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
   <div class="ct-parte">
     <div class="ct-parte-label">Contratada</div>
     <div class="ct-parte-bloco">
-      <strong>PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 63.823.452/0001-93, com sede na R. Visconde de Pirajá, 414, Sala 718, Ipanema, Rio de Janeiro – RJ, CEP 22.410-905, neste ato representada por seu administrador <strong>Rafael</strong>, doravante denominada simplesmente <strong>CONTRATADA</strong>.
+      <strong>PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 63823452000193, com sede na R. Visconde de Pirajá, 414, Sala 718, Ipanema, Rio de Janeiro – RJ, CEP 22.410-905, neste ato representada por seu administrador <strong>Rafael Nunes de Oliveira</strong>, doravante denominada simplesmente <strong>CONTRATADA</strong>.
     </div>
   </div>
   <div class="ct-parte">
@@ -1929,14 +1929,14 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
       <div class="ct-assinatura-espaco"></div>
       <div class="ct-assinatura-linha"></div>
       <div class="ct-assinatura-nome">${contratante}</div>
-      <div class="ct-assinatura-cargo">${responsavel} — Síndico / Representante Legal</div>
+      <div class="ct-assinatura-cargo">CNPJ: ${cnpjContratante}</div>
       <div class="ct-assinatura-label">Contratante</div>
     </div>
     <div>
       <div class="ct-assinatura-espaco"></div>
       <div class="ct-assinatura-linha"></div>
       <div class="ct-assinatura-nome">PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA</div>
-      <div class="ct-assinatura-cargo">Rafael Moraes — Administrador</div>
+      <div class="ct-assinatura-cargo">CNPJ: 63823452000193</div>
       <div class="ct-assinatura-label">Contratada</div>
     </div>
   </div>
@@ -2027,7 +2027,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
         doc.setTextColor(55, 65, 81);
-        const contratadaTxt = "PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA, CNPJ 63.823.452/0001-93, Ipanema, Rio de Janeiro – RJ, representada por seu administrador Rafael (CONTRATADA).";
+        const contratadaTxt = "PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA, CNPJ 63823452000193, Ipanema, Rio de Janeiro – RJ, representada por seu administrador Rafael Nunes de Oliveira (CONTRATADA).";
         const contratadaLines = doc.splitTextToSize(contratadaTxt, contentWidth);
         doc.text(contratadaLines, margin, y);
         y += contratadaLines.length * 13 + 8;
@@ -2640,9 +2640,9 @@ function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onProposta
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Times New Roman', Times, serif; background: #fff; color: #1f2937; font-size: 11pt; line-height: 1.55; }
+  @page { size: A4; margin: 20mm 18mm 22mm 18mm; }
   @media print {
     body { background: #fff; font-size: 9.5pt; }
-    @page { size: A4; margin: 20mm 18mm 22mm 18mm; }
     .no-print { display: none !important; }
   }
   .ct-page { max-width: 800px; margin: 0 auto; padding: 36px 48px 56px; }
@@ -2691,7 +2691,7 @@ function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onProposta
   <div class="ct-header">
     <div>
       <img src="${LOGO_PORTIBRAS_B64}" alt="Portibras" style="height:52px;max-width:220px;object-fit:contain;margin-bottom:4px;display:block;">
-      <div class="ct-logo-cnpj">CNPJ: 63.823.452/0001-93 &nbsp;·&nbsp; Ipanema, Rio de Janeiro – RJ</div>
+      <div class="ct-logo-cnpj">CNPJ: 63823452000193 &nbsp;·&nbsp; Ipanema, Rio de Janeiro – RJ</div>
     </div>
     <div class="ct-header-right">
       <div class="ct-titulo-doc">Contrato de Prestação de Serviços</div>
@@ -2712,7 +2712,7 @@ function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onProposta
     <div>
       <div class="ct-parte-label">Contratada</div>
       <div class="ct-parte-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div>
-      <div class="ct-parte-info">CNPJ: 63.823.452/0001-93<br>R. Visconde de Pirajá, 414, Sala 718, Ipanema, Rio de Janeiro – RJ, CEP 22.410-905<br>vendas@portibras.com.br · (22) 99104-8162</div>
+      <div class="ct-parte-info">CNPJ: 63823452000193<br>R. Visconde de Pirajá, 414, Sala 718, Ipanema, Rio de Janeiro – RJ, CEP 22.410-905<br>vendas@portibras.com.br · (22) 99104-8162</div>
     </div>
   </div>
   <hr class="ct-divider">
@@ -2782,14 +2782,14 @@ function OrcamentoManutencao({ lead, onPropostaSalva }: { lead: Lead; onProposta
         <div class="ct-assinatura-espaco"></div>
         <div class="ct-assinatura-linha"></div>
         <div class="ct-assinatura-nome">${contratante}</div>
-        <div class="ct-assinatura-cargo">${responsavel} — Representante Legal</div>
+        <div class="ct-assinatura-cargo">CNPJ: ${cnpjContratante}</div>
         <div class="ct-assinatura-label">Contratante</div>
       </div>
       <div>
         <div class="ct-assinatura-espaco"></div>
         <div class="ct-assinatura-linha"></div>
         <div class="ct-assinatura-nome">PORTIBRAS SISTEMAS CONTRA INCÊNDIO LTDA</div>
-        <div class="ct-assinatura-cargo">CNPJ: 63.823.452/0001-93</div>
+        <div class="ct-assinatura-cargo">CNPJ: 63823452000193</div>
         <div class="ct-assinatura-label">Contratada</div>
       </div>
     </div>
