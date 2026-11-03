@@ -1917,7 +1917,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
   <div class="ct-clausula-titulo">Cláusula 10ª — Disposições Gerais</div>
   <div class="ct-clausula-corpo">
     Este instrumento é celebrado em caráter de exclusividade para o imóvel descrito, não gerando vínculo empregatício entre as partes. Rege-se pelas leis brasileiras, especialmente pelo Código Civil (Lei nº 10.406/2002) e pelo Código de Defesa do Consumidor (Lei nº 8.078/1990), quando aplicável.
-    <p>As partes elegem o foro da comarca de Rio de Janeiro para dirimir quaisquer dúvidas ou litígios, com renúncia a qualquer outro, por mais privilegiado que seja. O presente instrumento é assinado em 2 (duas) vias de igual teor e forma, perante 2 (duas) testemunhas.</p>
+    <p>As partes elegem o foro da comarca de Rio de Janeiro para dirimir quaisquer dúvidas ou litígios, com renúncia a qualquer outro, por mais privilegiado que seja.</p>
   </div>
 </div>
 
