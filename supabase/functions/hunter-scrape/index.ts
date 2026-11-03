@@ -102,11 +102,12 @@ serve(async (req) => {
       ? `${query} em ${bairro}, ${cidade}, Brasil`
       : `${query} em ${cidade}, Brasil`;
 
-    const max = Math.min(maxItems, 50);
+    // Limita a 10 resultados para garantir que termine dentro do timeout
+    const max = Math.min(maxItems, 10);
 
-    // Endpoint síncrono: bloqueia até terminar e retorna os itens diretamente
-    // timeout=120 segundos (limite seguro para Edge Function do Supabase Free)
-    const url = `${APIFY_BASE}/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${token}&timeout=120&memory=256`;
+    // Endpoint síncrono — timeout=300s (Supabase Pro suporta até 400s; Free até ~150s)
+    // memory=1024 para o actor iniciar mais rápido
+    const url = `${APIFY_BASE}/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${token}&timeout=300&memory=1024`;
 
     const resp = await fetch(url, {
       method: "POST",
