@@ -318,8 +318,8 @@ serve(async (req) => {
     if (action === "ai_insights") {
       const { campanhas, metas } = body;
 
-      const claudeApiKey = Deno.env.get("ANTHROPIC_API_KEY");
-      if (!claudeApiKey) throw new Error("ANTHROPIC_API_KEY não configurada.");
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (!openaiKey) throw new Error("OPENAI_API_KEY não configurada.");
 
       const prompt = `Você é um especialista em Google Ads com foco em geração de leads B2B para empresas de serviços.
 
@@ -349,22 +349,22 @@ Retorne um JSON com este formato EXATO:
   "proximos_passos": ["passo 1", "passo 2", "passo 3"]
 }`;
 
-      const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+      const aiResp = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          "x-api-key": claudeApiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
+          "Authorization": `Bearer ${openaiKey}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-haiku-4-5",
+          model: "gpt-4o-mini",
           max_tokens: 2000,
           messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
         }),
       });
 
       const aiData = await aiResp.json();
-      const rawText = aiData?.content?.[0]?.text || "{}";
+      const rawText = aiData?.choices?.[0]?.message?.content || "{}";
 
       let analysis;
       try {
