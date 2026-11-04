@@ -251,6 +251,7 @@ async function syncContasPagar(token: string) {
 async function syncContratos(token: string) {
   let contratos: unknown[] = [];
   try {
+    // Sem filtros de data — contratos não suportam esse parâmetro
     const data = await apiCA(`/v1/contratos?pagina=1&tamanho_pagina=200`, token);
     contratos = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contratos ?? [];
   } catch (e) {
@@ -291,6 +292,31 @@ serve(async (req) => {
 
   try {
     const token = await getAccessToken();
+
+    // Modo debug: retorna resposta bruta de cada endpoint
+    let body: Record<string, unknown> = {};
+    try { body = await req.json(); } catch { /* sem body */ }
+    if (body.debug) {
+      const results: Record<string, unknown> = {};
+      for (const path of [
+        "/v1/vendas?pagina=1&tamanho_pagina=5",
+        "/v1/financeiro/contasreceber?pagina=1&tamanho_pagina=5",
+        "/v1/financeiro/contaspagar?pagina=1&tamanho_pagina=5",
+        "/v1/contratos?pagina=1&tamanho_pagina=5",
+        "/v1/financeiro/contasfinanceiras?pagina=1&tamanho_pagina=5",
+      ]) {
+        try {
+          const r = await fetch(`${CONTA_AZUL_BASE}${path}`, {
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          });
+          const txt = await r.text();
+          results[path] = { status: r.status, body: txt.substring(0, 300) };
+        } catch (e) {
+          results[path] = { error: String(e) };
+        }
+      }
+      return new Response(JSON.stringify(results), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const [nVendas, nCobrancas, nContratos, nSaldos, nContasPagar] = await Promise.all([
       syncVendas(token),
