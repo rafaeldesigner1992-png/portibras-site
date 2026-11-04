@@ -15,6 +15,7 @@ import {
   Building2,
   GitBranch,
   Target,
+  Megaphone,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -33,6 +34,7 @@ const MENU = [
   { modulo: "organograma", label: "Gestão de Pessoas", href: "/painel/pessoas",       icon: UserCog },
   { modulo: "organograma", label: "Organograma / RH",  href: "/painel/organograma",   icon: GitBranch },
   { modulo: "crm",         label: "Script de Vendas",  href: "/painel/script-vendas", icon: BookOpen },
+  { modulo: "marketing",   label: "Marketing / Ads",   href: "/painel/marketing",     icon: Megaphone },
 ];
 
 const STORAGE_KEY = "portibras_sidebar_collapsed";
