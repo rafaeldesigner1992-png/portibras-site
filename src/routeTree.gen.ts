@@ -22,6 +22,9 @@ import { Route as PainelLogisticaRouteImport } from './routes/painel/logistica'
 import { Route as PainelFinanceiroRouteImport } from './routes/painel/financeiro'
 import { Route as PainelClientesRouteImport } from './routes/painel/clientes'
 import { Route as PainelScriptVendasRouteImport } from './routes/painel/script-vendas'
+import { Route as PainelHunterRouteImport } from './routes/painel/hunter'
+import { Route as PainelOrganogramaRouteImport } from './routes/painel/organograma'
+import { Route as PainelMarketingRouteImport } from './routes/painel/marketing'
 
 const AcessoRoute = AcessoRouteImport.update({
   id: '/acesso',
@@ -101,6 +104,24 @@ const PainelScriptVendasRoute = PainelScriptVendasRouteImport.update({
   getParentRoute: () => PainelRoute,
 } as any)
 
+const PainelHunterRoute = PainelHunterRouteImport.update({
+  id: '/hunter',
+  path: '/hunter',
+  getParentRoute: () => PainelRoute,
+} as any)
+
+const PainelOrganogramaRoute = PainelOrganogramaRouteImport.update({
+  id: '/organograma',
+  path: '/organograma',
+  getParentRoute: () => PainelRoute,
+} as any)
+
+const PainelMarketingRoute = PainelMarketingRouteImport.update({
+  id: '/marketing',
+  path: '/marketing',
+  getParentRoute: () => PainelRoute,
+} as any)
+
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/acesso': typeof AcessoRoute
@@ -115,6 +136,9 @@ export interface FileRoutesByFullPath {
   '/painel/financeiro': typeof PainelFinanceiroRoute
   '/painel/clientes': typeof PainelClientesRoute
   '/painel/script-vendas': typeof PainelScriptVendasRoute
+  '/painel/hunter': typeof PainelHunterRoute
+  '/painel/organograma': typeof PainelOrganogramaRoute
+  '/painel/marketing': typeof PainelMarketingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -130,6 +154,9 @@ export interface FileRoutesByTo {
   '/painel/financeiro': typeof PainelFinanceiroRoute
   '/painel/clientes': typeof PainelClientesRoute
   '/painel/script-vendas': typeof PainelScriptVendasRoute
+  '/painel/hunter': typeof PainelHunterRoute
+  '/painel/organograma': typeof PainelOrganogramaRoute
+  '/painel/marketing': typeof PainelMarketingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -146,6 +173,9 @@ export interface FileRoutesById {
   '/painel/financeiro': typeof PainelFinanceiroRoute
   '/painel/clientes': typeof PainelClientesRoute
   '/painel/script-vendas': typeof PainelScriptVendasRoute
+  '/painel/hunter': typeof PainelHunterRoute
+  '/painel/organograma': typeof PainelOrganogramaRoute
+  '/painel/marketing': typeof PainelMarketingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -163,6 +193,9 @@ export interface FileRouteTypes {
     | '/painel/financeiro'
     | '/painel/clientes'
     | '/painel/script-vendas'
+    | '/painel/hunter'
+    | '/painel/organograma'
+    | '/painel/marketing'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -178,6 +211,9 @@ export interface FileRouteTypes {
     | '/painel/financeiro'
     | '/painel/clientes'
     | '/painel/script-vendas'
+    | '/painel/hunter'
+    | '/painel/organograma'
+    | '/painel/marketing'
   id:
     | '__root__'
     | '/'
@@ -193,6 +229,9 @@ export interface FileRouteTypes {
     | '/painel/financeiro'
     | '/painel/clientes'
     | '/painel/script-vendas'
+    | '/painel/hunter'
+    | '/painel/organograma'
+    | '/painel/marketing'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -295,6 +334,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PainelScriptVendasRouteImport
       parentRoute: typeof PainelRouteImport
     }
+    '/painel/hunter': {
+      id: '/painel/hunter'
+      path: '/hunter'
+      fullPath: '/painel/hunter'
+      preLoaderRoute: typeof PainelHunterRouteImport
+      parentRoute: typeof PainelRouteImport
+    }
+    '/painel/organograma': {
+      id: '/painel/organograma'
+      path: '/organograma'
+      fullPath: '/painel/organograma'
+      preLoaderRoute: typeof PainelOrganogramaRouteImport
+      parentRoute: typeof PainelRouteImport
+    }
+    '/painel/marketing': {
+      id: '/painel/marketing'
+      path: '/marketing'
+      fullPath: '/painel/marketing'
+      preLoaderRoute: typeof PainelMarketingRouteImport
+      parentRoute: typeof PainelRouteImport
+    }
   }
 }
 
@@ -308,6 +368,9 @@ interface PainelRouteChildren {
   PainelFinanceiroRoute: typeof PainelFinanceiroRoute
   PainelClientesRoute: typeof PainelClientesRoute
   PainelScriptVendasRoute: typeof PainelScriptVendasRoute
+  PainelHunterRoute: typeof PainelHunterRoute
+  PainelOrganogramaRoute: typeof PainelOrganogramaRoute
+  PainelMarketingRoute: typeof PainelMarketingRoute
 }
 
 const painelRouteChildren: PainelRouteChildren = {
@@ -320,6 +383,9 @@ const painelRouteChildren: PainelRouteChildren = {
   PainelFinanceiroRoute: PainelFinanceiroRoute,
   PainelClientesRoute: PainelClientesRoute,
   PainelScriptVendasRoute: PainelScriptVendasRoute,
+  PainelHunterRoute: PainelHunterRoute,
+  PainelOrganogramaRoute: PainelOrganogramaRoute,
+  PainelMarketingRoute: PainelMarketingRoute,
 }
 
 const PainelRouteWithChildren = PainelRoute._addFileChildren(painelRouteChildren)
