@@ -53,7 +53,7 @@ type TicketForm = {
   contatoTel: string;
 };
 
-type PedidoOpt = { id: string; label: string; endereco: string | null };
+type PedidoOpt = { id: string; label: string; endereco: string | null; email: string | null };
 
 export function PainelSidebar() {
   const { usuario, logout, temAcesso } = useAuth();
@@ -85,7 +85,7 @@ export function PainelSidebar() {
     // Load recent pedidos
     const { data } = await supabase
       .from("logistica_pedidos")
-      .select("id, cliente_nome, cliente_empresa, cliente_endereco")
+      .select("id, cliente_nome, cliente_empresa, cliente_endereco, cliente_email")
       .not("etapa", "in", "(cancelado)")
       .order("criado_em", { ascending: false })
       .limit(100);
@@ -93,6 +93,7 @@ export function PainelSidebar() {
       id: p.id,
       label: p.cliente_empresa || p.cliente_nome || "Cliente",
       endereco: p.cliente_endereco,
+      email: p.cliente_email,
     })));
     setTimeout(() => buscaRef.current?.focus(), 100);
   }
@@ -118,6 +119,8 @@ export function PainelSidebar() {
       tipo_cobranca: "antes",
     };
 
+    let clienteEmail: string | null = null;
+
     if (form.pedidoId) {
       // Link to existing pedido: clone key fields
       const orig = pedidosOpts.find(p => p.id === form.pedidoId);
@@ -125,6 +128,7 @@ export function PainelSidebar() {
         payload.cliente_nome = orig.label;
         payload.cliente_empresa = orig.label;
         payload.cliente_endereco = orig.endereco;
+        clienteEmail = orig.email;
       }
       payload.observacoes = `Ticket vinculado ao pedido: ${form.pedidoId}`;
     } else {
@@ -132,6 +136,28 @@ export function PainelSidebar() {
     }
 
     await supabase.from("logistica_pedidos").insert(payload);
+
+    // Enviar e-mail de confirmação ao cliente (se houver e-mail)
+    if (clienteEmail) {
+      try {
+        await supabase.functions.invoke("send-ticket-email", {
+          body: {
+            cliente_email: clienteEmail,
+            cliente_nome: payload.cliente_nome as string,
+            cliente_empresa: payload.cliente_empresa as string | undefined,
+            ticket_motivo: payload.ticket_motivo as string,
+            ticket_prioridade: payload.ticket_prioridade as string,
+            ticket_sla_at: slaAt.toISOString(),
+            ticket_contato_nome: payload.ticket_contato_nome as string | undefined,
+            ticket_contato_tel: payload.ticket_contato_tel as string | undefined,
+          },
+        });
+      } catch (err) {
+        console.warn("[Ticket] E-mail não enviado:", err);
+        // Não bloqueia o fluxo — ticket já foi criado
+      }
+    }
+
     setSalvando(false);
     setModalAberto(false);
     // Dispatch event so logistica page can refresh
