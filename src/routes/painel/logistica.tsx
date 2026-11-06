@@ -1614,7 +1614,7 @@ function LogisticaPage() {
     filtroStatus === "todos" || t.status === filtroStatus
   );
 
-  const ticketsAbertos = tickets.filter(t =>
+  const ticketsSuporte = tickets.filter(t =>
     t.status === "aberto" || t.status === "em_andamento" || t.status === "aguardando"
   );
 
@@ -3595,9 +3595,9 @@ function LogisticaPage() {
             <div className="flex items-center gap-2">
               <Ticket className="h-4 w-4 text-gray-500" />
               <h2 className="text-sm font-semibold text-gray-700">Agenda de Serviços</h2>
-              {ticketsAbertos.length > 0 && (
+              {ticketsSuporte.length > 0 && (
                 <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                  {ticketsAbertos.length} aberto{ticketsAbertos.length !== 1 ? "s" : ""}
+                  {ticketsSuporte.length} aberto{ticketsSuporte.length !== 1 ? "s" : ""}
                 </span>
               )}
             </div>
