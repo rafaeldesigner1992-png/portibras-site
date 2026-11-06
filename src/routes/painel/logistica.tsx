@@ -2409,6 +2409,16 @@ function LogisticaPage() {
                   ))}
                 </div>
               )}
+              <button
+                onClick={() => {
+                  const feedUrl = "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/ical-feed";
+                  const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(feedUrl)}`;
+                  window.open(googleUrl, "_blank");
+                }}
+                title="Assinar calendário completo no Google Agenda"
+                className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                <CalendarIcon className="h-4 w-4" /> Google Agenda
+              </button>
               <button onClick={() => abrirModalAtend()}
                 className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
                 <Plus className="h-4 w-4" /> Novo Atendimento
