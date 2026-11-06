@@ -771,9 +771,8 @@ function FinanceiroPage() {
           {/* KPIs do mês */}
           {!carregandoVendas && vendas.length > 0 && (() => {
             const total = vendas.reduce((s, v) => s + v.valor, 0);
-            const pagas = vendas.filter(v => v.pago).reduce((s, v) => s + v.valor, 0);
             return (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-gray-100 bg-white p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Total de Vendas</p>
                   <p className="mt-1 text-xl font-bold text-gray-900">{vendas.length}</p>
@@ -781,10 +780,6 @@ function FinanceiroPage() {
                 <div className="rounded-xl border border-gray-100 bg-white p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Volume Total</p>
                   <p className="mt-1 text-xl font-bold text-[#1a6b2f]">{total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                </div>
-                <div className="rounded-xl border border-gray-100 bg-white p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Recebido</p>
-                  <p className="mt-1 text-xl font-bold text-emerald-600">{pagas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
                 </div>
               </div>
             );
@@ -811,7 +806,6 @@ function FinanceiroPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente / Serviço</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Categoria</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-400">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -832,11 +826,6 @@ function FinanceiroPage() {
                       <td className="px-4 py-3 text-right font-semibold text-[#1a6b2f]">
                         {v.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${v.pago ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
-                          {v.pago ? "Recebido" : "Pendente"}
-                        </span>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -846,7 +835,6 @@ function FinanceiroPage() {
                     <td className="px-4 py-3 text-right text-base font-bold text-[#1a6b2f]">
                       {vendas.reduce((s, v) => s + v.valor, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                     </td>
-                    <td />
                   </tr>
                 </tfoot>
               </table>
