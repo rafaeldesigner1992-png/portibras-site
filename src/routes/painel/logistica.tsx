@@ -967,7 +967,7 @@ function LogisticaPage() {
     "Concluído":    "bg-green-100 text-green-700",
   };
   const EMPTY_COMPRA = {
-    titulo: "", fornecedor: "", materiais: "", custo: "",
+    titulo: "", fornecedoresSel: [] as string[], materiais: "", custo: "",
     status_entrega: "Não iniciada" as Compra["status_entrega"],
     previsao_chegada: "", data_recebido: "", quem_recebeu: "",
     observacoes: "", pedidosSel: [] as string[],
@@ -1015,7 +1015,7 @@ function LogisticaPage() {
     setSalvandoCompra(true);
     const payload = {
       titulo: formCompra.titulo.trim(),
-      fornecedor: formCompra.fornecedor || null,
+      fornecedor: formCompra.fornecedoresSel.length ? formCompra.fornecedoresSel.join(", ") : null,
       materiais: formCompra.materiais || null,
       custo: formCompra.custo ? Number(formCompra.custo) : null,
       status_entrega: formCompra.status_entrega,
@@ -1067,7 +1067,7 @@ function LogisticaPage() {
     setCompraEditando(c.id);
     setFormCompra({
       titulo: c.titulo,
-      fornecedor: c.fornecedor ?? "",
+      fornecedoresSel: c.fornecedor ? c.fornecedor.split(", ").map(s => s.trim()) : [],
       materiais: c.materiais ?? "",
       custo: c.custo?.toString() ?? "",
       status_entrega: c.status_entrega,
@@ -3579,11 +3579,25 @@ function LogisticaPage() {
                   </div>
                   <div>
                     <label className="label-field">Fornecedor</label>
-                    <select className="input-field" value={formCompra.fornecedor} onChange={e => setFormCompra(f => ({ ...f, fornecedor: e.target.value }))}>
-                      <option value="">Selecionar...</option>
-                      {FORNECEDORES.map(f => <option key={f}>{f}</option>)}
-                      <option value="Outro">Outro</option>
-                    </select>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {[...FORNECEDORES, "Outro"].map(f => {
+                        const sel = formCompra.fornecedoresSel.includes(f);
+                        return (
+                          <button key={f} type="button"
+                            onClick={() => setFormCompra(fc => ({
+                              ...fc,
+                              fornecedoresSel: sel
+                                ? fc.fornecedoresSel.filter(x => x !== f)
+                                : [...fc.fornecedoresSel, f]
+                            }))}
+                            className={cn("rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                              sel ? "bg-[#1a6b2f] text-white border-[#1a6b2f]" : "bg-white text-gray-600 border-gray-300 hover:border-[#1a6b2f]"
+                            )}>
+                            {f}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div>
                     <label className="label-field">Materiais</label>
