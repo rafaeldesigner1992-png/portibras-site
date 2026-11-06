@@ -1827,7 +1827,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
   <div class="ct-parte">
     <div class="ct-parte-label">Contratante</div>
     <div class="ct-parte-bloco">
-      <strong>${contratante}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${cnpjContratante}, com sede em ${enderecoContratante}, neste ato representada por seu síndico/representante legal <strong>${responsavel}</strong>, doravante denominada simplesmente <strong>CONTRATANTE</strong>.
+      <strong>${contratante}</strong>, ente despersonalizado de natureza privada, inscrito no CNPJ sob o nº ${cnpjContratante}, com sede em ${enderecoContratante}, neste ato representado por seu síndico/representante legal <strong>${responsavel}</strong>, doravante denominado simplesmente <strong>CONTRATANTE</strong>.
     </div>
   </div>
 </div>
@@ -1837,7 +1837,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 <div class="ct-clausula">
   <div class="ct-clausula-titulo">Cláusula 1ª — Objeto</div>
   <div class="ct-clausula-corpo">
-    A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de portas corta-fogo no imóvel situado em ${enderecoContratante}, de acordo com as normas técnicas ABNT NBR 11.742/2018 e demais normas vigentes. Os serviços abrangem inspeção técnica periódica (Documento Técnico de Serviço — DTS) e execução de manutenção porta a porta (Documento Técnico de Execução — DTE), com emissão de laudos normativos.
+    A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de portas corta-fogo para a CONTRATANTE, em seu endereço, de acordo com as normas técnicas ABNT NBR 11.742:2018 e demais normas vigentes. Os serviços abrangem inspeção técnica periódica (Documento Técnico de Serviço — DTS) e execução de manutenção porta a porta (Documento Técnico de Execução — DTE), com emissão de laudos normativos.
     <p>A CONTRATADA cobrará exclusivamente a mão de obra referente aos serviços executados. Os materiais e peças de reposição eventualmente necessários serão adquiridos diretamente pelo CONTRATANTE, podendo a CONTRATADA indicar fornecedores homologados para garantia da qualidade técnica.</p>
   </div>
 </div>
@@ -1851,7 +1851,15 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 3ª — Prazo e Vigência</div>
+  <div class="ct-clausula-titulo">Cláusula 3ª — Reajuste Anual</div>
+  <div class="ct-clausula-corpo">
+    O valor dos serviços será reajustado anualmente, após cada período de 12 (doze) meses de vigência contratual, com base na variação acumulada do <strong>Índice Nacional de Preços ao Consumidor Amplo (IPCA)</strong>, apurado pelo IBGE no período imediatamente anterior.
+    <p>Caso o IPCA não seja divulgado até a data de reajuste, aplicar-se-á o último índice disponível, procedendo-se ao acerto na primeira parcela subsequente à divulgação. O reajuste será aplicado automaticamente, independentemente de notificação prévia, sendo o novo valor comunicado ao CONTRATANTE com antecedência mínima de 30 (trinta) dias.</p>
+  </div>
+</div>
+
+<div class="ct-clausula">
+  <div class="ct-clausula-titulo">Cláusula 4ª — Prazo e Vigência</div>
   <div class="ct-clausula-corpo">
     O presente instrumento terá vigência de 12 (doze) meses, com início em <strong>${dataInicioFmt}</strong> e término em <strong>${dataFim}</strong>.
     <p>O instrumento será renovado automaticamente por períodos iguais e sucessivos, salvo manifestação contrária de qualquer das partes mediante aviso prévio por escrito com no mínimo 30 (trinta) dias de antecedência do término do período vigente.</p>
@@ -1859,16 +1867,16 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 4ª — Garantia</div>
+  <div class="ct-clausula-titulo">Cláusula 5ª — Garantia</div>
   <div class="ct-clausula-corpo">
     A CONTRATADA garante os serviços executados pelo prazo de 1 (um) ano, contado da data de realização do primeiro serviço, cobrindo vícios e defeitos decorrentes da execução.
   </div>
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 5ª — Perda da Garantia</div>
+  <div class="ct-clausula-titulo">Cláusula 6ª — Perda da Garantia</div>
   <div class="ct-clausula-corpo">
-    A garantia prevista na Cláusula 4ª não se aplicará nos seguintes casos:
+    A garantia prevista na Cláusula 5ª não se aplicará nos seguintes casos:
     <ul>
       <li>a) Intervenção ou modificação nas portas por terceiros não autorizados pela CONTRATADA;</li>
       <li>b) Uso de calços, cunhas ou qualquer objeto para manter a porta em posição aberta;</li>
@@ -1884,28 +1892,37 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 6ª — Obrigações da Contratada</div>
+  <div class="ct-clausula-titulo">Cláusula 7ª — Obrigações da Contratada</div>
   <div class="ct-clausula-corpo">
-    A CONTRATADA obriga-se a: prestar os serviços com técnicos habilitados e equipamentos adequados; observar as normas técnicas ABNT aplicáveis; emitir laudos e relatórios técnicos (Documento Técnico de Serviço — DTS e Documento Técnico de Execução — DTE) após cada atendimento; comunicar previamente o agendamento das visitas; e manter sigilo sobre as informações do imóvel.
+    A CONTRATADA obriga-se a:
+    <ul>
+      <li>a) Realizar <strong>2 (duas) visitas de manutenção preventiva por ano</strong>, nas datas acordadas com o CONTRATANTE, cobrindo todas as portas corta-fogo do imóvel;</li>
+      <li>b) Executar lubrificação, ajustes e regulagens em dobradiças, molas, trilhos e demais componentes mecânicos das portas, em cada visita preventiva;</li>
+      <li>c) Produzir <strong>registro fotográfico</strong> do estado das portas antes e após cada intervenção, disponibilizando a documentação ao CONTRATANTE;</li>
+      <li>d) Atender chamados de emergência relacionados a falhas nas portas corta-fogo com prazo máximo de resposta de <strong>4 (quatro) dias úteis</strong> (SLA de 4 dias úteis) a partir do acionamento;</li>
+      <li>e) Emitir laudos e relatórios técnicos (Documento Técnico de Serviço — DTS e Documento Técnico de Execução — DTE) em conformidade com a <strong>NBR 11.742:2018</strong>, após cada atendimento;</li>
+      <li>f) Prestar os serviços com técnicos habilitados e equipamentos adequados, observando todas as normas técnicas ABNT aplicáveis;</li>
+      <li>g) Comunicar previamente o agendamento das visitas e manter sigilo sobre as informações do imóvel.</li>
+    </ul>
   </div>
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 7ª — Obrigações do Contratante</div>
+  <div class="ct-clausula-titulo">Cláusula 8ª — Obrigações do Contratante</div>
   <div class="ct-clausula-corpo">
     O CONTRATANTE obriga-se a: garantir acesso da equipe técnica nas datas agendadas; comunicar à CONTRATADA, com antecedência mínima de 48 horas, eventual impossibilidade de atendimento; efetuar os pagamentos nas condições estabelecidas; e não contratar terceiros para intervenção nas portas sem prévia comunicação à CONTRATADA.
   </div>
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 8ª — Rescisão</div>
+  <div class="ct-clausula-titulo">Cláusula 9ª — Rescisão</div>
   <div class="ct-clausula-corpo">
     O presente instrumento poderá ser rescindido por qualquer das partes mediante aviso prévio por escrito de 30 (trinta) dias. Em caso de rescisão antecipada pelo CONTRATANTE sem justa causa, este ficará obrigado ao pagamento de multa equivalente a 20% (vinte por cento) do valor remanescente das parcelas não vencidas.
   </div>
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 9ª — Recomendações ao Contratante</div>
+  <div class="ct-clausula-titulo">Cláusula 10ª — Recomendações ao Contratante</div>
   <div class="ct-clausula-corpo">
     <p><strong>Comunicação:</strong> Entrar em contato imediatamente ao identificar qualquer problema, anormalidade ou dano nas portas, via WhatsApp (22) 99104-8162 ou e-mail vendas@portibras.com.br. Registrar e fotografar o problema antes de qualquer intervenção.</p>
     <p><strong>Uso e conservação:</strong> Manter as portas sempre livres de obstruções no vão de passagem. Não permitir que funcionários, moradores ou terceiros realizem ajustes nas portas. Comunicar imediatamente qualquer intervenção de terceiros nas portas, mesmo que não autorizada pela CONTRATADA.</p>
@@ -1914,7 +1931,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 </div>
 
 <div class="ct-clausula">
-  <div class="ct-clausula-titulo">Cláusula 10ª — Disposições Gerais</div>
+  <div class="ct-clausula-titulo">Cláusula 11ª — Disposições Gerais</div>
   <div class="ct-clausula-corpo">
     Este instrumento é celebrado em caráter de exclusividade para o imóvel descrito, não gerando vínculo empregatício entre as partes. Rege-se pelas leis brasileiras, especialmente pelo Código Civil (Lei nº 10.406/2002) e pelo Código de Defesa do Consumidor (Lei nº 8.078/1990), quando aplicável.
     <p>As partes elegem o foro da comarca de Rio de Janeiro para dirimir quaisquer dúvidas ou litígios, com renúncia a qualquer outro, por mais privilegiado que seja.</p>
