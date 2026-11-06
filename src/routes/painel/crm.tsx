@@ -3689,6 +3689,33 @@ function CrmPage() {
       });
       if (errLog) throw new Error(`Erro ao criar pedido logístico: ${errLog.message}`);
 
+      // 4b. Para orçamentos: importa itens do orçamento para logistica_aquisicoes
+      if (lead.tipo_negocio === "orcamento" && orc?.itens && Array.isArray(orc.itens) && orc.itens.length > 0) {
+        // Busca o pedido recém-criado para obter o ID
+        const { data: pedidoCriado } = await supabase
+          .from("logistica_pedidos")
+          .select("id")
+          .eq("crm_lead_id", lead.id)
+          .order("criado_em", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (pedidoCriado?.id) {
+          const itensAquis = (orc.itens as ItemOrcamento[]).map((item) => ({
+            pedido_id: pedidoCriado.id,
+            nome: item.nome + (item.descricao ? ` — ${item.descricao}` : ""),
+            quantidade: item.quantidade,
+            unidade: item.unidade || "un",
+            custo_unitario: item.custo_unitario || null,
+            fornecedor: null,
+            link_compra: null,
+            observacoes: null,
+            status: "pendente",
+          }));
+          await supabase.from("logistica_aquisicoes").insert(itensAquis);
+        }
+      }
+
       // 5. Atualiza estado local
       const updatedLead = { ...lead, etapa: "fechado" as Etapa, data_fechamento: agora, valor_estimado: valorVenda || lead.valor_estimado };
       if (cardAberto?.id === lead.id) setCardAberto(updatedLead);
