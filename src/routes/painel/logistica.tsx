@@ -2117,6 +2117,22 @@ function LogisticaPage() {
                                     await carregarPdfMakeLog();
                                     const logoB64 = await carregarLogoPortibras();
                                     gerarCertificadoPdf(pedidoAberto, aquisicoes, logoB64);
+                                    // Registra renovação automática (vence em 6 meses)
+                                    const hoje = new Date();
+                                    const vence = new Date(hoje);
+                                    vence.setMonth(vence.getMonth() + 6);
+                                    const toDate = (d: Date) => d.toISOString().slice(0, 10);
+                                    await supabase.from("crm_renovacoes").insert({
+                                      pedido_id: pedidoAberto.id,
+                                      cliente_nome: pedidoAberto.cliente_nome ?? null,
+                                      cliente_empresa: pedidoAberto.cliente_empresa ?? null,
+                                      cliente_telefone: pedidoAberto.cliente_telefone ?? null,
+                                      cliente_email: pedidoAberto.cliente_email ?? null,
+                                      cliente_endereco: pedidoAberto.cliente_endereco ?? null,
+                                      emitido_em: toDate(hoje),
+                                      vence_em: toDate(vence),
+                                      status: "pendente",
+                                    });
                                   } catch(err) { console.error("[Cert] erro:", err); alert("Erro ao gerar PDF: " + String(err)); }
                                   finally { setEmitindoCert(false); }
                                 }}

@@ -3457,12 +3457,193 @@ function ToastMsg({ msg, tipo, onClose }: { msg: string; tipo: "sucesso" | "erro
   );
 }
 
+// ─── Aba Renovações ───────────────────────────────────────────────────────────
+type Renovacao = {
+  id: string;
+  pedido_id: string | null;
+  cliente_nome: string | null;
+  cliente_empresa: string | null;
+  cliente_telefone: string | null;
+  cliente_email: string | null;
+  cliente_endereco: string | null;
+  emitido_em: string;
+  vence_em: string;
+  status: string;
+  observacoes: string | null;
+};
+
+const STATUS_REN = [
+  { value: "pendente",   label: "Pendente",   cor: "bg-yellow-100 text-yellow-800" },
+  { value: "contatado",  label: "Contatado",  cor: "bg-blue-100 text-blue-800" },
+  { value: "renovado",   label: "Renovado",   cor: "bg-green-100 text-green-800" },
+  { value: "perdido",    label: "Perdido",    cor: "bg-red-100 text-red-800" },
+];
+
+function diasParaVencer(vence_em: string): number {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const v = new Date(vence_em + "T00:00:00");
+  return Math.round((v.getTime() - hoje.getTime()) / 86400000);
+}
+
+function AbaRenovacoes() {
+  const [renovacoes, setRenovacoes] = useState<Renovacao[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [filtroStatus, setFiltroStatus] = useState<string>("todos");
+  const [salvando, setSalvando] = useState<string | null>(null);
+
+  async function carregar() {
+    setCarregando(true);
+    const { data } = await supabase.from("crm_renovacoes").select("*").order("vence_em", { ascending: true });
+    if (data) setRenovacoes(data as Renovacao[]);
+    setCarregando(false);
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  async function atualizarStatus(id: string, status: string) {
+    setSalvando(id);
+    await supabase.from("crm_renovacoes").update({ status }).eq("id", id);
+    setRenovacoes(rs => rs.map(r => r.id === id ? { ...r, status } : r));
+    setSalvando(null);
+  }
+
+  async function salvarObs(id: string, obs: string) {
+    await supabase.from("crm_renovacoes").update({ observacoes: obs }).eq("id", id);
+  }
+
+  const filtradas = filtroStatus === "todos" ? renovacoes : renovacoes.filter(r => r.status === filtroStatus);
+
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Renovações de Garantia</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Certificados emitidos — vencimento em 6 meses</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {["todos", ...STATUS_REN.map(s => s.value)].map(s => {
+            const info = STATUS_REN.find(x => x.value === s);
+            return (
+              <button
+                key={s}
+                onClick={() => setFiltroStatus(s)}
+                className={cn("px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
+                  filtroStatus === s
+                    ? "bg-[#1a6b2f] text-white border-[#1a6b2f]"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300")}
+              >
+                {s === "todos" ? "Todos" : info?.label}
+                {s !== "todos" && <span className="ml-1 opacity-70">({renovacoes.filter(r => r.status === s).length})</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {carregando ? (
+        <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-gray-300" /></div>
+      ) : filtradas.length === 0 ? (
+        <div className="flex flex-col items-center py-16 text-center text-gray-400 gap-2">
+          <span className="text-4xl">🔄</span>
+          <p className="font-medium">Nenhuma renovação encontrada</p>
+          <p className="text-sm">Ao gerar um certificado na Logística, ele aparece aqui automaticamente.</p>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {filtradas.map(r => {
+            const dias = diasParaVencer(r.vence_em);
+            const vencido = dias < 0;
+            const urgente = dias >= 0 && dias <= 30;
+            const statusInfo = STATUS_REN.find(s => s.value === r.status) ?? STATUS_REN[0];
+            const cliente = r.cliente_empresa || r.cliente_nome || "—";
+            const dataEmissao = new Date(r.emitido_em + "T00:00:00").toLocaleDateString("pt-BR");
+            const dataVence = new Date(r.vence_em + "T00:00:00").toLocaleDateString("pt-BR");
+
+            return (
+              <div key={r.id} className={cn(
+                "rounded-xl border bg-white p-4 shadow-sm flex flex-col gap-3",
+                vencido ? "border-red-200" : urgente ? "border-orange-200" : "border-gray-200"
+              )}>
+                {/* Cabeçalho */}
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="font-semibold text-gray-900">{cliente}</p>
+                    {r.cliente_endereco && <p className="text-xs text-gray-500 mt-0.5">📍 {r.cliente_endereco}</p>}
+                  </div>
+                  <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", statusInfo.cor)}>
+                    {statusInfo.label}
+                  </span>
+                </div>
+
+                {/* Datas */}
+                <div className="flex gap-4 text-sm flex-wrap">
+                  <div>
+                    <p className="text-xs text-gray-400">Emitido em</p>
+                    <p className="font-medium text-gray-700">{dataEmissao}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Vence em</p>
+                    <p className={cn("font-medium", vencido ? "text-red-600" : urgente ? "text-orange-600" : "text-gray-700")}>{dataVence}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Situação</p>
+                    <p className={cn("font-semibold", vencido ? "text-red-600" : urgente ? "text-orange-600" : "text-green-700")}>
+                      {vencido ? `Vencido há ${Math.abs(dias)} dia${Math.abs(dias) !== 1 ? "s" : ""}` : dias === 0 ? "Vence hoje!" : `${dias} dia${dias !== 1 ? "s" : ""} restante${dias !== 1 ? "s" : ""}`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Contato */}
+                <div className="flex gap-4 text-xs text-gray-600 flex-wrap">
+                  {r.cliente_telefone && <span>📞 {r.cliente_telefone}</span>}
+                  {r.cliente_email && <span>✉️ {r.cliente_email}</span>}
+                </div>
+
+                {/* Observações */}
+                <textarea
+                  defaultValue={r.observacoes ?? ""}
+                  onBlur={e => salvarObs(r.id, e.target.value)}
+                  placeholder="Observações sobre o contato..."
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/30 resize-none"
+                />
+
+                {/* Ações */}
+                <div className="flex gap-2 flex-wrap">
+                  {STATUS_REN.map(s => (
+                    <button
+                      key={s.value}
+                      disabled={r.status === s.value || salvando === r.id}
+                      onClick={() => atualizarStatus(r.id, s.value)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                        r.status === s.value
+                          ? s.cor + " border-transparent cursor-default"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 disabled:opacity-50"
+                      )}
+                    >
+                      {salvando === r.id ? "…" : s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 function CrmPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [view, setView] = useState<"lista" | "kanban">("lista");
+  const [abaPrincipal, setAbaPrincipal] = useState<"pipeline" | "renovacoes">("pipeline");
   const [filtroEtapa, setFiltroEtapa] = useState<Etapa | "todas">("todas");
   const [filtroPrazo, setFiltroPrazo] = useState("");
   // Filtros combinados (chips)
@@ -4260,6 +4441,25 @@ function CrmPage() {
 
       {/* Painel principal */}
       <div className="flex flex-col flex-1 min-w-0 p-6 overflow-auto">
+        {/* Abas principais */}
+        <div className="mb-4 flex gap-1 border-b border-gray-200">
+          <button
+            onClick={() => setAbaPrincipal("pipeline")}
+            className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors", abaPrincipal === "pipeline" ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-500 hover:text-gray-700")}
+          >
+            🏷️ Pipeline
+          </button>
+          <button
+            onClick={() => setAbaPrincipal("renovacoes")}
+            className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors", abaPrincipal === "renovacoes" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700")}
+          >
+            🔄 Renovações
+          </button>
+        </div>
+
+        {abaPrincipal === "renovacoes" && <AbaRenovacoes />}
+
+        {abaPrincipal === "pipeline" && <>
         <div className="mb-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">CRM Comercial</h1>
@@ -4718,6 +4918,7 @@ function CrmPage() {
             })}
           </div>
         )}
+        </>}
       </div>
 
       {/* CARD DETALHADO — Modal fullscreen */}
