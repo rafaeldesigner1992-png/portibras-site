@@ -85,6 +85,25 @@ serve(async (req) => {
     "X-WR-CALDESC:Agenda técnica de atendimentos PORTIBRAS",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
+    // Bloco VTIMEZONE obrigatório para Google Calendar reconhecer TZID=America/Sao_Paulo
+    "BEGIN:VTIMEZONE",
+    "TZID:America/Sao_Paulo",
+    "X-LIC-LOCATION:America/Sao_Paulo",
+    "BEGIN:STANDARD",
+    "TZOFFSETFROM:-0200",
+    "TZOFFSETTO:-0300",
+    "TZNAME:BRT",
+    "DTSTART:19701018T000000",
+    "RRULE:FREQ=YEARLY;BYDAY=3SU;BYMONTH=2",
+    "END:STANDARD",
+    "BEGIN:DAYLIGHT",
+    "TZOFFSETFROM:-0300",
+    "TZOFFSETTO:-0200",
+    "TZNAME:BRST",
+    "DTSTART:19701004T000000",
+    "RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11",
+    "END:DAYLIGHT",
+    "END:VTIMEZONE",
   ];
 
   for (const a of (atendimentos ?? [])) {
