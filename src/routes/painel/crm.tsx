@@ -4022,10 +4022,11 @@ function CrmPage() {
   }
 
   async function salvar() {
-    if (!form.nome?.trim()) return;
+    const nomeEfetivo = form.nome?.trim() || form.empresa?.trim() || "";
+    if (!nomeEfetivo) return;
     const clienteId = form.cliente_id || null;
     const payload = {
-      nome: form.nome,
+      nome: nomeEfetivo,
       empresa: form.empresa,
       cnpj: form.cnpj?.replace(/\D/g, "") || "",
       telefone: form.telefone,
