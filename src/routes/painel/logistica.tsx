@@ -1935,7 +1935,8 @@ function LogisticaPage() {
                                   try {
                                     await carregarPdfMakeLog();
                                     gerarCertificadoPdf(pedidoAberto, aquisicoes);
-                                  } finally { setEmitindoCert(false); }
+                                  } catch(err) { console.error("[Cert] erro:", err); alert("Erro ao gerar PDF: " + String(err)); }
+                                  finally { setEmitindoCert(false); }
                                 }}
                                 className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-2 text-xs font-medium text-white hover:bg-[#155a26] disabled:opacity-60 transition-colors"
                               >
@@ -1949,7 +1950,8 @@ function LogisticaPage() {
                                   try {
                                     await carregarPdfMakeLog();
                                     gerarManualPdf(pedidoAberto);
-                                  } finally { setEmitindoCert(false); }
+                                  } catch(err) { console.error("[Manual] erro:", err); alert("Erro ao gerar PDF: " + String(err)); }
+                                  finally { setEmitindoCert(false); }
                                 }}
                                 className="flex items-center gap-1.5 rounded-lg border border-[#1a6b2f] px-3 py-2 text-xs font-medium text-[#1a6b2f] hover:bg-[#1a6b2f]/10 disabled:opacity-60 transition-colors"
                               >
