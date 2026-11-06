@@ -936,7 +936,7 @@ function LogisticaPage() {
   const [concluindoId, setConcluindoId] = useState<string | null>(null);
   const [filtroVistoria, setFiltroVistoria] = useState<string>("ativas");
 
-  // ── Materiais (Compras) ────────────────────────────────────────────────────
+  // ── Materiais legado (mantido para compatibilidade) ───────────────────────
   const [materiais, setMateriais] = useState<Material[]>([]);
   const [carregandoMat, setCarregandoMat] = useState(false);
   const [modalMat, setModalMat] = useState<{ aberto: boolean; atendimentoId: string | null }>({ aberto: false, atendimentoId: null });
@@ -944,11 +944,147 @@ function LogisticaPage() {
   const [salvandoMat, setSalvandoMat] = useState(false);
   const [atendFiltroCompras, setAtendFiltroCompras] = useState<string | null>(null);
 
+  // ── Compras consolidadas (novo modelo) ────────────────────────────────────
+  type Compra = {
+    id: string;
+    titulo: string;
+    fornecedor: string | null;
+    materiais: string | null;
+    custo: number | null;
+    status_entrega: "Não iniciada" | "Em andamento" | "Concluído";
+    finalizado: boolean;
+    previsao_chegada: string | null;
+    data_recebido: string | null;
+    quem_recebeu: string | null;
+    observacoes: string | null;
+    criado_em: string;
+    pedidos?: { id: string; titulo: string; classificacao: string }[];
+  };
+  const FORNECEDORES = ["G Sardou", "Disafe", "GUBLER", "DW15", "Original Portas"];
+  const STATUS_COMPRA_COR: Record<string, string> = {
+    "Não iniciada": "bg-gray-100 text-gray-600",
+    "Em andamento": "bg-blue-100 text-blue-700",
+    "Concluído":    "bg-green-100 text-green-700",
+  };
+  const EMPTY_COMPRA = {
+    titulo: "", fornecedor: "", materiais: "", custo: "",
+    status_entrega: "Não iniciada" as Compra["status_entrega"],
+    previsao_chegada: "", data_recebido: "", quem_recebeu: "",
+    observacoes: "", pedidosSel: [] as string[],
+  };
+  const [compras, setCompras] = useState<Compra[]>([]);
+  const [carregandoCompras, setCarregandoCompras] = useState(false);
+  const [modalCompra, setModalCompra] = useState(false);
+  const [compraEditando, setCompraEditando] = useState<string | null>(null);
+  const [formCompra, setFormCompra] = useState({ ...EMPTY_COMPRA });
+  const [salvandoCompra, setSalvandoCompra] = useState(false);
+  const [compraAberta, setCompraAberta] = useState<string | null>(null);
+
+  async function carregarCompras() {
+    setCarregandoCompras(true);
+    const { data } = await supabase
+      .from("logistica_compras")
+      .select("*")
+      .order("criado_em", { ascending: false });
+    if (!data) { setCarregandoCompras(false); return; }
+    // Buscar vínculos
+    const ids = data.map((c: Compra) => c.id);
+    const { data: vinculos } = ids.length
+      ? await supabase.from("logistica_compras_atendimentos").select("compra_id, pedido_id").in("compra_id", ids)
+      : { data: [] };
+    // Montar mapa
+    const mapaVinculos: Record<string, string[]> = {};
+    for (const v of (vinculos ?? [])) {
+      if (!mapaVinculos[v.compra_id]) mapaVinculos[v.compra_id] = [];
+      mapaVinculos[v.compra_id].push(v.pedido_id);
+    }
+    // Enriquecer com atendimentos
+    const comprasEnriquecidas = data.map((c: Compra) => ({
+      ...c,
+      pedidos: (mapaVinculos[c.id] ?? [])
+        .map(pid => atendimentos.find(a => a.id === pid))
+        .filter(Boolean)
+        .map(a => ({ id: a!.id, titulo: a!.titulo, classificacao: a!.classificacao })),
+    }));
+    setCompras(comprasEnriquecidas);
+    setCarregandoCompras(false);
+  }
+
+  async function salvarCompra() {
+    if (!formCompra.titulo.trim()) return;
+    setSalvandoCompra(true);
+    const payload = {
+      titulo: formCompra.titulo.trim(),
+      fornecedor: formCompra.fornecedor || null,
+      materiais: formCompra.materiais || null,
+      custo: formCompra.custo ? Number(formCompra.custo) : null,
+      status_entrega: formCompra.status_entrega,
+      previsao_chegada: formCompra.previsao_chegada || null,
+      data_recebido: formCompra.data_recebido || null,
+      quem_recebeu: formCompra.quem_recebeu || null,
+      observacoes: formCompra.observacoes || null,
+    };
+    let compraId = compraEditando;
+    if (compraEditando) {
+      await supabase.from("logistica_compras").update(payload).eq("id", compraEditando);
+      // Remover vínculos antigos
+      await supabase.from("logistica_compras_atendimentos").delete().eq("compra_id", compraEditando);
+    } else {
+      const { data } = await supabase.from("logistica_compras").insert(payload).select().single();
+      compraId = data?.id ?? null;
+    }
+    // Inserir novos vínculos
+    if (compraId && formCompra.pedidosSel.length) {
+      await supabase.from("logistica_compras_atendimentos").insert(
+        formCompra.pedidosSel.map(pid => ({ compra_id: compraId, pedido_id: pid }))
+      );
+    }
+    setSalvandoCompra(false);
+    setModalCompra(false);
+    setCompraEditando(null);
+    setFormCompra({ ...EMPTY_COMPRA });
+    carregarCompras();
+  }
+
+  async function excluirCompra(id: string) {
+    if (!confirm("Excluir esta compra?")) return;
+    await supabase.from("logistica_compras").delete().eq("id", id);
+    carregarCompras();
+  }
+
+  async function toggleFinalizadoCompra(id: string, atual: boolean) {
+    await supabase.from("logistica_compras").update({ finalizado: !atual }).eq("id", id);
+    setCompras(cs => cs.map(c => c.id === id ? { ...c, finalizado: !atual } : c));
+  }
+
+  function abrirNovaCompra() {
+    setCompraEditando(null);
+    setFormCompra({ ...EMPTY_COMPRA });
+    setModalCompra(true);
+  }
+
+  function abrirEditarCompra(c: Compra) {
+    setCompraEditando(c.id);
+    setFormCompra({
+      titulo: c.titulo,
+      fornecedor: c.fornecedor ?? "",
+      materiais: c.materiais ?? "",
+      custo: c.custo?.toString() ?? "",
+      status_entrega: c.status_entrega,
+      previsao_chegada: c.previsao_chegada ?? "",
+      data_recebido: c.data_recebido ?? "",
+      quem_recebeu: c.quem_recebeu ?? "",
+      observacoes: c.observacoes ?? "",
+      pedidosSel: c.pedidos?.map(p => p.id) ?? [],
+    });
+    setModalCompra(true);
+  }
+
   useEffect(() => {
     if (aba === "pedidos") carregarPedidosLog();
     if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); }
     if (aba === "gantt") carregarAtendimentos();
-    if (aba === "compras") { carregarAtendimentos(); carregarMateriais(); }
+    if (aba === "compras") { carregarAtendimentos().then(() => carregarCompras()); }
     if (aba === "estoque") carregarEstoque();
     if (aba === "vistorias") carregarVistorias();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3329,119 +3465,188 @@ function LogisticaPage() {
       {/* ═══════ ABA COMPRAS ═══════ */}
       {aba === "compras" && (
         <>
+          {/* Cabeçalho */}
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500">Materiais agrupados por atendimento</p>
-            <div className="flex items-center gap-2">
-              <select className="input-field w-auto" value={atendFiltroCompras ?? ""} onChange={e => setAtendFiltroCompras(e.target.value || null)}>
-                <option value="">Todos os atendimentos</option>
-                {atendimentos.map(a => <option key={a.id} value={a.id}>{a.titulo}</option>)}
-              </select>
-            </div>
+            <p className="text-sm text-gray-500">{compras.length} compra{compras.length !== 1 ? "s" : ""} registrada{compras.length !== 1 ? "s" : ""}</p>
+            <button onClick={abrirNovaCompra}
+              className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
+              <Plus className="h-4 w-4" /> Nova Compra
+            </button>
           </div>
 
-          {carregandoMat ? (
+          {carregandoCompras ? (
             <div className="flex items-center gap-2 text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
+          ) : compras.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400">
+              Nenhuma compra registrada ainda.
+            </div>
           ) : (
-            <div className="space-y-4">
-              {atendimentos
-                .filter(a => !atendFiltroCompras || a.id === atendFiltroCompras)
-                .filter(a => materiais.some(m => m.atendimento_id === a.id))
-                .map(atend => {
-                  const mats = materiais.filter(m => m.atendimento_id === atend.id);
-                  return (
-                    <div key={atend.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
-                      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-gray-900">{atend.titulo}</span>
-                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[atend.classificacao])}>{atend.classificacao}</span>
+            <div className="space-y-3">
+              {compras.map(c => {
+                const aberta = compraAberta === c.id;
+                const semaforo = c.previsao_chegada && !c.data_recebido
+                  ? (() => {
+                      const dias = Math.ceil((new Date(c.previsao_chegada).getTime() - Date.now()) / 86400000);
+                      if (dias < 0) return "text-red-600";
+                      if (dias <= 3) return "text-orange-500";
+                      return "text-green-600";
+                    })()
+                  : null;
+
+                return (
+                  <div key={c.id} className={cn("rounded-xl border bg-white shadow-sm transition-all", c.finalizado ? "opacity-60" : "")}>
+                    {/* Linha principal */}
+                    <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => setCompraAberta(aberta ? null : c.id)}>
+                      {/* Checkbox finalizado */}
+                      <input type="checkbox" checked={c.finalizado} onChange={e => { e.stopPropagation(); toggleFinalizadoCompra(c.id, c.finalizado); }}
+                        className="h-4 w-4 rounded accent-[#1a6b2f] cursor-pointer" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-gray-900">{c.titulo}</span>
+                          {c.fornecedor && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{c.fornecedor}</span>}
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_COMPRA_COR[c.status_entrega])}>{c.status_entrega}</span>
                         </div>
-                        <button onClick={() => abrirModalMat(atend.id)}
-                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-[#1a6b2f] hover:bg-green-50">
-                          <Plus className="h-3 w-3" /> Material
-                        </button>
-                      </div>
-                      <div className="divide-y divide-gray-50">
-                        {mats.map(mat => (
-                          <div key={mat.id} className="flex items-center gap-3 px-4 py-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-800">{mat.descricao}</span>
-                                {mat.codigo && <span className="text-xs text-gray-400">#{mat.codigo}</span>}
-                              </div>
-                              <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500">
-                                <span>{mat.quantidade} {mat.unidade}</span>
-                                {mat.fornecedor && <span>— {mat.fornecedor}</span>}
-                                {mat.valor_total && <span className="font-medium text-gray-700">R$ {mat.valor_total.toFixed(2)}</span>}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <select value={mat.status} onChange={e => atualizarStatusMat(mat.id, e.target.value as Material["status"])}
-                                className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium cursor-pointer focus:outline-none", STATUS_MAT_COR[mat.status])}>
-                                {["Solicitado", "Comprado", "Chegou no escritório", "Enviado ao campo", "Instalado"].map(s => <option key={s}>{s}</option>)}
-                              </select>
-                              <button onClick={() => excluirMat(mat.id)} className="text-red-400 hover:text-red-600">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
+                        <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                          {c.materiais && <span className="truncate max-w-[200px]">{c.materiais}</span>}
+                          {c.custo && <span className="font-medium text-gray-700">R$ {c.custo.toFixed(2)}</span>}
+                          {c.previsao_chegada && !c.data_recebido && (
+                            <span className={cn("font-medium", semaforo)}>
+                              Prev. {new Date(c.previsao_chegada + "T12:00:00").toLocaleDateString("pt-BR")}
+                            </span>
+                          )}
+                          {c.data_recebido && <span className="text-green-600 font-medium">✓ Recebido {new Date(c.data_recebido + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
+                        </div>
+                        {/* Atendimentos vinculados */}
+                        {c.pedidos && c.pedidos.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {c.pedidos.map(p => (
+                              <span key={p.id} className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[p.classificacao])}>
+                                {p.titulo.length > 30 ? p.titulo.slice(0, 30) + "…" : p.titulo}
+                              </span>
+                            ))}
                           </div>
-                        ))}
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={e => { e.stopPropagation(); abrirEditarCompra(c); }}
+                          className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); excluirCompra(c.id); }}
+                          className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                        <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", aberta && "rotate-180")} />
                       </div>
                     </div>
-                  );
-                })}
-              {atendimentos.filter(a => materiais.some(m => m.atendimento_id === a.id)).length === 0 && (
-                <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">
-                  Nenhum material cadastrado. Adicione materiais na aba Atendimentos.
-                </div>
-              )}
+
+                    {/* Detalhe expandido */}
+                    {aberta && (
+                      <div className="border-t border-gray-100 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-gray-600">
+                        {c.quem_recebeu && <div><span className="font-medium text-gray-500">Quem recebeu:</span> {c.quem_recebeu}</div>}
+                        {c.observacoes && <div className="col-span-2"><span className="font-medium text-gray-500">Obs:</span> {c.observacoes}</div>}
+                        <div><span className="font-medium text-gray-500">Status:</span>
+                          <select value={c.status_entrega}
+                            onChange={async e => {
+                              const v = e.target.value as Compra["status_entrega"];
+                              await supabase.from("logistica_compras").update({ status_entrega: v }).eq("id", c.id);
+                              setCompras(cs => cs.map(x => x.id === c.id ? { ...x, status_entrega: v } : x));
+                            }}
+                            className="ml-1 rounded border border-gray-200 px-1 py-0.5 text-xs focus:outline-none">
+                            {["Não iniciada", "Em andamento", "Concluído"].map(s => <option key={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {/* Modal Material */}
-          {modalMat.aberto && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalMat({ aberto: false, atendimentoId: null })}>
-              <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-                  <h3 className="font-semibold text-gray-900">Adicionar Material</h3>
-                  <button onClick={() => setModalMat({ aberto: false, atendimentoId: null })} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+          {/* Modal Nova/Editar Compra */}
+          {modalCompra && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalCompra(false)}>
+              <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 sticky top-0 bg-white z-10">
+                  <h3 className="font-semibold text-gray-900">{compraEditando ? "Editar Compra" : "Nova Compra"}</h3>
+                  <button onClick={() => setModalCompra(false)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
                 </div>
                 <div className="p-6 space-y-4">
                   <div>
-                    <label className="label-field">Descrição *</label>
-                    <input className="input-field" value={formMat.descricao} onChange={e => setFormMat(f => ({ ...f, descricao: e.target.value }))} placeholder="Nome do material" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label-field">Quantidade</label>
-                      <input type="number" className="input-field" value={formMat.quantidade} onChange={e => setFormMat(f => ({ ...f, quantidade: Number(e.target.value) }))} min={1} />
-                    </div>
-                    <div>
-                      <label className="label-field">Unidade</label>
-                      <select className="input-field" value={formMat.unidade} onChange={e => setFormMat(f => ({ ...f, unidade: e.target.value }))}>
-                        {["un", "m", "m²", "m³", "kg", "L", "cx", "pç", "par", "rolo"].map(u => <option key={u}>{u}</option>)}
-                      </select>
-                    </div>
+                    <label className="label-field">Título / Referência *</label>
+                    <input className="input-field" value={formCompra.titulo} onChange={e => setFormCompra(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Compra G Sardou — Nov/26" />
                   </div>
                   <div>
                     <label className="label-field">Fornecedor</label>
-                    <input className="input-field" value={formMat.fornecedor} onChange={e => setFormMat(f => ({ ...f, fornecedor: e.target.value }))} placeholder="Nome do fornecedor" />
-                  </div>
-                  <div>
-                    <label className="label-field">Status</label>
-                    <select className="input-field" value={formMat.status} onChange={e => setFormMat(f => ({ ...f, status: e.target.value as Material["status"] }))}>
-                      {["Solicitado", "Comprado", "Chegou no escritório", "Enviado ao campo", "Instalado"].map(s => <option key={s}>{s}</option>)}
+                    <select className="input-field" value={formCompra.fornecedor} onChange={e => setFormCompra(f => ({ ...f, fornecedor: e.target.value }))}>
+                      <option value="">Selecionar...</option>
+                      {FORNECEDORES.map(f => <option key={f}>{f}</option>)}
+                      <option value="Outro">Outro</option>
                     </select>
                   </div>
                   <div>
+                    <label className="label-field">Materiais</label>
+                    <textarea className="input-field" rows={2} value={formCompra.materiais} onChange={e => setFormCompra(f => ({ ...f, materiais: e.target.value }))} placeholder="Ex: 12 fechaduras sem chave, 4 dobradiças" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">Custo (R$)</label>
+                      <input type="number" className="input-field" value={formCompra.custo} onChange={e => setFormCompra(f => ({ ...f, custo: e.target.value }))} placeholder="0,00" min={0} step={0.01} />
+                    </div>
+                    <div>
+                      <label className="label-field">Status</label>
+                      <select className="input-field" value={formCompra.status_entrega} onChange={e => setFormCompra(f => ({ ...f, status_entrega: e.target.value as Compra["status_entrega"] }))}>
+                        {["Não iniciada", "Em andamento", "Concluído"].map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">Previsão de chegada</label>
+                      <input type="date" className="input-field" value={formCompra.previsao_chegada} onChange={e => setFormCompra(f => ({ ...f, previsao_chegada: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label-field">Data recebido</label>
+                      <input type="date" className="input-field" value={formCompra.data_recebido} onChange={e => setFormCompra(f => ({ ...f, data_recebido: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label-field">Quem recebeu</label>
+                    <input className="input-field" value={formCompra.quem_recebeu} onChange={e => setFormCompra(f => ({ ...f, quem_recebeu: e.target.value }))} placeholder="Nome do responsável" />
+                  </div>
+                  {/* Atendimentos vinculados */}
+                  <div>
+                    <label className="label-field">Atendimentos vinculados</label>
+                    <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                      {atendimentos.length === 0 && <p className="p-3 text-xs text-gray-400">Nenhum atendimento disponível</p>}
+                      {atendimentos.map(a => (
+                        <label key={a.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                          <input type="checkbox"
+                            checked={formCompra.pedidosSel.includes(a.id)}
+                            onChange={e => setFormCompra(f => ({
+                              ...f,
+                              pedidosSel: e.target.checked
+                                ? [...f.pedidosSel, a.id]
+                                : f.pedidosSel.filter(id => id !== a.id)
+                            }))}
+                            className="accent-[#1a6b2f]" />
+                          <span className="text-xs text-gray-700 flex-1 min-w-0 truncate">{a.titulo}</span>
+                          <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0", CLASS_COR[a.classificacao])}>{a.classificacao}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
                     <label className="label-field">Observações</label>
-                    <textarea className="input-field" rows={2} value={formMat.observacoes} onChange={e => setFormMat(f => ({ ...f, observacoes: e.target.value }))} />
+                    <textarea className="input-field" rows={2} value={formCompra.observacoes} onChange={e => setFormCompra(f => ({ ...f, observacoes: e.target.value }))} />
                   </div>
                 </div>
-                <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
-                  <button onClick={() => setModalMat({ aberto: false, atendimentoId: null })} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
-                  <button onClick={salvarMat} disabled={salvandoMat || !formMat.descricao.trim()}
+                <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4 sticky bottom-0 bg-white">
+                  <button onClick={() => setModalCompra(false)} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                  <button onClick={salvarCompra} disabled={salvandoCompra || !formCompra.titulo.trim()}
                     className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
-                    {salvandoMat ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : "Adicionar"}
+                    {salvandoCompra ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : "Salvar"}
                   </button>
                 </div>
               </div>
