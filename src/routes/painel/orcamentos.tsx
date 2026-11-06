@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Calculator, ExternalLink, Search, ChevronDown, X,
   Building2, Clock, TrendingUp, Wrench, DoorOpen, BarChart3,
+  Trash2, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -317,8 +319,59 @@ function PainelManutencao({ prop, onFechar }: { prop: PropostaEnriquecida; onFec
   );
 }
 
+// ─── Modal de confirmação de exclusão ──────────────────────────────────────
+function ModalConfirmarExclusao({
+  nome,
+  onConfirmar,
+  onCancelar,
+  excluindo,
+}: {
+  nome: string;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+  excluindo: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start gap-3 p-5">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-gray-900">Excluir registro</p>
+            <p className="mt-1 text-sm text-gray-500">
+              Tem certeza que deseja excluir o registro de{" "}
+              <span className="font-semibold text-gray-800">{nome}</span>?
+              Esta ação não pode ser desfeita.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 border-t border-gray-100 px-5 py-4">
+          <button
+            onClick={onCancelar}
+            disabled={excluindo}
+            className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirmar}
+            disabled={excluindo}
+            className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {excluindo ? "Excluindo…" : "Excluir"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ───────────────────────────────────────────────────────
 function OrcamentosPage() {
+  const { usuario } = useAuth();
+  const isAdmin = usuario?.perfil === "admin";
   const [aba, setAba] = useState<"orcamentos" | "manutencao">("orcamentos");
   const [orcamentos, setOrcamentos] = useState<OrcamentoEnriquecido[]>([]);
   const [manutencoes, setManutencoes] = useState<PropostaEnriquecida[]>([]);
@@ -328,6 +381,45 @@ function OrcamentosPage() {
   const [filtroEtapa, setFiltroEtapa] = useState<string>("todas");
   const [orcSelecionado, setOrcSelecionado] = useState<OrcamentoEnriquecido | null>(null);
   const [manSelecionada, setManSelecionada] = useState<PropostaEnriquecida | null>(null);
+
+  // Exclusão
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [excluindoTipo, setExcluindoTipo] = useState<"orcamento" | "manutencao" | null>(null);
+  const [excluindoNome, setExcluindoNome] = useState("");
+  const [processandoExclusao, setProcessandoExclusao] = useState(false);
+
+  function pedirExclusao(
+    e: React.MouseEvent,
+    id: string,
+    tipo: "orcamento" | "manutencao",
+    nome: string
+  ) {
+    e.stopPropagation(); // não abre o painel lateral
+    setExcluindoId(id);
+    setExcluindoTipo(tipo);
+    setExcluindoNome(nome);
+  }
+
+  async function confirmarExclusao() {
+    if (!excluindoId || !excluindoTipo) return;
+    setProcessandoExclusao(true);
+    const tabela = excluindoTipo === "orcamento" ? "crm_orcamentos" : "crm_propostas";
+    await supabase.from(tabela).delete().eq("id", excluindoId);
+    // Fecha painel se for o item aberto
+    if (excluindoTipo === "orcamento" && orcSelecionado?.id === excluindoId) setOrcSelecionado(null);
+    if (excluindoTipo === "manutencao" && manSelecionada?.id === excluindoId) setManSelecionada(null);
+    setProcessandoExclusao(false);
+    setExcluindoId(null);
+    setExcluindoTipo(null);
+    setExcluindoNome("");
+    await carregar();
+  }
+
+  function cancelarExclusao() {
+    setExcluindoId(null);
+    setExcluindoTipo(null);
+    setExcluindoNome("");
+  }
 
   useEffect(() => { carregar(); }, []);
 
@@ -551,9 +643,19 @@ function OrcamentosPage() {
                             <p className="font-semibold text-sm text-gray-900 truncate">{lead?.nome ?? "—"}</p>
                             <p className="text-xs text-gray-500 truncate">{lead?.empresa}</p>
                           </div>
-                          <div className="flex-shrink-0 text-right">
-                            <p className="text-sm font-bold text-[#1a6b2f]">{fmt(orc.preco_final)}</p>
-                            <p className="text-[10px] text-gray-400">{fmtData(orc.criado_em)}</p>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-[#1a6b2f]">{fmt(orc.preco_final)}</p>
+                              <p className="text-[10px] text-gray-400">{fmtData(orc.criado_em)}</p>
+                            </div>
+                            {isAdmin && (
+                              <button
+                                onClick={e => pedirExclusao(e, orc.id, "orcamento", lead?.nome ?? lead?.empresa ?? "este orçamento")}
+                                className="rounded-lg p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div className="mt-2 flex gap-2">
@@ -575,7 +677,17 @@ function OrcamentosPage() {
                           <Clock className="h-3.5 w-3.5 text-gray-300" />{fmtData(orc.criado_em)}
                         </p>
                         <p className="text-sm font-bold text-[#1a6b2f] text-right">{fmt(orc.preco_final)}</p>
-                        <TrendingUp className="h-4 w-4 text-gray-300 justify-self-center" />
+                        {isAdmin ? (
+                          <button
+                            onClick={e => pedirExclusao(e, orc.id, "orcamento", lead?.nome ?? lead?.empresa ?? "este orçamento")}
+                            className="justify-self-center rounded-lg p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            title="Excluir orçamento"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <TrendingUp className="h-4 w-4 text-gray-300 justify-self-center" />
+                        )}
                       </div>
                     </button>
                   );
@@ -619,9 +731,19 @@ function OrcamentosPage() {
                             <p className="font-semibold text-sm text-gray-900 truncate">{lead?.nome ?? "—"}</p>
                             <p className="text-xs text-gray-500 truncate">{lead?.empresa}</p>
                           </div>
-                          <div className="flex-shrink-0 text-right">
-                            <p className="text-sm font-bold text-[#1a6b2f]">{fmt(man.conteudo?.parcela ?? 0)}/mês</p>
-                            <p className="text-[10px] text-gray-400">{man.conteudo?.portas ?? 0} portas</p>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-[#1a6b2f]">{fmt(man.conteudo?.parcela ?? 0)}/mês</p>
+                              <p className="text-[10px] text-gray-400">{man.conteudo?.portas ?? 0} portas</p>
+                            </div>
+                            {isAdmin && (
+                              <button
+                                onClick={e => pedirExclusao(e, man.id, "manutencao", lead?.nome ?? lead?.empresa ?? "esta manutenção")}
+                                className="rounded-lg p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div className="mt-2 flex gap-2">
@@ -641,7 +763,17 @@ function OrcamentosPage() {
                         <p className="text-sm text-gray-700 font-medium">{man.conteudo?.portas ?? "—"} portas</p>
                         <p className="text-sm font-bold text-[#1a6b2f] text-right">{man.conteudo ? fmt(man.conteudo.parcela) : "—"}</p>
                         <p className="text-sm text-gray-600 text-right">{valorAnual > 0 ? fmt(valorAnual) : "—"}</p>
-                        <Wrench className="h-4 w-4 text-gray-300 justify-self-center" />
+                        {isAdmin ? (
+                          <button
+                            onClick={e => pedirExclusao(e, man.id, "manutencao", lead?.nome ?? lead?.empresa ?? "esta manutenção")}
+                            className="justify-self-center rounded-lg p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            title="Excluir proposta"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <Wrench className="h-4 w-4 text-gray-300 justify-self-center" />
+                        )}
                       </div>
                     </button>
                   );
@@ -662,6 +794,16 @@ function OrcamentosPage() {
         <div className="flex-shrink-0 w-full md:w-96 h-full border-l border-gray-200">
           <PainelManutencao prop={manSelecionada} onFechar={() => setManSelecionada(null)} />
         </div>
+      )}
+
+      {/* Modal de confirmação de exclusão */}
+      {excluindoId && (
+        <ModalConfirmarExclusao
+          nome={excluindoNome}
+          onConfirmar={confirmarExclusao}
+          onCancelar={cancelarExclusao}
+          excluindo={processandoExclusao}
+        />
       )}
     </div>
   );
