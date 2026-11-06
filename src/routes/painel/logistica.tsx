@@ -960,7 +960,22 @@ function LogisticaPage() {
     criado_em: string;
     pedidos?: { id: string; titulo: string; classificacao: string }[];
   };
-  const FORNECEDORES = ["G Sardou", "Disafe", "GUBLER", "DW15", "Original Portas"];
+  const FORNECEDORES_PADRAO = ["G Sardou", "Disafe", "GUBLER", "DW15", "Original Portas"];
+  const [fornecedoresLista, setFornecedoresLista] = useState<string[]>(FORNECEDORES_PADRAO);
+  useEffect(() => {
+    supabase
+      .from("configuracoes")
+      .select("valor")
+      .eq("chave", "logistica_fornecedores")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.valor) {
+          try { setFornecedoresLista(JSON.parse(data.valor)); } catch { /* mantém padrão */ }
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const FORNECEDORES = fornecedoresLista;
   const STATUS_COMPRA_COR: Record<string, string> = {
     "Não iniciada": "bg-gray-100 text-gray-600",
     "Em andamento": "bg-blue-100 text-blue-700",

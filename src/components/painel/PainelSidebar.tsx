@@ -20,6 +20,7 @@ import {
   X,
   Search,
   AlertTriangle,
+  Settings,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -305,6 +306,22 @@ export function PainelSidebar() {
                 {usuario.nome.charAt(0).toUpperCase()}
               </div>
             ) : null}
+
+            {/* Configurações — apenas admin */}
+            {usuario.perfil === "admin" && (
+              <Link
+                to="/painel/configuracoes"
+                title={recolhido ? "Configurações" : undefined}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 mb-1",
+                  recolhido ? "w-auto justify-center px-2" : "w-full",
+                  pathname === "/painel/configuracoes" && "bg-gray-100 text-gray-900"
+                )}
+              >
+                <Settings className="h-4 w-4 flex-shrink-0" />
+                {!recolhido && "Configurações"}
+              </Link>
+            )}
 
             <button
               onClick={logout}
