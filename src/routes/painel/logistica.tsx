@@ -552,6 +552,16 @@ function GanttView({ atendimentos, carregando }: { atendimentos: Atendimento[]; 
 
 function LogisticaPage() {
   const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras" | "gantt" | "vistorias" | "pedidos">("pedidos");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function verificarPerfil() {
+      const ADMIN_UID = "b90953f7-2f32-46b2-b1fe-6be7572fc9c7";
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) setIsAdmin(session.user.id === ADMIN_UID);
+    }
+    verificarPerfil();
+  }, []);
 
   // ── Pedidos Logísticos ─────────────────────────────────────────────────────
   const [pedidosLog, setPedidosLog] = useState<PedidoLogistico[]>([]);
@@ -782,6 +792,15 @@ function LogisticaPage() {
   async function removerAquisicao(id: string) {
     await supabase.from("logistica_aquisicoes").delete().eq("id", id);
     setAquisicoes(aq => aq.filter(a => a.id !== id));
+  }
+
+  async function excluirPedido(pedido: PedidoLogistico) {
+    if (!window.confirm(`Excluir o pedido de "${pedido.cliente_empresa || pedido.cliente_nome}"? Esta ação não pode ser desfeita.`)) return;
+    // Remove aquisições vinculadas primeiro
+    await supabase.from("logistica_aquisicoes").delete().eq("pedido_id", pedido.id);
+    await supabase.from("logistica_pedidos").delete().eq("id", pedido.id);
+    setPedidosLog(ps => ps.filter(p => p.id !== pedido.id));
+    setPedidoAberto(null);
   }
 
   async function carregarPedidosFechados() {
@@ -1433,7 +1452,19 @@ function LogisticaPage() {
                       <p className="font-semibold text-gray-900">{pedidoAberto.cliente_empresa || pedidoAberto.cliente_nome || "Pedido"}</p>
                       <p className="text-xs text-gray-400">{pedidoAberto.tipo_servico === "manutencao" ? "Manutenção" : "Orçamento"}</p>
                     </div>
-                    <button onClick={() => setPedidoAberto(null)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                    <div className="flex items-center gap-2">
+                      {isAdmin && (
+                        <button
+                          onClick={() => excluirPedido(pedidoAberto)}
+                          className="flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
+                          title="Excluir pedido (somente administradores)"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Excluir
+                        </button>
+                      )}
+                      <button onClick={() => setPedidoAberto(null)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                    </div>
                   </div>
 
                   {/* Abas internas */}

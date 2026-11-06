@@ -3669,7 +3669,23 @@ function CrmPage() {
         if (errFin) throw new Error(`Erro ao lançar receita: ${errFin.message}`);
       }
 
-      // 4. Cria card em Logística para tratamento
+      // 4. Cria card em Logística (evita duplicata: só cria se não existir ainda)
+      const { data: pedidoExistente } = await supabase
+        .from("logistica_pedidos")
+        .select("id")
+        .eq("crm_lead_id", lead.id)
+        .limit(1)
+        .single();
+
+      if (pedidoExistente?.id) {
+        // Já existe — apenas atualiza o estado local e encerra
+        const updatedLead2 = { ...lead, etapa: "fechado" as Etapa, data_fechamento: agora, valor_estimado: valorVenda || lead.valor_estimado };
+        if (cardAberto?.id === lead.id) setCardAberto(updatedLead2);
+        setLeads(ls => ls.map(l => l.id === lead.id ? updatedLead2 : l));
+        setToast({ msg: `Lead fechado — card em Logística já existe`, tipo: "sucesso" });
+        return;
+      }
+
       const { error: errLog } = await supabase.from("logistica_pedidos").insert({
         crm_lead_id: lead.id,
         cliente_nome: lead.nome,
