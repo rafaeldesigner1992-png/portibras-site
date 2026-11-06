@@ -248,24 +248,51 @@ function FinanceiroPage() {
     etapa: string;
     cobrado: boolean;
     status_cobranca: StatusCobranca;
+    obs_cobranca: string | null;
+    cobrado_em: string | null;
     criado_em: string;
     crm_lead_id: string | null;
   }
+  const [subAbaFaturar, setSubAbaFaturar] = useState<"pendente" | "faturado">("pendente");
   const [pedidosFaturar, setPedidosFaturar] = useState<PedidoFaturar[]>([]);
+  const [pedidosFaturados, setPedidosFaturados] = useState<PedidoFaturar[]>([]);
   const [carregandoFaturar, setCarregandoFaturar] = useState(false);
   const [atualizandoStatus, setAtualizandoStatus] = useState<string | null>(null);
+  const [salvandoObs, setSalvandoObs] = useState<string | null>(null);
+  const [obsEditando, setObsEditando] = useState<Record<string, string>>({});
+
+  const CAMPOS_FATURAR = "id,cliente_nome,cliente_empresa,cliente_telefone,tipo_servico,valor_venda,tipo_cobranca,etapa,cobrado,status_cobranca,obs_cobranca,cobrado_em,criado_em,crm_lead_id";
 
   async function carregarPedidosFaturar() {
     setCarregandoFaturar(true);
-    const { data } = await supabase
-      .from("logistica_pedidos")
-      .select("id,cliente_nome,cliente_empresa,cliente_telefone,tipo_servico,valor_venda,tipo_cobranca,etapa,cobrado,status_cobranca,criado_em,crm_lead_id")
-      .neq("status_cobranca", "cobrado_total")
-      .not("tipo_cobranca", "eq", "sem_cobranca")
-      .not("etapa", "in", "(cancelado)")
-      .order("criado_em", { ascending: false });
-    setPedidosFaturar((data ?? []) as PedidoFaturar[]);
+    const [pendente, faturado] = await Promise.all([
+      supabase
+        .from("logistica_pedidos")
+        .select(CAMPOS_FATURAR)
+        .neq("status_cobranca", "cobrado_total")
+        .not("tipo_cobranca", "eq", "sem_cobranca")
+        .not("etapa", "in", "(cancelado)")
+        .order("criado_em", { ascending: false }),
+      supabase
+        .from("logistica_pedidos")
+        .select(CAMPOS_FATURAR)
+        .eq("status_cobranca", "cobrado_total")
+        .not("tipo_cobranca", "eq", "sem_cobranca")
+        .order("cobrado_em", { ascending: false })
+        .limit(100),
+    ]);
+    setPedidosFaturar((pendente.data ?? []) as PedidoFaturar[]);
+    setPedidosFaturados((faturado.data ?? []) as PedidoFaturar[]);
     setCarregandoFaturar(false);
+  }
+
+  async function salvarObs(id: string, obs: string) {
+    setSalvandoObs(id);
+    await supabase.from("logistica_pedidos").update({ obs_cobranca: obs || null }).eq("id", id);
+    const atualizar = (ps: PedidoFaturar[]) => ps.map(p => p.id === id ? { ...p, obs_cobranca: obs || null } : p);
+    setPedidosFaturar(atualizar);
+    setPedidosFaturados(atualizar);
+    setSalvandoObs(null);
   }
 
   async function atualizarStatusCobranca(id: string, status: StatusCobranca) {
@@ -280,8 +307,12 @@ function FinanceiroPage() {
       })
       .eq("id", id);
     if (status === "cobrado_total") {
-      // Remove da lista pois foi totalmente cobrado
-      setPedidosFaturar(ps => ps.filter(p => p.id !== id));
+      // Move da lista pendente para faturados
+      setPedidosFaturar(ps => {
+        const pedido = ps.find(p => p.id === id);
+        if (pedido) setPedidosFaturados(fs => [{ ...pedido, status_cobranca: "cobrado_total", cobrado: true, cobrado_em: new Date().toISOString() }, ...fs]);
+        return ps.filter(p => p.id !== id);
+      });
     } else {
       // Atualiza o status na lista
       setPedidosFaturar(ps => ps.map(p => p.id === id ? { ...p, status_cobranca: status } : p));
@@ -674,98 +705,185 @@ function FinanceiroPage() {
       {abaAtiva === "vendas" && (
         <div className="space-y-6">
 
-          {/* ── A FATURAR ──────────────────────────────────────────────── */}
+          {/* ── FATURAR / FATURADO ─────────────────────────────────────── */}
           <div>
-            <div className="mb-3 flex items-center gap-2">
+            {/* Sub-abas */}
+            <div className="mb-3 flex items-center gap-3 flex-wrap">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100">
                 <span className="text-[10px] font-bold text-blue-700">$</span>
               </div>
-              <h2 className="text-sm font-semibold text-gray-900">A Faturar</h2>
-              {carregandoFaturar ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-blue-500" />
-              ) : pedidosFaturar.length > 0 ? (
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{pedidosFaturar.length}</span>
-              ) : null}
-              <span className="text-xs text-gray-400">— pedidos aguardando cobrança</span>
+              <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden text-xs font-semibold">
+                <button
+                  onClick={() => setSubAbaFaturar("pendente")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 transition-colors",
+                    subAbaFaturar === "pendente"
+                      ? "bg-blue-600 text-white"
+                      : "text-gray-500 hover:bg-gray-50"
+                  )}
+                >
+                  A Faturar
+                  {!carregandoFaturar && pedidosFaturar.length > 0 && (
+                    <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", subAbaFaturar === "pendente" ? "bg-white/30 text-white" : "bg-blue-100 text-blue-700")}>
+                      {pedidosFaturar.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setSubAbaFaturar("faturado")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 transition-colors border-l border-gray-200",
+                    subAbaFaturar === "faturado"
+                      ? "bg-emerald-600 text-white"
+                      : "text-gray-500 hover:bg-gray-50"
+                  )}
+                >
+                  Faturado
+                  {!carregandoFaturar && pedidosFaturados.length > 0 && (
+                    <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", subAbaFaturar === "faturado" ? "bg-white/30 text-white" : "bg-emerald-100 text-emerald-700")}>
+                      {pedidosFaturados.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+              {carregandoFaturar && <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-blue-500" />}
             </div>
 
-            {pedidosFaturar.length === 0 && !carregandoFaturar ? (
-              <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-300">
-                Nenhum pedido pendente de cobrança
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell">Tipo</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Cobrança</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Etapa Log.</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Status Faturamento</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {pedidosFaturar.map(p => {
-                      const cliente = p.cliente_empresa || p.cliente_nome || "—";
-                      const etapaLabel: Record<string, string> = {
-                        tratamento: "Tratamento", aguard_material: "Aguard. Material",
-                        aguard_cobranca: "Aguard. Cobrança", em_execucao: "Em Execução",
-                      };
-                      const cobLabel = p.tipo_cobranca === "antes" ? "Antes da execução" : "Após a execução";
-                      const cobColor = p.tipo_cobranca === "antes" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700";
-                      return (
-                        <tr key={p.id} className="hover:bg-gray-50/60">
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-gray-900">{cliente}</p>
-                            {p.cliente_telefone && <p className="text-xs text-gray-400">{p.cliente_telefone}</p>}
-                          </td>
-                          <td className="px-4 py-3 hidden sm:table-cell">
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                              {p.tipo_servico === "manutencao" ? "Manutenção" : "Orçamento"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 hidden md:table-cell">
-                            <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", cobColor)}>{cobLabel}</span>
-                          </td>
-                          <td className="px-4 py-3 hidden lg:table-cell text-xs text-gray-500">
-                            {etapaLabel[p.etapa] || p.etapa}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-[#1a6b2f]">
-                            {p.valor_venda != null ? p.valor_venda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {atualizandoStatus === p.id ? (
-                              <div className="flex justify-end">
-                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#1a6b2f]" />
-                              </div>
-                            ) : (
-                              <select
-                                value={p.status_cobranca ?? "aguardando"}
-                                onChange={e => atualizarStatusCobranca(p.id, e.target.value as StatusCobranca)}
-                                className={cn(
-                                  "rounded-lg border px-2 py-1 text-xs font-semibold transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1",
-                                  p.status_cobranca === "cobrado_total"
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 focus:ring-emerald-300"
-                                    : p.status_cobranca === "cobrado_parcial"
-                                    ? "border-amber-200 bg-amber-50 text-amber-700 focus:ring-amber-300"
-                                    : "border-gray-200 bg-gray-50 text-gray-600 focus:ring-gray-300"
-                                )}
-                              >
-                                <option value="aguardando">⏳ Aguardando cobrança</option>
-                                <option value="cobrado_parcial">🔶 Cobrado parcial</option>
-                                <option value="cobrado_total">✅ Cobrado total</option>
-                              </select>
+            {/* Tabela compartilhada */}
+            {(() => {
+              const lista = subAbaFaturar === "pendente" ? pedidosFaturar : pedidosFaturados;
+              const vazio = subAbaFaturar === "pendente" ? "Nenhum pedido pendente de cobrança" : "Nenhum pedido faturado ainda";
+              const etapaLabel: Record<string, string> = {
+                tratamento: "Tratamento", aguard_material: "Aguard. Material",
+                aguard_cobranca: "Aguard. Cobrança", em_execucao: "Em Execução",
+                concluido: "Concluído",
+              };
+              return lista.length === 0 && !carregandoFaturar ? (
+                <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-300">{vazio}</div>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell">Tipo</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Cobrança</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Etapa Log.</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Observação</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
+                        {subAbaFaturar === "pendente" && (
+                          <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Status</th>
+                        )}
+                        {subAbaFaturar === "faturado" && (
+                          <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Faturado em</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {lista.map(p => {
+                        const cliente = p.cliente_empresa || p.cliente_nome || "—";
+                        const cobLabel = p.tipo_cobranca === "antes" ? "Antes da execução" : "Após a execução";
+                        const cobColor = p.tipo_cobranca === "antes" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700";
+                        const isParcial = p.status_cobranca === "cobrado_parcial";
+                        const obsAtual = obsEditando[p.id] ?? (p.obs_cobranca || "");
+                        return (
+                          <tr
+                            key={p.id}
+                            className={cn(
+                              "transition-colors",
+                              isParcial
+                                ? "bg-purple-50/60 hover:bg-purple-50"
+                                : "hover:bg-gray-50/60"
                             )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                          >
+                            <td className="px-4 py-3">
+                              <p className={cn("font-medium", isParcial ? "text-purple-900" : "text-gray-900")}>{cliente}</p>
+                              {p.cliente_telefone && <p className="text-xs text-gray-400">{p.cliente_telefone}</p>}
+                              {isParcial && (
+                                <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">
+                                  🔶 Parcial
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 hidden sm:table-cell">
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                                {p.tipo_servico === "manutencao" ? "Manutenção" : "Orçamento"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 hidden md:table-cell">
+                              <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", cobColor)}>{cobLabel}</span>
+                            </td>
+                            <td className="px-4 py-3 hidden lg:table-cell text-xs text-gray-500">
+                              {etapaLabel[p.etapa] || p.etapa}
+                            </td>
+                            <td className="px-4 py-3 min-w-[160px]">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="text"
+                                  value={obsAtual}
+                                  onChange={e => setObsEditando(o => ({ ...o, [p.id]: e.target.value }))}
+                                  onBlur={() => {
+                                    const val = obsEditando[p.id];
+                                    if (val !== undefined && val !== (p.obs_cobranca || "")) salvarObs(p.id, val);
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      e.currentTarget.blur();
+                                    }
+                                  }}
+                                  placeholder="Adicionar observação…"
+                                  className={cn(
+                                    "w-full rounded border px-2 py-1 text-xs placeholder-gray-300 focus:outline-none focus:ring-1",
+                                    isParcial
+                                      ? "border-purple-200 bg-purple-50/50 focus:ring-purple-300"
+                                      : "border-gray-100 bg-gray-50 focus:ring-gray-300"
+                                  )}
+                                />
+                                {salvandoObs === p.id && (
+                                  <div className="h-3 w-3 flex-shrink-0 animate-spin rounded-full border-2 border-gray-300 border-t-[#1a6b2f]" />
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-[#1a6b2f]">
+                              {p.valor_venda != null ? p.valor_venda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                            </td>
+                            {subAbaFaturar === "pendente" && (
+                              <td className="px-4 py-3 text-right">
+                                {atualizandoStatus === p.id ? (
+                                  <div className="flex justify-end">
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#1a6b2f]" />
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={p.status_cobranca ?? "aguardando"}
+                                    onChange={e => atualizarStatusCobranca(p.id, e.target.value as StatusCobranca)}
+                                    className={cn(
+                                      "rounded-lg border px-2 py-1 text-xs font-semibold transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1",
+                                      p.status_cobranca === "cobrado_parcial"
+                                        ? "border-purple-200 bg-purple-50 text-purple-700 focus:ring-purple-300"
+                                        : "border-gray-200 bg-gray-50 text-gray-600 focus:ring-gray-300"
+                                    )}
+                                  >
+                                    <option value="aguardando">⏳ Aguardando cobrança</option>
+                                    <option value="cobrado_parcial">🔶 Cobrado parcial</option>
+                                    <option value="cobrado_total">✅ Cobrado total</option>
+                                  </select>
+                                )}
+                              </td>
+                            )}
+                            {subAbaFaturar === "faturado" && (
+                              <td className="px-4 py-3 text-right text-xs text-gray-400">
+                                {p.cobrado_em ? new Date(p.cobrado_em).toLocaleDateString("pt-BR") : "—"}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
 
           {/* ── REGISTRO DE VENDAS ────────────────────────────────────── */}
