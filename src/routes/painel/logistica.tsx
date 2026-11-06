@@ -1514,6 +1514,41 @@ function LogisticaPage() {
                           </div>
                         </div>
 
+                        {/* Escopo do pedido fechado */}
+                        {(pedidoAberto.tipo_servico || pedidoAberto.portas != null || pedidoAberto.parcela_mensal != null) && (
+                          <div className="rounded-xl border border-gray-100 bg-white p-4 space-y-2.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Escopo Fechado</p>
+                            <div className="space-y-2 text-sm">
+                              {pedidoAberto.tipo_servico && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-gray-400">Tipo</span>
+                                  <span className="font-medium text-gray-800 capitalize">
+                                    {pedidoAberto.tipo_servico === "manutencao" ? "Manutenção 12×" : pedidoAberto.tipo_servico === "orcamento" ? "Orçamento" : pedidoAberto.tipo_servico}
+                                  </span>
+                                </div>
+                              )}
+                              {pedidoAberto.portas != null && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-gray-400">Portas</span>
+                                  <span className="font-bold text-gray-900">{pedidoAberto.portas} portas</span>
+                                </div>
+                              )}
+                              {pedidoAberto.parcela_mensal != null && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-gray-400">Parcela mensal</span>
+                                  <span className="font-bold text-[#1a6b2f]">{fmt(pedidoAberto.parcela_mensal)}/mês</span>
+                                </div>
+                              )}
+                              {pedidoAberto.portas != null && pedidoAberto.parcela_mensal != null && (
+                                <div className="flex items-center justify-between border-t border-gray-100 pt-2">
+                                  <span className="text-gray-400">Valor total 12×</span>
+                                  <span className="font-semibold text-gray-700">{fmt(pedidoAberto.parcela_mensal * 12)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Dados do cliente */}
                         <div className="rounded-xl border border-gray-100 bg-white p-4 space-y-2.5">
                           <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Cliente</p>

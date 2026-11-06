@@ -3620,7 +3620,22 @@ function CrmPage() {
         .limit(1);
 
       const orc = orcamentos?.[0] ?? null;
-      const valorVenda = orc?.preco_final || lead.valor_estimado || 0;
+
+      // 1b. Busca proposta de manutenção mais recente (para portas e parcela)
+      const { data: propostas } = await supabase
+        .from("crm_propostas")
+        .select("conteudo, tipo")
+        .eq("lead_id", lead.id)
+        .eq("tipo", "manutencao")
+        .neq("status", "descontinuado")
+        .order("criado_em", { ascending: false })
+        .limit(1);
+
+      const prop = propostas?.[0] ?? null;
+      const portasFechadas: number | null = (prop?.conteudo as ConteudoProposta | null)?.portas ?? null;
+      const parcelaFechada: number | null = (prop?.conteudo as ConteudoProposta | null)?.parcela ?? null;
+
+      const valorVenda = orc?.preco_final || (parcelaFechada ? parcelaFechada * 12 : 0) || lead.valor_estimado || 0;
       const custoVenda = orc?.custo_total ?? null;
       const margemReal = orc?.margem_pct ?? null;
 
@@ -3667,7 +3682,8 @@ function CrmPage() {
         custo_estimado: custoVenda,
         margem_pct: margemReal,
         observacoes_crm: lead.observacoes,
-        portas: null,
+        portas: portasFechadas,
+        parcela_mensal: parcelaFechada,
         etapa: "tratamento",
         tipo_cobranca: "antes",
       });
