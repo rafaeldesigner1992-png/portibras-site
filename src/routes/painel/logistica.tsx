@@ -916,6 +916,9 @@ function LogisticaPage() {
   const [salvandoAtend, setSalvandoAtend] = useState(false);
   const [filtroStatusAtend, setFiltroStatusAtend] = useState<string>("todos");
   const [atendAberto, setAtendAberto] = useState<string | null>(null);
+  const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("lista");
+  const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
+  const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
 
   // ── Vistorias ─────────────────────────────────────────────────────────────
   const [vistorias, setVistorias] = useState<Vistoria[]>([]);
@@ -1043,9 +1046,51 @@ function LogisticaPage() {
 
   async function carregarAtendimentos() {
     setCarregandoAtend(true);
-    const { data } = await supabase.from("atendimentos").select("*").order("data_agendada", { ascending: false });
+    const [{ data }, { data: tickets }] = await Promise.all([
+      supabase.from("atendimentos").select("*").order("data_agendada", { ascending: false }),
+      supabase.from("logistica_pedidos")
+        .select("*")
+        .eq("is_ticket", true)
+        .not("etapa", "in", "(concluido,cancelado)")
+        .order("criado_em", { ascending: false }),
+    ]);
     if (data) setAtendimentos(data as Atendimento[]);
+    if (tickets) setTicketsAbertos(tickets as PedidoLogistico[]);
     setCarregandoAtend(false);
+  }
+
+  function gerarIcal(atend: Atendimento): void {
+    const uid = `atend-${atend.id}@portibras.com.br`;
+    const dtstart = atend.data_agendada
+      ? atend.hora_inicio
+        ? atend.data_agendada.replace(/-/g, "") + "T" + atend.hora_inicio.replace(/:/g, "") + "00"
+        : atend.data_agendada.replace(/-/g, "")
+      : new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const dtend = atend.hora_fim
+      ? atend.data_agendada!.replace(/-/g, "") + "T" + atend.hora_fim.replace(/:/g, "") + "00"
+      : dtstart;
+    const isAllDay = !atend.hora_inicio;
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//PORTIBRAS//Sistema//PT",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `SUMMARY:${atend.titulo}`,
+      isAllDay ? `DTSTART;VALUE=DATE:${dtstart}` : `DTSTART:${dtstart}`,
+      isAllDay ? `DTEND;VALUE=DATE:${dtend}` : `DTEND:${dtend}`,
+      atend.endereco ? `LOCATION:${atend.endereco}` : "",
+      atend.descricao ? `DESCRIPTION:${atend.descricao.replace(/\n/g, "\\n")}` : "",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].filter(Boolean).join("\r\n");
+    const blob = new Blob([ics], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${atend.titulo.replace(/\s+/g, "_")}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function carregarPedidosLog() {
@@ -2283,22 +2328,183 @@ function LogisticaPage() {
       {/* ═══════ ABA ATENDIMENTOS ═══════ */}
       {aba === "atendimentos" && (
         <>
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex gap-2">
-              {["todos", "Programado", "Em andamento", "Concluído", "Cancelado"].map(s => (
-                <button key={s} onClick={() => setFiltroStatusAtend(s)}
-                  className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                    filtroStatusAtend === s ? "bg-[#1a6b2f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
-                  {s === "todos" ? "Todos" : s}
-                </button>
-              ))}
+          {/* ── Tickets em Aberto ── */}
+          {ticketsAbertos.length > 0 && (
+            <div className="mb-6">
+              <div className="mb-3 flex items-center gap-2">
+                <Ticket className="h-4 w-4 text-red-500" />
+                <h2 className="text-sm font-semibold text-gray-700">Tickets em Aberto</h2>
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">{ticketsAbertos.length}</span>
+              </div>
+              <div className="space-y-2">
+                {ticketsAbertos.map(t => {
+                  const slaAt = t.ticket_sla_at ? new Date(t.ticket_sla_at) : null;
+                  const slaExpired = slaAt ? slaAt < new Date() : false;
+                  const slaDias = slaAt ? Math.ceil((slaAt.getTime() - Date.now()) / 86_400_000) : null;
+                  return (
+                    <div key={t.id} className={cn(
+                      "rounded-xl border-2 p-4 flex items-start justify-between gap-4",
+                      slaExpired ? "border-red-400 bg-red-50" : "border-orange-200 bg-orange-50"
+                    )}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-semibold text-sm text-gray-900">{t.cliente_empresa || t.cliente_nome || "—"}</span>
+                          {t.ticket_prioridade && (
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold",
+                              t.ticket_prioridade === "alta" ? "bg-red-200 text-red-800" :
+                              t.ticket_prioridade === "media" ? "bg-yellow-100 text-yellow-800" : "bg-gray-100 text-gray-700"
+                            )}>
+                              {t.ticket_prioridade === "alta" ? "🔴 Alta" : t.ticket_prioridade === "media" ? "🟡 Média" : "⚪ Baixa"}
+                            </span>
+                          )}
+                          {slaAt && (
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              slaExpired ? "bg-red-600 text-white" : slaDias! <= 1 ? "bg-orange-200 text-orange-800" : "bg-green-100 text-green-700"
+                            )}>
+                              {slaExpired ? "⚠️ SLA vencido" : slaDias === 0 ? "Vence hoje" : `${slaDias}d restante${slaDias !== 1 ? "s" : ""}`}
+                            </span>
+                          )}
+                        </div>
+                        {t.ticket_motivo && <p className="text-xs text-gray-600 truncate">{t.ticket_motivo}</p>}
+                        {t.ticket_contato_nome && <p className="text-xs text-gray-500 mt-0.5">Contato: {t.ticket_contato_nome}{t.ticket_contato_tel ? ` · ${t.ticket_contato_tel}` : ""}</p>}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0 text-xs text-gray-400">
+                        <span>{new Date(t.criado_em).toLocaleDateString("pt-BR")}</span>
+                        <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+                          {t.etapa === "tratamento" ? "Em tratamento" : t.etapa === "em_execucao" ? "Em execução" : t.etapa}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <button onClick={() => abrirModalAtend()}
-              className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
-              <Plus className="h-4 w-4" /> Novo Atendimento
-            </button>
+          )}
+
+          {/* ── Sub-abas Lista / Calendário ── */}
+          <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-1">
+              <button onClick={() => setSubAbaAtend("lista")}
+                className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                  subAbaAtend === "lista" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                📋 Lista
+              </button>
+              <button onClick={() => setSubAbaAtend("calendario")}
+                className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                  subAbaAtend === "calendario" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                📅 Calendário
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {subAbaAtend === "lista" && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {["todos", "Programado", "Em andamento", "Concluído", "Cancelado"].map(s => (
+                    <button key={s} onClick={() => setFiltroStatusAtend(s)}
+                      className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        filtroStatusAtend === s ? "bg-[#1a6b2f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
+                      {s === "todos" ? "Todos" : s}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => abrirModalAtend()}
+                className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
+                <Plus className="h-4 w-4" /> Novo Atendimento
+              </button>
+            </div>
           </div>
 
+          {/* ── Calendário ── */}
+          {subAbaAtend === "calendario" && (() => {
+            const { ano, mes } = calMes;
+            const primeiroDia = new Date(ano, mes, 1);
+            const ultimoDia = new Date(ano, mes + 1, 0);
+            const inicioGrade = new Date(primeiroDia);
+            const dow0 = inicioGrade.getDay(); // 0=dom
+            inicioGrade.setDate(inicioGrade.getDate() - (dow0 === 0 ? 6 : dow0 - 1));
+            const nomeMes = primeiroDia.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+            const hoje = new Date(); hoje.setHours(0,0,0,0);
+            const semanas: Date[][] = [];
+            let cur = new Date(inicioGrade);
+            while (cur <= ultimoDia || semanas.length < 5) {
+              const sem: Date[] = [];
+              for (let d = 0; d < 7; d++) { sem.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
+              semanas.push(sem);
+              if (cur > ultimoDia && semanas.length >= 4) break;
+            }
+            const atendPorDia = (dia: Date) => atendimentos.filter(a => {
+              if (!a.data_agendada) return false;
+              const ad = new Date(a.data_agendada + "T00:00:00");
+              return ad.toDateString() === dia.toDateString();
+            });
+            return (
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                {/* Navegação */}
+                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+                  <button onClick={() => setCalMes(c => { const d = new Date(c.ano, c.mes - 1); return { ano: d.getFullYear(), mes: d.getMonth() }; })}
+                    className="rounded-lg p-1.5 hover:bg-gray-200 text-gray-500">‹</button>
+                  <h3 className="text-sm font-semibold text-gray-800 capitalize">{nomeMes}</h3>
+                  <button onClick={() => setCalMes(c => { const d = new Date(c.ano, c.mes + 1); return { ano: d.getFullYear(), mes: d.getMonth() }; })}
+                    className="rounded-lg p-1.5 hover:bg-gray-200 text-gray-500">›</button>
+                </div>
+                {/* Cabeçalho dias */}
+                <div className="grid grid-cols-7 border-b border-gray-100">
+                  {["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map(d => (
+                    <div key={d} className="py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-400">{d}</div>
+                  ))}
+                </div>
+                {/* Semanas */}
+                {semanas.map((sem, si) => (
+                  <div key={si} className="grid grid-cols-7 border-b border-gray-100 last:border-b-0">
+                    {sem.map((dia, di) => {
+                      const eMes = dia.getMonth() === mes;
+                      const eHoje = dia.toDateString() === hoje.toDateString();
+                      const eventos = atendPorDia(dia);
+                      return (
+                        <div key={di} className={cn(
+                          "min-h-[80px] p-1.5 border-r border-gray-100 last:border-r-0",
+                          !eMes && "bg-gray-50/60",
+                          eHoje && "bg-green-50"
+                        )}>
+                          <div className={cn(
+                            "h-6 w-6 flex items-center justify-center rounded-full text-xs font-semibold mb-1",
+                            eHoje ? "bg-[#1a6b2f] text-white" : eMes ? "text-gray-700" : "text-gray-300"
+                          )}>{dia.getDate()}</div>
+                          <div className="space-y-0.5">
+                            {eventos.slice(0, 3).map(a => (
+                              <div key={a.id} title={a.titulo}
+                                className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate cursor-default",
+                                  a.status === "Concluído" ? "bg-green-100 text-green-700" :
+                                  a.status === "Em andamento" ? "bg-yellow-100 text-yellow-700" :
+                                  a.status === "Cancelado" ? "bg-gray-100 text-gray-400" :
+                                  CLASS_COR[a.classificacao] ?? "bg-blue-100 text-blue-700"
+                                )}>
+                                {a.hora_inicio ? `${a.hora_inicio} ` : ""}{a.titulo}
+                              </div>
+                            ))}
+                            {eventos.length > 3 && (
+                              <div className="text-[9px] text-gray-400 pl-1">+{eventos.length - 3} mais</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                {/* Legenda */}
+                <div className="flex items-center gap-4 flex-wrap px-4 py-3 border-t border-gray-100 bg-gray-50 text-[10px] text-gray-500">
+                  {Object.entries(CLASS_COR).map(([k, v]) => (
+                    <span key={k} className={cn("rounded px-1.5 py-0.5 font-medium", v)}>{k}</span>
+                  ))}
+                  <span className="ml-auto text-gray-400">{atendimentos.filter(a => a.data_agendada).length} agendados no total</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Lista ── */}
+          {subAbaAtend === "lista" && (
+          <>
           {carregandoAtend ? (
             <div className="flex items-center gap-2 text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
           ) : (
@@ -2350,6 +2556,24 @@ function LogisticaPage() {
                         <button onClick={() => abrirModalAtend(atend)}
                           className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
                           <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => {
+                          const titulo = encodeURIComponent(atend.titulo);
+                          const local = encodeURIComponent(atend.endereco ?? "");
+                          const desc = encodeURIComponent(atend.descricao ?? "");
+                          const base = atend.data_agendada ? new Date(atend.data_agendada + "T" + (atend.hora_inicio ?? "09:00") + ":00") : (() => { const d = new Date(); d.setDate(d.getDate()+1); d.setHours(9,0,0,0); return d; })();
+                          const fim = atend.hora_fim ? new Date(atend.data_agendada + "T" + atend.hora_fim + ":00") : new Date(base.getTime() + 3600000);
+                          const fmt = (d: Date) => d.toISOString().replace(/[-:]/g,"").replace(/\.\d{3}/,"");
+                          window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${fmt(base)}/${fmt(fim)}&location=${local}&details=${desc}`, "_blank");
+                        }}
+                          title="Abrir no Google Agenda"
+                          className="rounded-lg p-1.5 text-blue-400 hover:bg-blue-50 hover:text-blue-600">
+                          <CalendarIcon className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => gerarIcal(atend)}
+                          title="Exportar iCal (.ics)"
+                          className="rounded-lg p-1.5 text-purple-400 hover:bg-purple-50 hover:text-purple-600">
+                          <ExternalLink className="h-4 w-4" />
                         </button>
                         <button onClick={() => excluirAtend(atend.id)}
                           className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600">
@@ -2426,6 +2650,8 @@ function LogisticaPage() {
                 </div>
               )}
             </div>
+          )}
+          </>
           )}
 
           {/* ── Pedidos Fechados do CRM ── */}
