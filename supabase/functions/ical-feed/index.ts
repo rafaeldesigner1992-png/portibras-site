@@ -32,12 +32,22 @@ function foldLine(line: string): string {
   return parts.join("\r\n");
 }
 
-function toIcalDate(dateStr: string, timeStr?: string | null): { value: string; allDay: boolean } {
+// Converte data/hora de Brasília (UTC-3) para UTC com sufixo Z
+// Google Calendar interpreta TZID= de forma inconsistente; UTC+Z é universal
+function toIcalUtc(dateStr: string, timeStr?: string | null): { value: string; allDay: boolean } {
   if (!timeStr) {
     return { value: dateStr.replace(/-/g, ""), allDay: true };
   }
-  const dt = dateStr.replace(/-/g, "") + "T" + timeStr.replace(/:/g, "") + "00";
-  return { value: dt, allDay: false };
+  // Monta a data como se fosse horário local de Brasília (UTC-3) e converte para UTC
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hour, minute] = timeStr.split(":").map(Number);
+  // UTC = Brasília + 3h
+  const utc = new Date(Date.UTC(year, month - 1, day, hour + 3, minute, 0));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const value =
+    `${utc.getUTCFullYear()}${pad(utc.getUTCMonth() + 1)}${pad(utc.getUTCDate())}` +
+    `T${pad(utc.getUTCHours())}${pad(utc.getUTCMinutes())}00Z`;
+  return { value, allDay: false };
 }
 
 serve(async (req) => {
@@ -110,15 +120,14 @@ serve(async (req) => {
     if (!a.data_agendada) continue;
 
     const uid = `atend-${a.id}@portibras.com.br`;
-    const start = toIcalDate(a.data_agendada, a.hora_inicio);
+    const start = toIcalUtc(a.data_agendada, a.hora_inicio);
     const endVal = a.hora_fim
-      ? toIcalDate(a.data_agendada, a.hora_fim)
+      ? toIcalUtc(a.data_agendada, a.hora_fim)
       : start.allDay
-        ? { value: a.data_agendada.replace(/-/g, ""), allDay: true }  // mesmo dia
-        : { value: start.value.slice(0, 8) + "T" + (
-            // padrão +2h se não tiver hora fim
-            String(Number(start.value.slice(9, 11)) + 2).padStart(2, "0") + start.value.slice(11)
-          ), allDay: false };
+        ? { value: a.data_agendada.replace(/-/g, ""), allDay: true }
+        : toIcalUtc(a.data_agendada, a.hora_inicio
+            ? String(Number(a.hora_inicio.split(":")[0]) + 2).padStart(2, "0") + ":" + a.hora_inicio.split(":")[1]
+            : "02:00");
 
     const summary = [a.titulo, a.classificacao].filter(Boolean).join(" — ");
     const descParts: string[] = [];
@@ -141,8 +150,9 @@ serve(async (req) => {
       lines.push(`DTSTART;VALUE=DATE:${start.value}`);
       lines.push(`DTEND;VALUE=DATE:${endVal.value}`);
     } else {
-      lines.push(`DTSTART;TZID=America/Sao_Paulo:${start.value}`);
-      lines.push(`DTEND;TZID=America/Sao_Paulo:${endVal.value}`);
+      // UTC com Z — universalmente aceito, sem dependência de VTIMEZONE
+      lines.push(`DTSTART:${start.value}`);
+      lines.push(`DTEND:${endVal.value}`);
     }
     lines.push(foldLine(`SUMMARY:${escIcal(summary)}`));
     if (descParts.length) lines.push(foldLine(`DESCRIPTION:${escIcal(descParts.join("\\n"))}`));
