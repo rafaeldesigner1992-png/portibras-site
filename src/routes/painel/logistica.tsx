@@ -1027,7 +1027,7 @@ function LogisticaPage() {
     const { data } = await supabase
       .from("logistica_pedidos")
       .select("*")
-      .not("etapa", "in", "(concluido,cancelado)")
+      .not("etapa", "in", "(cancelado)")
       .order("criado_em", { ascending: false });
     if (data) setPedidosLog(data as PedidoLogistico[]);
     setCarregandoPedLog(false);
