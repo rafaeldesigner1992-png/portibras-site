@@ -439,6 +439,12 @@ interface PedidoLogistico {
   observacoes: string | null;
   criado_em: string;
   atualizado_em: string;
+  is_ticket: boolean | null;
+  ticket_motivo: string | null;
+  ticket_prioridade: string | null;
+  ticket_contato_nome: string | null;
+  ticket_contato_tel: string | null;
+  ticket_sla_at: string | null;
 }
 
 interface ItemAquisicao {
@@ -938,6 +944,14 @@ function LogisticaPage() {
     if (aba === "compras") { carregarAtendimentos(); carregarMateriais(); }
     if (aba === "estoque") carregarEstoque();
     if (aba === "vistorias") carregarVistorias();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aba]);
+
+  // Listen for ticket created from sidebar
+  useEffect(() => {
+    const handler = () => { if (aba === "pedidos") carregarPedidosLog(); else setAba("pedidos"); };
+    window.addEventListener("portibras:ticket-criado", handler);
+    return () => window.removeEventListener("portibras:ticket-criado", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aba]);
 
@@ -1705,6 +1719,82 @@ function LogisticaPage() {
                         const prox = PROX[p.etapa];
                         const dias = Math.floor((Date.now() - new Date(p.criado_em).getTime()) / 86_400_000);
                         const cob = COB_STYLE[p.tipo_cobranca];
+                        const isTicket = !!p.is_ticket;
+
+                        // SLA countdown for tickets
+                        let slaLabel = "";
+                        let slaExpired = false;
+                        if (isTicket && p.ticket_sla_at) {
+                          const diff = new Date(p.ticket_sla_at).getTime() - Date.now();
+                          const daysLeft = Math.ceil(diff / 86_400_000);
+                          slaExpired = diff < 0;
+                          slaLabel = slaExpired
+                            ? `SLA vencido`
+                            : daysLeft === 0 ? "vence hoje" : `${daysLeft}d restante${daysLeft > 1 ? "s" : ""}`;
+                        }
+
+                        if (isTicket) {
+                          return (
+                            <div
+                              key={p.id}
+                              className={cn(
+                                "group rounded-xl border-2 p-3 shadow-md transition-all cursor-pointer",
+                                slaExpired
+                                  ? "border-red-600 bg-red-600 animate-pulse"
+                                  : "border-red-400 bg-red-50 hover:border-red-500 hover:shadow-lg"
+                              )}
+                              onClick={() => abrirPedido(p)}
+                            >
+                              {/* Badge TICKET + SLA */}
+                              <div className="flex items-center justify-between mb-2">
+                                <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wide", slaExpired ? "bg-white/20 text-white" : "bg-red-600 text-white")}>
+                                  🎫 TICKET
+                                </span>
+                                {slaLabel && (
+                                  <span className={cn("text-[9px] font-bold tabular-nums", slaExpired ? "text-white" : "text-red-700")}>
+                                    {slaLabel}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Nome cliente */}
+                              <p className={cn("text-xs font-semibold leading-tight line-clamp-2 mb-1.5", slaExpired ? "text-white" : "text-red-900")}>{cliente}</p>
+
+                              {/* Motivo */}
+                              {p.ticket_motivo && (
+                                <p className={cn("text-[10px] leading-tight line-clamp-2 mb-2", slaExpired ? "text-white/80" : "text-red-700/80")}>
+                                  {p.ticket_motivo}
+                                </p>
+                              )}
+
+                              {/* Prioridade + avançar */}
+                              <div className="flex items-center justify-between">
+                                {p.ticket_prioridade && (
+                                  <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                                    slaExpired ? "bg-white/20 text-white" :
+                                    p.ticket_prioridade === "alta" ? "bg-red-200 text-red-800" :
+                                    p.ticket_prioridade === "media" ? "bg-yellow-100 text-yellow-800" : "bg-gray-100 text-gray-700"
+                                  )}>
+                                    {p.ticket_prioridade === "alta" ? "Alta" : p.ticket_prioridade === "media" ? "Média" : "Baixa"}
+                                  </span>
+                                )}
+                                {prox && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); moverEtapa(p, prox); }}
+                                    disabled={atualizandoEtapa === p.id}
+                                    className={cn("flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-semibold transition-colors opacity-0 group-hover:opacity-100",
+                                      slaExpired ? "bg-white/20 text-white hover:bg-white/30" : "bg-red-200 text-red-800 hover:bg-red-300"
+                                    )}
+                                  >
+                                    {atualizandoEtapa === p.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                                    Avançar
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
                         return (
                           <div
                             key={p.id}
@@ -1911,6 +2001,39 @@ function LogisticaPage() {
                             )}
                           </div>
                         </div>
+
+                        {/* Ticket info */}
+                        {pedidoAberto.is_ticket && (
+                          <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white tracking-wide">🎫 TICKET EMERGENCIAL</span>
+                              {pedidoAberto.ticket_sla_at && (() => {
+                                const diff = new Date(pedidoAberto.ticket_sla_at!).getTime() - Date.now();
+                                const expired = diff < 0;
+                                const daysLeft = Math.ceil(diff / 86_400_000);
+                                return (
+                                  <span className={cn("text-xs font-bold", expired ? "text-red-700 animate-pulse" : "text-red-600")}>
+                                    {expired ? "⚠ SLA vencido" : daysLeft === 0 ? "Vence hoje" : `${daysLeft}d p/ SLA`}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                            {pedidoAberto.ticket_motivo && (
+                              <p className="text-sm text-red-900 whitespace-pre-wrap">{pedidoAberto.ticket_motivo}</p>
+                            )}
+                            <div className="flex flex-wrap gap-3 text-xs text-red-800">
+                              {pedidoAberto.ticket_prioridade && (
+                                <span>Prioridade: <strong>{pedidoAberto.ticket_prioridade === "alta" ? "Alta" : pedidoAberto.ticket_prioridade === "media" ? "Média" : "Baixa"}</strong></span>
+                              )}
+                              {pedidoAberto.ticket_contato_nome && (
+                                <span>Contato: <strong>{pedidoAberto.ticket_contato_nome}</strong></span>
+                              )}
+                              {pedidoAberto.ticket_contato_tel && (
+                                <span>Tel: <strong>{pedidoAberto.ticket_contato_tel}</strong></span>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Obs do CRM */}
                         {pedidoAberto.observacoes_crm && (
