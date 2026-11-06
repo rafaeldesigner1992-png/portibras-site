@@ -220,6 +220,8 @@ function FinanceiroPage() {
   const [filtroMesVendas, setFiltroMesVendas] = useState(() => new Date().toISOString().slice(0, 7));
 
   // ── A Faturar (pedidos logísticos aguardando cobrança) ─────────────────
+  type StatusCobranca = "aguardando" | "cobrado_parcial" | "cobrado_total";
+
   interface PedidoFaturar {
     id: string;
     cliente_nome: string | null;
@@ -230,19 +232,20 @@ function FinanceiroPage() {
     tipo_cobranca: "antes" | "apos" | "sem_cobranca";
     etapa: string;
     cobrado: boolean;
+    status_cobranca: StatusCobranca;
     criado_em: string;
     crm_lead_id: string | null;
   }
   const [pedidosFaturar, setPedidosFaturar] = useState<PedidoFaturar[]>([]);
   const [carregandoFaturar, setCarregandoFaturar] = useState(false);
-  const [marcandoCobrado, setMarcandoCobrado] = useState<string | null>(null);
+  const [atualizandoStatus, setAtualizandoStatus] = useState<string | null>(null);
 
   async function carregarPedidosFaturar() {
     setCarregandoFaturar(true);
     const { data } = await supabase
       .from("logistica_pedidos")
-      .select("id,cliente_nome,cliente_empresa,cliente_telefone,tipo_servico,valor_venda,tipo_cobranca,etapa,cobrado,criado_em,crm_lead_id")
-      .eq("cobrado", false)
+      .select("id,cliente_nome,cliente_empresa,cliente_telefone,tipo_servico,valor_venda,tipo_cobranca,etapa,cobrado,status_cobranca,criado_em,crm_lead_id")
+      .neq("status_cobranca", "cobrado_total")
       .not("tipo_cobranca", "eq", "sem_cobranca")
       .not("etapa", "in", "(cancelado)")
       .order("criado_em", { ascending: false });
@@ -250,11 +253,25 @@ function FinanceiroPage() {
     setCarregandoFaturar(false);
   }
 
-  async function marcarCobrado(id: string) {
-    setMarcandoCobrado(id);
-    await supabase.from("logistica_pedidos").update({ cobrado: true, cobrado_em: new Date().toISOString() }).eq("id", id);
-    setPedidosFaturar(ps => ps.filter(p => p.id !== id));
-    setMarcandoCobrado(null);
+  async function atualizarStatusCobranca(id: string, status: StatusCobranca) {
+    setAtualizandoStatus(id);
+    const cobrado = status === "cobrado_total";
+    await supabase
+      .from("logistica_pedidos")
+      .update({
+        status_cobranca: status,
+        cobrado,
+        ...(cobrado ? { cobrado_em: new Date().toISOString() } : {}),
+      })
+      .eq("id", id);
+    if (status === "cobrado_total") {
+      // Remove da lista pois foi totalmente cobrado
+      setPedidosFaturar(ps => ps.filter(p => p.id !== id));
+    } else {
+      // Atualiza o status na lista
+      setPedidosFaturar(ps => ps.map(p => p.id === id ? { ...p, status_cobranca: status } : p));
+    }
+    setAtualizandoStatus(null);
   }
 
   useEffect(() => {
@@ -671,7 +688,7 @@ function FinanceiroPage() {
                       <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Cobrança</th>
                       <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Etapa Log.</th>
                       <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
-                      <th className="px-4 py-2.5" />
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Status Faturamento</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -704,16 +721,28 @@ function FinanceiroPage() {
                             {p.valor_venda != null ? p.valor_venda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={() => marcarCobrado(p.id)}
-                              disabled={marcandoCobrado === p.id}
-                              className="flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 transition-colors whitespace-nowrap"
-                            >
-                              {marcandoCobrado === p.id
-                                ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
-                                : <Check className="h-3 w-3" />}
-                              Cobrado
-                            </button>
+                            {atualizandoStatus === p.id ? (
+                              <div className="flex justify-end">
+                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#1a6b2f]" />
+                              </div>
+                            ) : (
+                              <select
+                                value={p.status_cobranca ?? "aguardando"}
+                                onChange={e => atualizarStatusCobranca(p.id, e.target.value as StatusCobranca)}
+                                className={cn(
+                                  "rounded-lg border px-2 py-1 text-xs font-semibold transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1",
+                                  p.status_cobranca === "cobrado_total"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 focus:ring-emerald-300"
+                                    : p.status_cobranca === "cobrado_parcial"
+                                    ? "border-amber-200 bg-amber-50 text-amber-700 focus:ring-amber-300"
+                                    : "border-gray-200 bg-gray-50 text-gray-600 focus:ring-gray-300"
+                                )}
+                              >
+                                <option value="aguardando">⏳ Aguardando cobrança</option>
+                                <option value="cobrado_parcial">🔶 Cobrado parcial</option>
+                                <option value="cobrado_total">✅ Cobrado total</option>
+                              </select>
+                            )}
                           </td>
                         </tr>
                       );
