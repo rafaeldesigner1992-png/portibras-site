@@ -10,6 +10,303 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// ─── Dados da PORTIBRAS ───────────────────────────────────────────────────────
+const PB_RAZAO    = "PORTIBRAS SISTEMAS CONTRA INCENDIO LTDA";
+const PB_CNPJ     = "63.823.452/0001-93";
+const PB_ENDERECO = "R. Visconde de Pirajá, 414, Sala 718, Ipanema, Rio de Janeiro – RJ, CEP 22.410-905";
+const PB_TELEFONE = "(21) 9876-0475";
+const PB_EMAIL    = "adm@portibras.com.br";
+
+// ─── Carrega pdfmake do CDN (singleton) ──────────────────────────────────────
+async function carregarPdfMakeLog() {
+  if ((window as Record<string, unknown>).pdfMake) return;
+  await new Promise<void>((resolve, reject) => {
+    const s1 = document.createElement("script");
+    s1.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js";
+    s1.onload = () => {
+      const s2 = document.createElement("script");
+      s2.src = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.min.js";
+      s2.onload = () => resolve();
+      s2.onerror = reject;
+      document.head.appendChild(s2);
+    };
+    s1.onerror = reject;
+    document.head.appendChild(s1);
+  });
+}
+
+// ─── Geração do Certificado de Garantia ──────────────────────────────────────
+function gerarCertificadoPdf(pedido: {
+  cliente_nome: string | null;
+  cliente_empresa: string | null;
+  cliente_endereco: string | null;
+  tipo_servico: string | null;
+  portas: number | null;
+  valor_venda: number | null;
+  criado_em: string;
+  atualizado_em: string;
+}, itensAquis: { nome: string; quantidade: number; unidade: string }[]) {
+  const pm = (window as Record<string, unknown>).pdfMake as {
+    createPdf: (def: unknown) => { download: (name: string) => void };
+  };
+
+  const dataEmissao  = new Date().toLocaleDateString("pt-BR");
+  const dataServico  = new Date(pedido.atualizado_em).toLocaleDateString("pt-BR");
+  const dataValidade = (() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 6);
+    return d.toLocaleDateString("pt-BR");
+  })();
+
+  const cliente      = pedido.cliente_empresa || pedido.cliente_nome || "Cliente";
+  const tipoServico  = pedido.tipo_servico === "manutencao" ? "Manutenção Preventiva" : "Instalação / Substituição";
+  const escopo       = pedido.tipo_servico === "manutencao" && pedido.portas
+    ? `Todas as ${pedido.portas} portas corta-fogo do local`
+    : pedido.tipo_servico === "manutencao"
+    ? "Todas as portas corta-fogo do local"
+    : itensAquis.length > 0
+    ? itensAquis.map(i => `${i.nome} (${i.quantidade} ${i.unidade})`).join(", ")
+    : "Conforme escopo do serviço";
+
+  const verde  = "#1a6b2f";
+  const cinza  = "#6b7280";
+  const cinzaL = "#f3f4f6";
+
+  const docDef = {
+    pageSize: "A4",
+    pageMargins: [50, 50, 50, 60],
+    defaultStyle: { font: "Roboto", fontSize: 10, color: "#1f2937" },
+    content: [
+      // Cabeçalho
+      {
+        columns: [
+          {
+            stack: [
+              { text: PB_RAZAO, fontSize: 13, bold: true, color: verde },
+              { text: `CNPJ: ${PB_CNPJ}`, fontSize: 8, color: cinza, margin: [0, 2, 0, 0] },
+              { text: PB_ENDERECO, fontSize: 8, color: cinza },
+              { text: `${PB_TELEFONE} · ${PB_EMAIL}`, fontSize: 8, color: cinza },
+            ],
+          },
+          {
+            stack: [
+              { text: "CERTIFICADO DE GARANTIA", fontSize: 14, bold: true, color: verde, alignment: "right" },
+              { text: "NBR 11.742:2018", fontSize: 9, color: cinza, alignment: "right" },
+            ],
+          },
+        ],
+      },
+      { canvas: [{ type: "line", x1: 0, y1: 8, x2: 495, y2: 8, lineWidth: 2, lineColor: verde }], margin: [0, 10, 0, 16] },
+
+      // Bloco de identificação
+      {
+        table: {
+          widths: ["*", "*"],
+          body: [
+            [
+              { text: "BENEFICIÁRIO", style: "labelCell" },
+              { text: "DATA DE EMISSÃO", style: "labelCell" },
+            ],
+            [
+              { text: cliente, style: "valueCell" },
+              { text: dataEmissao, style: "valueCell" },
+            ],
+            [
+              { text: "ENDEREÇO DO LOCAL ATENDIDO", style: "labelCell", colSpan: 2 }, {},
+            ],
+            [
+              { text: pedido.cliente_endereco || "—", style: "valueCell", colSpan: 2 }, {},
+            ],
+            [
+              { text: "TIPO DE SERVIÇO REALIZADO", style: "labelCell" },
+              { text: "DATA DA CONCLUSÃO DO SERVIÇO", style: "labelCell" },
+            ],
+            [
+              { text: tipoServico, style: "valueCell" },
+              { text: dataServico, style: "valueCell" },
+            ],
+            [
+              { text: "ESCOPO COBERTO PELA GARANTIA", style: "labelCell", colSpan: 2 }, {},
+            ],
+            [
+              { text: escopo, style: "valueCell", colSpan: 2 }, {},
+            ],
+          ],
+        },
+        layout: {
+          fillColor: (rowIndex: number) => rowIndex % 2 === 0 ? cinzaL : null,
+          hLineWidth: () => 0.5,
+          vLineWidth: () => 0.5,
+          hLineColor: () => "#e5e7eb",
+          vLineColor: () => "#e5e7eb",
+        },
+        margin: [0, 0, 0, 20],
+      },
+
+      // Período de garantia — destaque
+      {
+        fillColor: verde,
+        table: {
+          widths: ["*"],
+          body: [[
+            {
+              stack: [
+                { text: "PERÍODO DE GARANTIA", fontSize: 8, bold: true, color: "#ffffff", alignment: "center", margin: [0, 0, 0, 2] },
+                { text: `${dataEmissao}  →  ${dataValidade}`, fontSize: 14, bold: true, color: "#ffffff", alignment: "center" },
+                { text: "6 (seis) meses a partir da data de emissão", fontSize: 8, color: "#d1fae5", alignment: "center", margin: [0, 2, 0, 0] },
+              ],
+              margin: [0, 10, 0, 10],
+            },
+          ]],
+        },
+        layout: "noBorders",
+        margin: [0, 0, 0, 20],
+      },
+
+      // Condições
+      { text: "CONDIÇÕES DA GARANTIA", fontSize: 10, bold: true, color: verde, margin: [0, 0, 0, 6] },
+      {
+        ul: [
+          "Esta garantia cobre defeitos de execução e materiais aplicados durante o serviço descrito acima, em conformidade com a NBR 11.742:2018.",
+          "Não estão cobertos: danos causados por uso inadequado, vandalismo, sinistros, reformas realizadas por terceiros, ou falta de manutenção preventiva regular.",
+          "Para acionamento da garantia, entre em contato com a PORTIBRAS pelo telefone ou e-mail informados neste certificado.",
+          "A garantia é intransferível e válida exclusivamente para o endereço e escopo descritos neste documento.",
+          "Este certificado não exime o responsável do local de realizar manutenções periódicas conforme a NBR 11.742:2018.",
+        ],
+        margin: [0, 0, 0, 20],
+        fontSize: 9,
+        color: "#374151",
+      },
+
+      // Assinatura
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, lineColor: "#9ca3af" }], margin: [0, 20, 0, 4] },
+      { text: PB_RAZAO, fontSize: 9, bold: true },
+      { text: `CNPJ: ${PB_CNPJ}`, fontSize: 8, color: cinza },
+      { text: "Responsável Técnico — Serviços de Proteção contra Incêndio", fontSize: 8, color: cinza },
+    ],
+    styles: {
+      labelCell: { fontSize: 7, bold: true, color: cinza, fillColor: cinzaL, margin: [4, 3, 4, 2] },
+      valueCell: { fontSize: 9, bold: false, margin: [4, 3, 4, 4] },
+    },
+    footer: (page: number, pages: number) => ({
+      columns: [
+        { text: `Documento gerado em ${dataEmissao} · NBR 11.742:2018`, fontSize: 7, color: cinza, margin: [50, 0, 0, 0] },
+        { text: `Página ${page} de ${pages}`, fontSize: 7, color: cinza, alignment: "right", margin: [0, 0, 50, 0] },
+      ],
+    }),
+  };
+
+  const nomeArq = `Certificado_Garantia_${cliente.replace(/\s+/g, "_")}_${dataEmissao.replace(/\//g, "-")}.pdf`;
+  pm.createPdf(docDef).download(nomeArq);
+}
+
+// ─── Geração do Manual de Boas Práticas ──────────────────────────────────────
+function gerarManualPdf(pedido: { cliente_empresa: string | null; cliente_nome: string | null }) {
+  const pm = (window as Record<string, unknown>).pdfMake as {
+    createPdf: (def: unknown) => { download: (name: string) => void };
+  };
+
+  const dataEmissao = new Date().toLocaleDateString("pt-BR");
+  const cliente     = pedido.cliente_empresa || pedido.cliente_nome || "Cliente";
+  const verde       = "#1a6b2f";
+  const cinza       = "#6b7280";
+
+  const secao = (titulo: string, itens: string[]) => [
+    { text: titulo, fontSize: 11, bold: true, color: verde, margin: [0, 14, 0, 6] },
+    ...itens.map(item => ({ text: `• ${item}`, fontSize: 9, color: "#374151", margin: [8, 2, 0, 0] })),
+  ];
+
+  const docDef = {
+    pageSize: "A4",
+    pageMargins: [50, 50, 50, 60],
+    defaultStyle: { font: "Roboto", fontSize: 10, color: "#1f2937" },
+    content: [
+      // Cabeçalho
+      {
+        columns: [
+          {
+            stack: [
+              { text: PB_RAZAO, fontSize: 12, bold: true, color: verde },
+              { text: `CNPJ: ${PB_CNPJ}`, fontSize: 8, color: cinza },
+            ],
+          },
+          { text: "MANUAL DE BOAS PRÁTICAS\nPortas Corta-Fogo — NBR 11.742:2018", fontSize: 11, bold: true, color: verde, alignment: "right" },
+        ],
+      },
+      { canvas: [{ type: "line", x1: 0, y1: 8, x2: 495, y2: 8, lineWidth: 2, lineColor: verde }], margin: [0, 10, 0, 6] },
+      { text: `Destinatário: ${cliente}   ·   Emitido em: ${dataEmissao}`, fontSize: 8, color: cinza, margin: [0, 0, 0, 10] },
+
+      { text: "Por que as portas corta-fogo são essenciais?", fontSize: 12, bold: true, color: verde, margin: [0, 4, 0, 6] },
+      {
+        text: "As portas corta-fogo são elementos fundamentais de segurança passiva contra incêndio. Elas compartimentam ambientes, retardam a propagação do fogo e da fumaça, garantindo rotas de fuga seguras. A NBR 11.742:2018 estabelece os requisitos mínimos de desempenho, instalação e manutenção dessas portas no Brasil.",
+        fontSize: 9, color: "#374151", margin: [0, 0, 0, 4],
+      },
+
+      ...secao("1. USO CORRETO DAS PORTAS CORTA-FOGO", [
+        "Nunca bloquear ou calçar a porta em posição aberta. Ela deve fechar automaticamente após cada passagem.",
+        "Não utilizar a porta corta-fogo como acesso rotineiro de cargas, móveis ou equipamentos volumosos.",
+        "Nunca remover, danificar ou modificar as molas, trilhos, dobradiças ou batentes sem autorização técnica.",
+        "Manter o caminho de fuga nas escadas e corredores próximos à porta sempre desobstruído.",
+        "Não fixar cartazes, decorações ou equipamentos diretamente na porta ou no batente.",
+      ]),
+
+      ...secao("2. INSPEÇÃO PERIÓDICA — O QUE VERIFICAR", [
+        "Feche a porta manualmente e observe se ela encosta completamente no batente, sem folgas visíveis.",
+        "Verifique se a mola está funcionando: a porta deve fechar sozinha a partir de qualquer ângulo de abertura.",
+        "Inspecione as borrachas de vedação (intumescentes): devem estar íntegras, sem rasgos ou destacamentos.",
+        "Certifique-se de que a maçaneta e a trava antipânico (quando existente) operam suavemente.",
+        "Observe se há sinais de ferrugem, deformação, amassados ou trincas na folha da porta.",
+        "Verifique se a sinalização de saída acima da porta está visível e funcionando.",
+      ]),
+
+      ...secao("3. CUIDADOS E MANUTENÇÃO PREVENTIVA", [
+        "Lubrificar dobradiças e trilhos com produto adequado a cada 6 meses ou conforme recomendação técnica.",
+        "Contrate manutenção preventiva ao menos uma vez por ano, realizada por empresa habilitada.",
+        "Em caso de sinistro (incêndio, impacto ou enchente), acione a empresa de manutenção antes de continuar usando a porta.",
+        "Guarde os documentos técnicos (DTS, DTE, laudos) em local acessível para inspeções do Corpo de Bombeiros.",
+        "Mantenha o registro das manutenções realizadas — datas, empresa contratada e serviços executados.",
+      ]),
+
+      ...secao("4. O QUE NÃO FAZER", [
+        "Não pintar a porta com tinta comum — isso pode comprometer o material intumescente e anular a certificação.",
+        "Não substituir peças originais por componentes não certificados pelo INMETRO.",
+        "Não permitir que crianças brinquem ou se pendurem na porta.",
+        "Não instalar fechaduras adicionais que impeçam a abertura rápida em emergências.",
+        "Não ignorar rangidos, dificuldade para fechar ou folgas — acione a manutenção imediatamente.",
+      ]),
+
+      ...secao("5. EM CASO DE EMERGÊNCIA", [
+        "Se a porta estiver presa ou emperrada durante uma evacuação, não force: use a saída alternativa mais próxima.",
+        "Lembre os moradores e funcionários: na presença de fumaça, mantenha a porta fechada para conter o fogo.",
+        "Acione o Corpo de Bombeiros (193) e abandone o local ordenadamente pelas rotas de fuga sinalizadas.",
+        "Após qualquer incêndio, mesmo que pequeno, a porta deve ser vistoriada antes de ser recolocada em uso.",
+      ]),
+
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 1, lineColor: "#e5e7eb" }], margin: [0, 20, 0, 10] },
+      {
+        columns: [
+          {
+            stack: [
+              { text: "Dúvidas? Fale com a PORTIBRAS:", fontSize: 9, bold: true, color: verde },
+              { text: `${PB_TELEFONE}  ·  ${PB_EMAIL}`, fontSize: 9, color: cinza },
+              { text: PB_ENDERECO, fontSize: 8, color: cinza },
+            ],
+          },
+          { text: "Este manual é informativo e complementa, sem substituir, as normas técnicas ABNT NBR 11.742:2018 e orientações do Corpo de Bombeiros local.", fontSize: 7, color: cinza, alignment: "right", width: 200 },
+        ],
+      },
+    ],
+    footer: (page: number, pages: number) => ({
+      columns: [
+        { text: `Manual de Boas Práticas — Portas Corta-Fogo · ${PB_RAZAO}`, fontSize: 7, color: cinza, margin: [50, 0, 0, 0] },
+        { text: `Página ${page} de ${pages}`, fontSize: 7, color: cinza, alignment: "right", margin: [0, 0, 50, 0] },
+      ],
+    }),
+  };
+
+  pm.createPdf(docDef).download(`Manual_Boas_Praticas_PCF_${cliente.replace(/\s+/g, "_")}.pdf`);
+}
+
 export const Route = createFileRoute("/painel/logistica")({
   component: LogisticaPage,
 });
@@ -576,6 +873,7 @@ function LogisticaPage() {
   const [supSelecionado, setSupSelecionado] = useState<Suprimento | null>(null);
   const [salvandoAquis, setSalvandoAquis] = useState(false);
   const [atualizandoEtapa, setAtualizandoEtapa] = useState<string | null>(null);
+  const [emitindoCert, setEmitindoCert] = useState(false);
 
   // ── Estoque ────────────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemEstoque[]>([]);
@@ -1618,6 +1916,47 @@ function LogisticaPage() {
                           >
                             <ExternalLink className="h-3.5 w-3.5" /> Ver lead no CRM
                           </a>
+                        )}
+
+                        {/* ─ CERTIFICADO DE GARANTIA — só quando concluído ─ */}
+                        {pedidoAberto.etapa === "concluido" && (
+                          <div className="rounded-xl border border-[#1a6b2f]/20 bg-[#f0faf4] p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <FileCheck className="h-4 w-4 text-[#1a6b2f]" />
+                              <p className="text-sm font-semibold text-[#1a6b2f]">Emitir Documentos de Garantia</p>
+                            </div>
+                            <p className="text-xs text-gray-500">Serviço concluído. Gere o certificado NBR 11.742:2018 (6 meses de cobertura) e o manual de boas práticas para o cliente.</p>
+                            <div className="flex gap-2 flex-wrap">
+                              <button
+                                disabled={emitindoCert}
+                                onClick={async () => {
+                                  setEmitindoCert(true);
+                                  try {
+                                    await carregarPdfMakeLog();
+                                    gerarCertificadoPdf(pedidoAberto, aquisicoes);
+                                  } finally { setEmitindoCert(false); }
+                                }}
+                                className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-2 text-xs font-medium text-white hover:bg-[#155a26] disabled:opacity-60 transition-colors"
+                              >
+                                {emitindoCert ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileCheck className="h-3.5 w-3.5" />}
+                                Certificado de Garantia
+                              </button>
+                              <button
+                                disabled={emitindoCert}
+                                onClick={async () => {
+                                  setEmitindoCert(true);
+                                  try {
+                                    await carregarPdfMakeLog();
+                                    gerarManualPdf(pedidoAberto);
+                                  } finally { setEmitindoCert(false); }
+                                }}
+                                className="flex items-center gap-1.5 rounded-lg border border-[#1a6b2f] px-3 py-2 text-xs font-medium text-[#1a6b2f] hover:bg-[#1a6b2f]/10 disabled:opacity-60 transition-colors"
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                Manual de Boas Práticas
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </>
                     )}
