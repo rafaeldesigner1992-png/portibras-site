@@ -139,7 +139,7 @@ export function PainelSidebar() {
     const clienteEmail = form.clienteEmail.trim() || null;
     if (clienteEmail) {
       try {
-        await supabase.functions.invoke("send-ticket-email", {
+        const { error: emailError } = await supabase.functions.invoke("send-ticket-email", {
           body: {
             cliente_email: clienteEmail,
             cliente_nome: payload.cliente_nome as string,
@@ -151,8 +151,39 @@ export function PainelSidebar() {
             ticket_contato_tel: payload.ticket_contato_tel as string | undefined,
           },
         });
+        if (emailError) {
+          console.warn("[Ticket] Erro do SDK ao enviar e-mail, tentando fetch direto:", emailError);
+          // Fallback: fetch direto sem passar pelo SDK (evita problemas de auth/CORS do cliente Supabase)
+          const res = await fetch(
+            "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/send-ticket-email",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9kbXV1dGlqcWlraHpsZ3pqbnd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNTkzNTYsImV4cCI6MjEwODkzNTM1Nn0.grjNr7wSnvDEvnVT-dzbhezNHdYsDsBLJM-ijoZ4mTE",
+              },
+              body: JSON.stringify({
+                cliente_email: clienteEmail,
+                cliente_nome: payload.cliente_nome as string,
+                cliente_empresa: payload.cliente_empresa as string | undefined,
+                ticket_motivo: payload.ticket_motivo as string,
+                ticket_prioridade: payload.ticket_prioridade as string,
+                ticket_sla_at: slaAt.toISOString(),
+                ticket_contato_nome: payload.ticket_contato_nome as string | undefined,
+                ticket_contato_tel: payload.ticket_contato_tel as string | undefined,
+              }),
+            }
+          );
+          if (!res.ok) {
+            console.warn("[Ticket] Fetch direto também falhou:", res.status, await res.text());
+          } else {
+            console.log("[Ticket] E-mail enviado via fetch direto com sucesso");
+          }
+        } else {
+          console.log("[Ticket] E-mail enviado com sucesso via SDK");
+        }
       } catch (err) {
-        console.warn("[Ticket] E-mail não enviado:", err);
+        console.warn("[Ticket] Exceção ao enviar e-mail:", err);
         // Não bloqueia o fluxo — ticket já foi criado
       }
     }
