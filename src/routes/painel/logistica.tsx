@@ -906,6 +906,8 @@ function LogisticaPage() {
   // ── Pedidos Fechados ───────────────────────────────────────────────────────
   const [pedidosFechados, setPedidosFechados] = useState<PedidoFechado[]>([]);
   const [carregandoPedidos, setCarregandoPedidos] = useState(false);
+  const [excluindoPedidoFechado, setExcluindoPedidoFechado] = useState<PedidoFechado | null>(null);
+  const [processandoExclusaoPF, setProcessandoExclusaoPF] = useState(false);
 
   // ── Atendimentos ──────────────────────────────────────────────────────────
   const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
@@ -1336,6 +1338,15 @@ function LogisticaPage() {
       .order("atualizado_em", { ascending: false });
     if (data) setPedidosFechados(data as PedidoFechado[]);
     setCarregandoPedidos(false);
+  }
+
+  async function excluirPedidoFechado() {
+    if (!excluindoPedidoFechado) return;
+    setProcessandoExclusaoPF(true);
+    await supabase.from("crm_propostas").delete().eq("id", excluindoPedidoFechado.id);
+    setProcessandoExclusaoPF(false);
+    setExcluindoPedidoFechado(null);
+    await carregarPedidosFechados();
   }
 
   async function carregarMateriais() {
@@ -2901,13 +2912,24 @@ function LogisticaPage() {
                             ) : <span className="text-xs text-gray-400">—</span>}
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-500">{dataFecho}</td>
-                          <td className="px-4 py-3 text-right">
-                            <a
-                              href={`/painel/crm?lead=${p.lead_id}`}
-                              className="flex items-center gap-1 text-xs text-[#1a6b2f] hover:underline justify-end"
-                            >
-                              <ExternalLink className="h-3 w-3" /> CRM
-                            </a>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 justify-end">
+                              <a
+                                href={`/painel/crm?lead=${p.lead_id}`}
+                                className="flex items-center gap-1 text-xs text-[#1a6b2f] hover:underline"
+                              >
+                                <ExternalLink className="h-3 w-3" /> CRM
+                              </a>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => setExcluindoPedidoFechado(p)}
+                                  className="rounded-lg p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                                  title="Excluir registro"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -2917,6 +2939,45 @@ function LogisticaPage() {
               </div>
             )}
           </div>
+
+          {/* Modal de confirmação — excluir pedido fechado */}
+          {excluindoPedidoFechado && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-start gap-3 p-5">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-gray-900">Excluir registro</p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Tem certeza que deseja excluir o registro de{" "}
+                      <span className="font-semibold text-gray-800">
+                        {excluindoPedidoFechado.lead?.empresa || excluindoPedidoFechado.lead?.nome || "este cliente"}
+                      </span>?
+                      Esta ação não pode ser desfeita.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 border-t border-gray-100 px-5 py-4">
+                  <button
+                    onClick={() => setExcluindoPedidoFechado(null)}
+                    disabled={processandoExclusaoPF}
+                    className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={excluirPedidoFechado}
+                    disabled={processandoExclusaoPF}
+                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {processandoExclusaoPF ? "Excluindo…" : "Excluir"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Popup evento do calendário */}
           {calEventoPopup && (
