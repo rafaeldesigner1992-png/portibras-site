@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 import {
   DollarSign, Plus, TrendingUp, TrendingDown, X, Settings2, Check,
   Loader2, Car, Building2, AlertTriangle, Trash2, Pencil,
@@ -134,6 +135,9 @@ const CATS_DIVIDA = ["Empréstimo bancário", "Financiamento veículo", "Cartão
 
 // ─── Componente principal ────────────────────────────────────────────────────
 function FinanceiroPage() {
+  const { usuario } = useAuth();
+  const isAdmin = usuario?.perfil === "admin";
+
   // ── Lançamentos ──
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -218,6 +222,17 @@ function FinanceiroPage() {
   const [vendas, setVendas] = useState<VendaCRM[]>([]);
   const [carregandoVendas, setCarregandoVendas] = useState(false);
   const [filtroMesVendas, setFiltroMesVendas] = useState(() => new Date().toISOString().slice(0, 7));
+  const [excluindoVenda, setExcluindoVenda] = useState<VendaCRM | null>(null);
+  const [processandoExclusaoVenda, setProcessandoExclusaoVenda] = useState(false);
+
+  async function confirmarExclusaoVenda() {
+    if (!excluindoVenda) return;
+    setProcessandoExclusaoVenda(true);
+    await supabase.from("financeiro_lancamentos").delete().eq("id", excluindoVenda.id);
+    setVendas(vs => vs.filter(v => v.id !== excluindoVenda.id));
+    setExcluindoVenda(null);
+    setProcessandoExclusaoVenda(false);
+  }
 
   // ── A Faturar (pedidos logísticos aguardando cobrança) ─────────────────
   type StatusCobranca = "aguardando" | "cobrado_parcial" | "cobrado_total";
@@ -806,6 +821,7 @@ function FinanceiroPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente / Serviço</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Categoria</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
+                    {isAdmin && <th className="px-4 py-3 w-10" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -826,6 +842,17 @@ function FinanceiroPage() {
                       <td className="px-4 py-3 text-right font-semibold text-[#1a6b2f]">
                         {v.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                       </td>
+                      {isAdmin && (
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={e => { e.stopPropagation(); setExcluindoVenda(v); }}
+                            className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            title="Excluir registro"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -835,11 +862,53 @@ function FinanceiroPage() {
                     <td className="px-4 py-3 text-right text-base font-bold text-[#1a6b2f]">
                       {vendas.reduce((s, v) => s + v.valor, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                     </td>
+                    {isAdmin && <td />}
                   </tr>
                 </tfoot>
               </table>
             )}
           </div>
+
+          {/* Modal confirmação exclusão venda */}
+          {excluindoVenda && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">Excluir registro</p>
+                    <p className="text-xs text-gray-500">Esta ação não pode ser desfeita</p>
+                  </div>
+                </div>
+                <p className="mb-5 text-sm text-gray-700">
+                  Deseja excluir o registro{" "}
+                  <span className="font-semibold">"{excluindoVenda.descricao}"</span>{" "}
+                  de{" "}
+                  <span className="font-semibold text-[#1a6b2f]">
+                    {excluindoVenda.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>?
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setExcluindoVenda(null)}
+                    disabled={processandoExclusaoVenda}
+                    className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmarExclusaoVenda}
+                    disabled={processandoExclusaoVenda}
+                    className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
+                  >
+                    {processandoExclusaoVenda ? "Excluindo…" : "Excluir"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
