@@ -47,6 +47,7 @@ type TicketForm = {
   busca: string;
   pedidoId: string;
   clienteNome: string;
+  clienteEmail: string;
   motivo: string;
   prioridade: "alta" | "media" | "baixa";
   contatoNome: string;
@@ -81,7 +82,7 @@ export function PainelSidebar() {
 
   async function abrirModal() {
     setModalAberto(true);
-    setForm({ busca: "", pedidoId: "", clienteNome: "", motivo: "", prioridade: "alta", contatoNome: "", contatoTel: "" });
+    setForm({ busca: "", pedidoId: "", clienteNome: "", clienteEmail: "", motivo: "", prioridade: "alta", contatoNome: "", contatoTel: "" });
     // Load recent pedidos
     const { data } = await supabase
       .from("logistica_pedidos")
@@ -119,8 +120,6 @@ export function PainelSidebar() {
       tipo_cobranca: "antes",
     };
 
-    let clienteEmail: string | null = null;
-
     if (form.pedidoId) {
       // Link to existing pedido: clone key fields
       const orig = pedidosOpts.find(p => p.id === form.pedidoId);
@@ -128,7 +127,6 @@ export function PainelSidebar() {
         payload.cliente_nome = orig.label;
         payload.cliente_empresa = orig.label;
         payload.cliente_endereco = orig.endereco;
-        clienteEmail = orig.email;
       }
       payload.observacoes = `Ticket vinculado ao pedido: ${form.pedidoId}`;
     } else {
@@ -137,7 +135,8 @@ export function PainelSidebar() {
 
     await supabase.from("logistica_pedidos").insert(payload);
 
-    // Enviar e-mail de confirmação ao cliente (se houver e-mail)
+    // Enviar e-mail de confirmação ao cliente (se houver e-mail informado)
+    const clienteEmail = form.clienteEmail.trim() || null;
     if (clienteEmail) {
       try {
         await supabase.functions.invoke("send-ticket-email", {
@@ -322,7 +321,7 @@ export function PainelSidebar() {
                     type="text"
                     placeholder="Buscar cliente..."
                     value={form.busca}
-                    onChange={e => setForm(f => ({ ...f, busca: e.target.value, pedidoId: "", clienteNome: "" }))}
+                    onChange={e => setForm(f => ({ ...f, busca: e.target.value, pedidoId: "", clienteNome: "", clienteEmail: "" }))}
                     className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
                   />
                 </div>
@@ -335,7 +334,7 @@ export function PainelSidebar() {
                       <button
                         key={p.id}
                         className="w-full text-left px-3 py-2 hover:bg-red-50 text-sm border-b border-gray-50 last:border-0"
-                        onClick={() => setForm(f => ({ ...f, busca: p.label, pedidoId: p.id, clienteNome: p.label }))}
+                        onClick={() => setForm(f => ({ ...f, busca: p.label, pedidoId: p.id, clienteNome: p.label, clienteEmail: p.email ?? "" }))}
                       >
                         <span className="font-medium text-gray-900">{p.label}</span>
                         {p.endereco && <span className="block text-xs text-gray-400 truncate">{p.endereco}</span>}
@@ -357,6 +356,27 @@ export function PainelSidebar() {
                       className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
                     />
                   </div>
+                )}
+              </div>
+
+              {/* E-mail do cliente */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  E-mail do cliente
+                  <span className="ml-1 font-normal text-gray-400">(para confirmação automática)</span>
+                </label>
+                <input
+                  type="email"
+                  placeholder="cliente@email.com"
+                  value={form.clienteEmail}
+                  onChange={e => setForm(f => ({ ...f, clienteEmail: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                />
+                {form.clienteEmail && (
+                  <p className="mt-1 text-xs text-green-700">✓ E-mail de confirmação será enviado automaticamente</p>
+                )}
+                {!form.clienteEmail && (
+                  <p className="mt-1 text-xs text-gray-400">Sem e-mail — confirmação não será enviada</p>
                 )}
               </div>
 
