@@ -920,6 +920,9 @@ function LogisticaPage() {
   const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("lista");
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
   const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
+  const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
+  const [modalFeedUrl, setModalFeedUrl] = useState(false);
+  const FEED_URL = "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/ical-feed";
 
   // ── Vistorias ─────────────────────────────────────────────────────────────
   const [vistorias, setVistorias] = useState<Vistoria[]>([]);
@@ -2426,12 +2429,8 @@ function LogisticaPage() {
                 </div>
               )}
               <button
-                onClick={() => {
-                  const feedUrl = "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/ical-feed";
-                  const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(feedUrl)}`;
-                  window.open(googleUrl, "_blank");
-                }}
-                title="Assinar calendário completo no Google Agenda"
+                onClick={() => setModalFeedUrl(true)}
+                title="Sincronizar com Google Agenda / iCal"
                 className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
                 <CalendarIcon className="h-4 w-4" /> Google Agenda
               </button>
@@ -2501,7 +2500,8 @@ function LogisticaPage() {
                           <div className="space-y-0.5">
                             {eventos.slice(0, 3).map(a => (
                               <div key={a.id} title={a.titulo}
-                                className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate cursor-default",
+                                onClick={e => { e.stopPropagation(); setCalEventoPopup(a); }}
+                                className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity",
                                   a.status === "Concluído" ? "bg-green-100 text-green-700" :
                                   a.status === "Em andamento" ? "bg-yellow-100 text-yellow-700" :
                                   a.status === "Cancelado" ? "bg-gray-100 text-gray-400" :
@@ -2766,6 +2766,100 @@ function LogisticaPage() {
               </div>
             )}
           </div>
+
+          {/* Popup evento do calendário */}
+          {calEventoPopup && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCalEventoPopup(null)}>
+              <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm leading-tight">{calEventoPopup.titulo}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold border", STATUS_ATEND_COR[calEventoPopup.status])}>{calEventoPopup.status}</span>
+                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[calEventoPopup.classificacao])}>{calEventoPopup.classificacao}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => setCalEventoPopup(null)} className="ml-2 text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="px-5 py-4 space-y-2 text-sm text-gray-700">
+                  {calEventoPopup.data_agendada && (
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="h-4 w-4 text-gray-400 shrink-0" />
+                      <span>{new Date(calEventoPopup.data_agendada + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</span>
+                    </div>
+                  )}
+                  {(calEventoPopup.hora_inicio || calEventoPopup.hora_fim) && (
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                      <span>{calEventoPopup.hora_inicio || "—"}{calEventoPopup.hora_fim ? ` → ${calEventoPopup.hora_fim}` : ""}</span>
+                    </div>
+                  )}
+                  {calEventoPopup.endereco && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+                      <span>{calEventoPopup.endereco}</span>
+                    </div>
+                  )}
+                  {calEventoPopup.responsaveis?.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-gray-400 shrink-0" />
+                      <span>{calEventoPopup.responsaveis.join(", ")}</span>
+                    </div>
+                  )}
+                  {calEventoPopup.atividade && (
+                    <div className="flex items-start gap-2">
+                      <FileText className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+                      <span className="text-xs text-gray-600">{calEventoPopup.atividade}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 px-5 pb-5">
+                  <button onClick={() => { abrirModalAtend(calEventoPopup); setCalEventoPopup(null); }}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <Pencil className="h-3.5 w-3.5 inline mr-1" /> Editar
+                  </button>
+                  <button onClick={() => setCalEventoPopup(null)}
+                    className="flex-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-medium text-white hover:bg-[#155824]">
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal URL do Feed iCal */}
+          {modalFeedUrl && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setModalFeedUrl(false)}>
+              <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2"><CalendarIcon className="h-5 w-5 text-blue-600" /> Sincronizar com Google Agenda</h3>
+                  <button onClick={() => setModalFeedUrl(false)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <p className="text-sm text-gray-600">Cole esta URL no Google Agenda em <strong>Adicionar agenda → Do URL</strong>:</p>
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <code className="flex-1 text-xs text-gray-700 break-all select-all">{FEED_URL}</code>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(FEED_URL); }}
+                      className="shrink-0 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824]">
+                      Copiar
+                    </button>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+                    <p className="font-semibold">Como adicionar no Google Agenda:</p>
+                    <p>1. Abra o Google Agenda no computador</p>
+                    <p>2. Clique em <strong>+ Outras agendas → Do URL</strong></p>
+                    <p>3. Cole a URL acima e clique em <strong>Adicionar agenda</strong></p>
+                    <p>4. A agenda sincroniza automaticamente de hora em hora ✓</p>
+                  </div>
+                  <a href={`https://calendar.google.com/calendar/r/settings/addbyurl`} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+                    <CalendarIcon className="h-4 w-4" /> Abrir Google Agenda
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Modal Atendimento */}
           {modalAtend && (
