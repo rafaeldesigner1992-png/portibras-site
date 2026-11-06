@@ -269,7 +269,6 @@ function gerarManualPdf(pedido: { cliente_empresa: string | null; cliente_nome: 
       ...secao("2. INSPEÇÃO PERIÓDICA — O QUE VERIFICAR", [
         "Feche a porta manualmente e observe se ela encosta completamente no batente, sem folgas visíveis.",
         "Verifique se a mola está funcionando: a porta deve fechar sozinha a partir de qualquer ângulo de abertura.",
-        "Inspecione as borrachas de vedação (intumescentes): devem estar íntegras, sem rasgos ou destacamentos.",
         "Certifique-se de que a maçaneta e a trava antipânico (quando existente) operam suavemente.",
         "Observe se há sinais de ferrugem, deformação, amassados ou trincas na folha da porta.",
         "Verifique se a sinalização de saída acima da porta está visível e funcionando.",
@@ -277,7 +276,6 @@ function gerarManualPdf(pedido: { cliente_empresa: string | null; cliente_nome: 
 
       ...secao("3. CUIDADOS E MANUTENÇÃO PREVENTIVA", [
         "Lubrificar dobradiças e trilhos com produto adequado a cada 6 meses ou conforme recomendação técnica.",
-        "Contrate manutenção preventiva ao menos uma vez por ano, realizada por empresa habilitada.",
         "Em caso de sinistro (incêndio, impacto ou enchente), acione a empresa de manutenção antes de continuar usando a porta.",
         "Guarde os documentos técnicos (DTS, DTE, laudos) em local acessível para inspeções do Corpo de Bombeiros.",
         "Mantenha o registro das manutenções realizadas — datas, empresa contratada e serviços executados.",
@@ -292,7 +290,6 @@ function gerarManualPdf(pedido: { cliente_empresa: string | null; cliente_nome: 
       ]),
 
       ...secao("5. EM CASO DE EMERGÊNCIA", [
-        "Se a porta estiver presa ou emperrada durante uma evacuação, não force: use a saída alternativa mais próxima.",
         "Lembre os moradores e funcionários: na presença de fumaça, mantenha a porta fechada para conter o fogo.",
         "Acione o Corpo de Bombeiros (193) e abandone o local ordenadamente pelas rotas de fuga sinalizadas.",
         "Após qualquer incêndio, mesmo que pequeno, a porta deve ser vistoriada antes de ser recolocada em uso.",
