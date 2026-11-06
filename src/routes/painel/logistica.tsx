@@ -915,6 +915,7 @@ function LogisticaPage() {
   const [formAtend, setFormAtend] = useState<typeof EMPTY_ATEND>({ ...EMPTY_ATEND });
   const [salvandoAtend, setSalvandoAtend] = useState(false);
   const [filtroStatusAtend, setFiltroStatusAtend] = useState<string>("todos");
+  const [buscaVinculo, setBuscaVinculo] = useState("");
   const [atendAberto, setAtendAberto] = useState<string | null>(null);
   const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("lista");
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
@@ -1191,6 +1192,7 @@ function LogisticaPage() {
   }
 
   function abrirModalAtend(atend?: Atendimento) {
+    setBuscaVinculo("");
     if (atend) {
       setSelAtend(atend);
       setFormAtend({
@@ -2748,6 +2750,77 @@ function LogisticaPage() {
                   <button onClick={() => setModalAtend(false)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
                 </div>
                 <div className="max-h-[70vh] overflow-y-auto p-6 space-y-4">
+                  {/* ── Vínculo com pedido/vistoria/ticket ── */}
+                  {!selAtend && (() => {
+                    const q = buscaVinculo.toLowerCase();
+                    const fontes: { label: string; tipo: string; id: string; cliente: string; endereco?: string | null; classificacao: Atendimento["classificacao"]; descricao?: string }[] = [
+                      ...pedidosLog.filter(p => !p.is_ticket && (p.etapa !== "concluido" && p.etapa !== "cancelado")).map(p => ({
+                        label: "Serviço", tipo: "servico", id: p.id,
+                        cliente: p.cliente_empresa || p.cliente_nome || "—",
+                        endereco: p.cliente_endereco ?? null,
+                        classificacao: "Serviço" as const,
+                        descricao: p.tipo_cobranca ? `Contrato ${p.tipo_cobranca}` : undefined,
+                      })),
+                      ...vistorias.filter(v => v.status === "pendente" || v.status === "agendada").map(v => ({
+                        label: "Vistoria", tipo: "vistoria", id: v.id,
+                        cliente: v.cliente_nome || "—",
+                        endereco: v.cliente_endereco ?? null,
+                        classificacao: "Vistoria" as const,
+                        descricao: `Vistoria — ${v.status}`,
+                      })),
+                      ...ticketsAbertos.map(t => ({
+                        label: "Ticket", tipo: "ticket", id: t.id,
+                        cliente: t.cliente_empresa || t.cliente_nome || "—",
+                        endereco: null,
+                        classificacao: "Retorno" as const,
+                        descricao: t.ticket_motivo ?? undefined,
+                      })),
+                    ];
+                    const filtrados = q.length >= 2 ? fontes.filter(f => f.cliente.toLowerCase().includes(q) || (f.descricao ?? "").toLowerCase().includes(q)) : [];
+                    return (
+                      <div>
+                        <label className="label-field">Vincular a pedido / vistoria / ticket</label>
+                        <div className="relative">
+                          <input className="input-field pr-8" value={buscaVinculo}
+                            onChange={e => setBuscaVinculo(e.target.value)}
+                            placeholder="Digite o nome do cliente ou palavra-chave..." />
+                          {buscaVinculo && <button className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500" onClick={() => setBuscaVinculo("")}><X className="h-3.5 w-3.5" /></button>}
+                        </div>
+                        {buscaVinculo.length >= 2 && (
+                          <div className="mt-1 rounded-lg border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+                            {filtrados.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-gray-400">Nenhum resultado encontrado</p>
+                            ) : filtrados.map(item => (
+                              <button key={item.tipo + item.id} type="button"
+                                onClick={() => {
+                                  setFormAtend(f => ({
+                                    ...f,
+                                    titulo: f.titulo || item.cliente,
+                                    classificacao: item.classificacao,
+                                    endereco: f.endereco || item.endereco || "",
+                                    descricao: f.descricao || item.descricao || "",
+                                  }));
+                                  setBuscaVinculo("");
+                                }}
+                                className="w-full flex items-start gap-3 px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
+                                <span className={cn("mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold",
+                                  item.tipo === "ticket" ? "bg-red-100 text-red-700" :
+                                  item.tipo === "vistoria" ? "bg-orange-100 text-orange-700" :
+                                  "bg-emerald-100 text-emerald-700"
+                                )}>{item.label}</span>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold text-gray-800 truncate">{item.cliente}</p>
+                                  {item.descricao && <p className="text-[10px] text-gray-400 truncate">{item.descricao}</p>}
+                                  {item.endereco && <p className="text-[10px] text-gray-400 truncate">📍 {item.endereco}</p>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <p className="mt-1 text-[10px] text-gray-400">Opcional — ao selecionar, preenche título, endereço e classificação automaticamente</p>
+                      </div>
+                    );
+                  })()}
                   <div>
                     <label className="label-field">Título *</label>
                     <input className="input-field" value={formAtend.titulo} onChange={e => setFormAtend(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Portão automático — Empresa ABC" />
