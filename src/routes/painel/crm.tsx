@@ -3692,7 +3692,7 @@ function CrmPage() {
         cliente_empresa: lead.empresa,
         cliente_telefone: lead.telefone,
         cliente_email: lead.email,
-        cliente_endereco: lead.endereco,
+        cliente_endereco: lead.endereco_atendimento || lead.endereco_fiscal || null,
         tipo_servico: lead.tipo_negocio,
         valor_venda: valorVenda || null,
         custo_estimado: custoVenda,
