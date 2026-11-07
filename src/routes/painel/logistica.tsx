@@ -582,7 +582,7 @@ const EMPTY_ATEND = {
   data_agendada: "", hora_inicio: "", hora_fim: "",
   responsaveis: [] as string[], endereco: "", atividade: "", descricao: "",
   agendado_com_cliente: false, em_sistema: false,
-  cliente_email: "", cliente_nome: "",
+  cliente_email: "", cliente_nome: "", cliente_email_cc: "",
 };
 
 const EMPTY_MAT = {
@@ -1389,6 +1389,7 @@ function LogisticaPage() {
         em_sistema: atend.em_sistema,
         cliente_email: (atend as any).cliente_email || "",
         cliente_nome: (atend as any).cliente_nome || "",
+        cliente_email_cc: (atend as any).cliente_email_cc || "",
       });
     } else {
       setSelAtend(null);
@@ -1420,9 +1421,14 @@ function LogisticaPage() {
     // Envia email ao cliente se agendamento confirmado com ele e há data + email
     const emailCliente = formAtend.cliente_email?.trim();
     if (formAtend.agendado_com_cliente && formAtend.data_agendada && emailCliente) {
+      const ccList = formAtend.cliente_email_cc
+        ?.split(",")
+        .map(e => e.trim())
+        .filter(e => e.includes("@")) ?? [];
       supabase.functions.invoke("send-agendamento-email", {
         body: {
           cliente_email: emailCliente,
+          cliente_email_cc: ccList,
           cliente_nome: formAtend.cliente_nome?.trim() || null,
           data_agendada: formAtend.data_agendada,
           hora_inicio: formAtend.hora_inicio || null,
@@ -3127,10 +3133,11 @@ function LogisticaPage() {
                   {/* ── Vínculo com pedido/vistoria/ticket ── */}
                   {!selAtend && (() => {
                     const q = buscaVinculo.toLowerCase();
-                    const fontes: { label: string; tipo: string; id: string; cliente: string; endereco?: string | null; classificacao: Atendimento["classificacao"]; descricao?: string }[] = [
+                    const fontes: { label: string; tipo: string; id: string; cliente: string; cliente_email?: string | null; endereco?: string | null; classificacao: Atendimento["classificacao"]; descricao?: string }[] = [
                       ...pedidosLog.filter(p => !p.is_ticket && (p.etapa !== "concluido" && p.etapa !== "cancelado")).map(p => ({
                         label: "Serviço", tipo: "servico", id: p.id,
                         cliente: p.cliente_empresa || p.cliente_nome || "—",
+                        cliente_email: p.cliente_email ?? null,
                         endereco: p.cliente_endereco ?? null,
                         classificacao: "Serviço" as const,
                         descricao: p.tipo_cobranca ? `Contrato ${p.tipo_cobranca}` : undefined,
@@ -3138,6 +3145,7 @@ function LogisticaPage() {
                       ...vistorias.filter(v => v.status === "pendente" || v.status === "agendada").map(v => ({
                         label: "Vistoria", tipo: "vistoria", id: v.id,
                         cliente: v.cliente_nome || "—",
+                        cliente_email: v.cliente_email ?? null,
                         endereco: v.cliente_endereco ?? null,
                         classificacao: "Vistoria" as const,
                         descricao: `Vistoria — ${v.status}`,
@@ -3145,6 +3153,7 @@ function LogisticaPage() {
                       ...ticketsAbertos.map(t => ({
                         label: "Ticket", tipo: "ticket", id: t.id,
                         cliente: t.cliente_empresa || t.cliente_nome || "—",
+                        cliente_email: t.cliente_email ?? null,
                         endereco: null,
                         classificacao: "Retorno" as const,
                         descricao: t.ticket_motivo ?? undefined,
@@ -3173,6 +3182,8 @@ function LogisticaPage() {
                                     classificacao: item.classificacao,
                                     endereco: f.endereco || item.endereco || "",
                                     descricao: f.descricao || item.descricao || "",
+                                    cliente_nome: f.cliente_nome || item.cliente,
+                                    cliente_email: f.cliente_email || item.cliente_email || "",
                                   }));
                                   setBuscaVinculo("");
                                 }}
@@ -3264,24 +3275,42 @@ function LogisticaPage() {
                   </div>
                   {formAtend.agendado_com_cliente && (
                     <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 space-y-2">
-                      <p className="text-xs font-medium text-blue-700">📧 Envio de confirmação por email</p>
+                      <p className="text-xs font-medium text-blue-700">📧 Confirmação por email ao cliente</p>
                       <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Nome</label>
+                          <input
+                            type="text"
+                            placeholder="Nome do cliente"
+                            value={formAtend.cliente_nome}
+                            onChange={e => setFormAtend(f => ({ ...f, cliente_nome: e.target.value }))}
+                            className="mt-0.5 w-full rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Email principal</label>
+                          <input
+                            type="email"
+                            placeholder="email@cliente.com"
+                            value={formAtend.cliente_email}
+                            onChange={e => setFormAtend(f => ({ ...f, cliente_email: e.target.value }))}
+                            className="mt-0.5 w-full rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Com cópia (CC) — separe por vírgula</label>
                         <input
                           type="text"
-                          placeholder="Nome do cliente"
-                          value={formAtend.cliente_nome}
-                          onChange={e => setFormAtend(f => ({ ...f, cliente_nome: e.target.value }))}
-                          className="rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                        />
-                        <input
-                          type="email"
-                          placeholder="Email do cliente (opcional)"
-                          value={formAtend.cliente_email}
-                          onChange={e => setFormAtend(f => ({ ...f, cliente_email: e.target.value }))}
-                          className="rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                          placeholder="outro@email.com, mais@email.com"
+                          value={formAtend.cliente_email_cc}
+                          onChange={e => setFormAtend(f => ({ ...f, cliente_email_cc: e.target.value }))}
+                          className="mt-0.5 w-full rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
                         />
                       </div>
-                      <p className="text-xs text-blue-500">Se preenchido, o cliente receberá uma confirmação de agendamento.</p>
+                      <p className="text-[10px] text-blue-500">
+                        {formAtend.cliente_email ? "✓ Email de confirmação será enviado ao salvar." : "Preencha o email principal para enviar a confirmação."}
+                      </p>
                     </div>
                   )}
                 </div>

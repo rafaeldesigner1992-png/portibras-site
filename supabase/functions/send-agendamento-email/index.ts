@@ -35,6 +35,7 @@ serve(async (req) => {
     const body = await req.json();
     const {
       cliente_email,
+      cliente_email_cc,  // string[] | undefined
       cliente_nome,
       data_agendada,
       hora_inicio,
@@ -212,6 +213,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: FROM_EMAIL,
         to: [cliente_email],
+        ...(Array.isArray(cliente_email_cc) && cliente_email_cc.length > 0 ? { cc: cliente_email_cc } : {}),
         subject: assunto,
         html,
       }),
