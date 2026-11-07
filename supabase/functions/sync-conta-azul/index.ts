@@ -1,7 +1,6 @@
 // Edge Function: sync-conta-azul
 // Autentica via OAuth2 no Conta Azul e sincroniza vendas, cobranças e contratos
 // Invoke: POST /functions/v1/sync-conta-azul
-// Ou via pg_cron: SELECT net.http_post(url, headers, body) uma vez por dia
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -19,10 +18,9 @@ const supabase = createClient(
 
 // ─── OAuth2: busca/renova access token ──────────────────────────────────────
 async function getAccessToken(): Promise<string> {
-  // Tenta buscar token salvo
   const { data: cfg } = await supabase
     .from("configuracoes")
-    .select("valor, atualizado_em")
+    .select("valor")
     .eq("chave", "ca_access_token")
     .single();
 
@@ -35,12 +33,10 @@ async function getAccessToken(): Promise<string> {
   const expiresAt = cfgExpiry?.valor ? new Date(cfgExpiry.valor) : null;
   const agora = new Date();
 
-  // Se token válido (com 5 min de margem), retorna
   if (cfg?.valor && expiresAt && expiresAt > new Date(agora.getTime() + 5 * 60 * 1000)) {
     return cfg.valor;
   }
 
-  // Tenta refresh com refresh_token
   const { data: cfgRefresh } = await supabase
     .from("configuracoes")
     .select("valor")
@@ -48,7 +44,6 @@ async function getAccessToken(): Promise<string> {
     .single();
 
   if (cfgRefresh?.valor) {
-    // Conta Azul exige Basic Auth no header
     const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
     const res = await fetch(TOKEN_URL, {
       method: "POST",
@@ -67,6 +62,9 @@ async function getAccessToken(): Promise<string> {
       await salvarToken(token);
       return token.access_token;
     }
+
+    const errText = await res.text().catch(() => "");
+    console.error("Falha ao renovar token:", res.status, errText);
   }
 
   throw new Error("Conta Azul não autorizado. Acesse /painel/auth/conta-azul para autorizar.");
@@ -74,7 +72,6 @@ async function getAccessToken(): Promise<string> {
 
 async function salvarToken(token: { access_token: string; refresh_token?: string; expires_in: number }) {
   const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
-
   await supabase.from("configuracoes").upsert([
     { chave: "ca_access_token", valor: token.access_token, descricao: "Conta Azul OAuth2 access token" },
     { chave: "ca_token_expires_at", valor: expiresAt, descricao: "Conta Azul token expira em" },
@@ -89,7 +86,6 @@ async function salvarToken(token: { access_token: string; refresh_token?: string
 }
 
 // ─── Chamada genérica à API ──────────────────────────────────────────────────
-// path deve começar com /v1/... conforme documentação API v2
 async function apiCA(path: string, token: string) {
   const res = await fetch(`${CONTA_AZUL_BASE}${path}`, {
     headers: {
@@ -104,14 +100,20 @@ async function apiCA(path: string, token: string) {
   return res.json();
 }
 
-// ─── Sync: Vendas (faturamento) ──────────────────────────────────────────────
-// Endpoint API v2: GET /v1/vendas?pagina=1&tamanho_pagina=100
+// ─── Sync: Vendas ─────────────────────────────────────────────────────────────
+// Endpoint correto: GET /v1/venda/busca (não /v1/vendas)
 async function syncVendas(token: string) {
   let vendas: unknown[] = [];
   try {
-    // Busca últimas 100 vendas (v2 não filtra por data diretamente no list)
-    const data = await apiCA(`/v1/vendas?pagina=1&tamanho_pagina=100`, token);
-    vendas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.vendas ?? [];
+    const hoje = new Date();
+    const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
+    const fim = hoje.toISOString().slice(0, 10);
+
+    const data = await apiCA(
+      `/v1/venda/busca?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=200`,
+      token
+    );
+    vendas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.vendas ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar vendas:", e);
     return 0;
@@ -125,10 +127,10 @@ async function syncVendas(token: string) {
     cliente_nome: v.cliente?.nome ?? v.customer?.name ?? v.cliente_nome ?? "—",
     cliente_documento: v.cliente?.documento ?? v.customer?.document ?? null,
     valor_total: Number(v.valor_total ?? v.total ?? v.totalValue ?? 0),
-    status: v.status ?? "unknown",
-    data_emissao: v.data_emissao ?? v.emission ?? v.emissionDate ?? v.createdAt ?? null,
+    status: v.situacao ?? v.status ?? "unknown",
+    data_emissao: v.data_emissao ?? v.emission ?? v.emissionDate ?? v.data ?? null,
     data_vencimento: v.data_vencimento ?? v.dueDate ?? null,
-    observacao: v.observacao ?? v.observation ?? v.notes ?? null,
+    observacao: v.observacao ?? v.observation ?? null,
     sincronizado_em: new Date().toISOString(),
   }));
 
@@ -138,7 +140,7 @@ async function syncVendas(token: string) {
 }
 
 // ─── Sync: Cobranças / Recebíveis ────────────────────────────────────────────
-// Endpoint API v2: GET /v1/financeiro/contasreceber?pagina=1&tamanho_pagina=100
+// Endpoint correto: GET /v1/financeiro/contas-a-receber (não /v1/financeiro/contasreceber)
 async function syncCobrancas(token: string) {
   const hoje = new Date();
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
@@ -147,10 +149,10 @@ async function syncCobrancas(token: string) {
   let cobrancas: unknown[] = [];
   try {
     const data = await apiCA(
-      `/v1/financeiro/contasreceber?data_vencimento_inicial=${inicio}&data_vencimento_final=${fim}&pagina=1&tamanho_pagina=200`,
+      `/v1/financeiro/contas-a-receber?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
       token
     );
-    cobrancas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contasReceber ?? [];
+    cobrancas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar cobranças:", e);
     return 0;
@@ -163,11 +165,11 @@ async function syncCobrancas(token: string) {
     descricao: c.descricao ?? c.description ?? c.name ?? "—",
     cliente_nome: c.cliente?.nome ?? c.customer?.name ?? c.client?.name ?? null,
     valor: Number(c.valor ?? c.value ?? c.amount ?? c.total ?? 0),
-    vencimento: c.data_vencimento ?? c.dueDate ?? c.due_date ?? null,
-    status: c.status ?? "pending",
+    vencimento: c.data_vencimento ?? c.vencimento ?? c.dueDate ?? c.due_date ?? null,
+    status: c.status ?? c.situacao ?? "pending",
     pago_em: c.data_pagamento ?? c.paymentDate ?? c.paid_at ?? null,
     valor_pago: Number(c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
-    tipo: c.tipo ?? c.type ?? "receita",
+    tipo: "receita",
     sincronizado_em: new Date().toISOString(),
   }));
 
@@ -176,39 +178,8 @@ async function syncCobrancas(token: string) {
   return rows.length;
 }
 
-// ─── Sync: Saldos das contas bancárias ──────────────────────────────────────
-// Endpoint API v2: GET /v1/financeiro/contasfinanceiras
-async function syncSaldos(token: string) {
-  let contas: unknown[] = [];
-  try {
-    const data = await apiCA(`/v1/financeiro/contasfinanceiras?pagina=1&tamanho_pagina=50`, token);
-    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contasFinanceiras ?? data?.bankAccounts ?? [];
-  } catch (e) {
-    console.error("Erro ao buscar saldos:", e);
-    return 0;
-  }
-
-  if (contas.length === 0) return 0;
-
-  const rows = (contas as any[]).map((c) => ({
-    id: String(c.id),
-    nome: c.nome ?? c.name ?? c.descricao ?? c.description ?? "Conta",
-    tipo: c.tipo ?? c.type ?? c.bankAccountType ?? "corrente",
-    saldo: Number(c.saldo ?? c.saldo_atual ?? c.balance ?? c.currentBalance ?? 0),
-    banco: c.banco ?? c.bankCode ?? c.bank ?? null,
-    agencia: c.agencia ?? c.agency ?? c.branchNumber ?? null,
-    conta: c.numero_conta ?? c.accountNumber ?? c.account ?? null,
-    ativo: c.ativo !== false && c.active !== false,
-    sincronizado_em: new Date().toISOString(),
-  }));
-
-  const { error } = await supabase.from("ca_saldos").upsert(rows, { onConflict: "id" });
-  if (error) console.error("Erro ao salvar saldos:", error);
-  return rows.length;
-}
-
-// ─── Sync: Contas a pagar ─────────────────────────────────────────────────────
-// Endpoint API v2: GET /v1/financeiro/contaspagar
+// ─── Sync: Contas a Pagar ─────────────────────────────────────────────────────
+// Endpoint correto: GET /v1/financeiro/contas-a-pagar (não /v1/financeiro/contaspagar)
 async function syncContasPagar(token: string) {
   const hoje = new Date();
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
@@ -217,10 +188,10 @@ async function syncContasPagar(token: string) {
   let contas: unknown[] = [];
   try {
     const data = await apiCA(
-      `/v1/financeiro/contaspagar?data_vencimento_inicial=${inicio}&data_vencimento_final=${fim}&pagina=1&tamanho_pagina=200`,
+      `/v1/financeiro/contas-a-pagar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
       token
     );
-    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contasPagar ?? [];
+    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar contas a pagar:", e);
     return 0;
@@ -233,8 +204,8 @@ async function syncContasPagar(token: string) {
     descricao: c.descricao ?? c.description ?? c.name ?? "—",
     fornecedor_nome: c.fornecedor?.nome ?? c.supplier?.name ?? c.vendor?.name ?? null,
     valor: Number(c.valor ?? c.value ?? c.amount ?? c.total ?? 0),
-    vencimento: c.data_vencimento ?? c.dueDate ?? c.due_date ?? null,
-    status: c.status ?? "pending",
+    vencimento: c.data_vencimento ?? c.vencimento ?? c.dueDate ?? c.due_date ?? null,
+    status: c.status ?? c.situacao ?? "pending",
     pago_em: c.data_pagamento ?? c.paymentDate ?? c.paid_at ?? null,
     valor_pago: Number(c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
     categoria: c.categoria?.nome ?? c.category?.name ?? c.costCenter ?? null,
@@ -246,14 +217,62 @@ async function syncContasPagar(token: string) {
   return rows.length;
 }
 
-// ─── Sync: Contratos recorrentes ─────────────────────────────────────────────
-// Endpoint API v2: GET /v1/contratos
+// ─── Sync: Saldos das contas bancárias ──────────────────────────────────────
+// Endpoint correto: GET /v1/conta-financeira (não /v1/financeiro/contasfinanceiras)
+async function syncSaldos(token: string) {
+  let contas: unknown[] = [];
+  try {
+    const data = await apiCA(`/v1/conta-financeira?pagina=1&tamanho_pagina=50`, token);
+    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? data?.contasFinanceiras ?? [];
+  } catch (e) {
+    console.error("Erro ao buscar saldos:", e);
+    return 0;
+  }
+
+  if (contas.length === 0) return 0;
+
+  // Para cada conta, tenta buscar o saldo atual
+  const rows = await Promise.all((contas as any[]).map(async (c) => {
+    let saldoAtual = Number(c.saldo ?? c.saldo_atual ?? c.balance ?? c.currentBalance ?? 0);
+    try {
+      const saldoRes = await apiCA(`/v1/conta-financeira/${c.id}/saldo-atual`, token);
+      if (saldoRes?.saldo !== undefined) saldoAtual = Number(saldoRes.saldo);
+    } catch {
+      // usa o saldo do objeto da conta se não conseguir buscar individualmente
+    }
+    return {
+      id: String(c.id),
+      nome: c.nome ?? c.name ?? c.descricao ?? c.description ?? "Conta",
+      tipo: c.tipo ?? c.type ?? c.bankAccountType ?? "corrente",
+      saldo: saldoAtual,
+      banco: c.banco ?? c.bankCode ?? c.bank ?? null,
+      agencia: c.agencia ?? c.agency ?? c.branchNumber ?? null,
+      conta: c.numero_conta ?? c.accountNumber ?? c.account ?? null,
+      ativo: c.ativo !== false && c.active !== false,
+      sincronizado_em: new Date().toISOString(),
+    };
+  }));
+
+  const { error } = await supabase.from("ca_saldos").upsert(rows, { onConflict: "id" });
+  if (error) console.error("Erro ao salvar saldos:", error);
+  return rows.length;
+}
+
+// ─── Sync: Contratos ──────────────────────────────────────────────────────────
+// Endpoint: GET /v1/contratos — data_inicio e data_fim são OBRIGATÓRIOS
 async function syncContratos(token: string) {
   let contratos: unknown[] = [];
   try {
-    // Sem filtros de data — contratos não suportam esse parâmetro
-    const data = await apiCA(`/v1/contratos?pagina=1&tamanho_pagina=200`, token);
-    contratos = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contratos ?? [];
+    const hoje = new Date();
+    // Busca contratos com início há 2 anos e fim daqui a 3 anos (cobre ativos e históricos recentes)
+    const inicio = new Date(hoje.getFullYear() - 2, hoje.getMonth(), 1).toISOString().slice(0, 10);
+    const fim = new Date(hoje.getFullYear() + 3, hoje.getMonth(), 1).toISOString().slice(0, 10);
+
+    const data = await apiCA(
+      `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=50`,
+      token
+    );
+    contratos = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contratos ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar contratos:", e);
     return 0;
@@ -267,8 +286,8 @@ async function syncContratos(token: string) {
     cliente_nome: c.cliente?.nome ?? c.customer?.name ?? c.client?.name ?? "—",
     cliente_documento: c.cliente?.documento ?? c.customer?.document ?? c.client?.document ?? null,
     valor: Number(c.valor ?? c.value ?? c.totalValue ?? c.amount ?? 0),
-    periodicidade: c.periodicidade ?? c.periodicity ?? c.frequency ?? null,
-    status: c.status ?? "active",
+    periodicidade: c.periodicidade ?? c.periodicity ?? c.frequencia ?? c.frequency ?? null,
+    status: c.status ?? c.situacao ?? "ATIVO",
     data_inicio: c.data_inicio ?? c.startDate ?? c.start_date ?? null,
     data_fim: c.data_fim ?? c.endDate ?? c.end_date ?? null,
     sincronizado_em: new Date().toISOString(),
@@ -296,26 +315,37 @@ serve(async (req) => {
     // Modo debug: retorna resposta bruta de cada endpoint
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch { /* sem body */ }
+
     if (body.debug) {
+      const hoje = new Date();
+      const inicio = new Date(hoje.getFullYear() - 2, hoje.getMonth(), 1).toISOString().slice(0, 10);
+      const fim = new Date(hoje.getFullYear() + 3, hoje.getMonth(), 1).toISOString().slice(0, 10);
+      const dataInicioCobranca = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
+      const dataFimCobranca = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0).toISOString().slice(0, 10);
+
+      const endpoints = [
+        `/v1/venda/busca?data_inicio=${dataInicioCobranca}&data_fim=${hoje.toISOString().slice(0,10)}&pagina=1&tamanho_pagina=5`,
+        `/v1/financeiro/contas-a-receber?data_vencimento_de=${dataInicioCobranca}&data_vencimento_ate=${dataFimCobranca}&pagina=1&tamanho_pagina=5`,
+        `/v1/financeiro/contas-a-pagar?data_vencimento_de=${dataInicioCobranca}&data_vencimento_ate=${dataFimCobranca}&pagina=1&tamanho_pagina=5`,
+        `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=5`,
+        `/v1/conta-financeira?pagina=1&tamanho_pagina=5`,
+      ];
+
       const results: Record<string, unknown> = {};
-      for (const path of [
-        "/v1/vendas?pagina=1&tamanho_pagina=5",
-        "/v1/financeiro/contasreceber?pagina=1&tamanho_pagina=5",
-        "/v1/financeiro/contaspagar?pagina=1&tamanho_pagina=5",
-        "/v1/contratos?pagina=1&tamanho_pagina=5",
-        "/v1/financeiro/contasfinanceiras?pagina=1&tamanho_pagina=5",
-      ]) {
+      for (const path of endpoints) {
         try {
           const r = await fetch(`${CONTA_AZUL_BASE}${path}`, {
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           });
           const txt = await r.text();
-          results[path] = { status: r.status, body: txt.substring(0, 300) };
+          results[path] = { status: r.status, body: txt.substring(0, 500) };
         } catch (e) {
           results[path] = { error: String(e) };
         }
       }
-      return new Response(JSON.stringify(results), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(results, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const [nVendas, nCobrancas, nContratos, nSaldos, nContasPagar] = await Promise.all([
@@ -326,7 +356,6 @@ serve(async (req) => {
       syncContasPagar(token),
     ]);
 
-    // Registrar última sincronização
     await supabase.from("configuracoes").upsert(
       { chave: "ca_ultimo_sync", valor: new Date().toISOString(), descricao: "Última sincronização com Conta Azul" },
       { onConflict: "chave" }
