@@ -504,6 +504,8 @@ function FinanceiroPage() {
   const [caConectado, setCaConectado] = useState(false);
   const [filtroMeses, setFiltroMeses] = useState<1 | 2 | 3>(1);
   const [horizonteFuturo, setHorizonteFuturo] = useState<30 | 60 | 90>(30);
+  const [filtroCobrancas, setFiltroCobrancas] = useState<"todos" | "a_receber" | "vencidos" | "recebidos">("a_receber");
+  const [filtroContasPagar, setFiltroContasPagar] = useState<"todos" | "a_pagar" | "vencidos" | "pagos">("a_pagar");
 
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -546,12 +548,6 @@ function FinanceiroPage() {
       supabase.from("ca_contas_pagar").select("*").order("vencimento", { ascending: true }).limit(200),
       supabase.from("crm_propostas").select("*, lead:crm_leads(nome, empresa)").eq("status", "fechado").limit(200),
     ]);
-    console.log("[CA] vendas:", v.data?.length, v.error?.message);
-    console.log("[CA] cobrancas:", c.data?.length, c.error?.message);
-    console.log("[CA] contratos:", ct.data?.length, ct.error?.message);
-    console.log("[CA] saldos:", s.data?.length, s.error?.message);
-    console.log("[CA] contas_pagar:", cp.data?.length, cp.error?.message);
-    console.log("[CA] crm_propostas:", crm.data?.length, crm.error?.message);
     if (v.data) setCaVendas(v.data as CaVenda[]);
     if (c.data) setCaCobrancas(c.data as CaCobranca[]);
     if (ct.data) setCaContratos(ct.data as CaContrato[]);
@@ -2258,37 +2254,49 @@ function ContaAzulView({
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
   const horizonte = new Date(hoje.getTime() + horizonteFuturo * 24 * 60 * 60 * 1000);
 
+  // Status que significam "pago/recebido" na API Conta Azul
+  const STATUS_PAGO = ["RECEIVED", "PAID", "ACQUITTED", "RECEBIDO", "PAGO"];
+  const isPago = (status: string) => STATUS_PAGO.includes(status.toUpperCase());
+  // Status que significam "cancelado"
+  const STATUS_CANCELADO = ["CANCELED", "CANCELLED", "CANCELADO"];
+  const isCancelado = (status: string) => STATUS_CANCELADO.includes(status.toUpperCase());
+
   const totalFaturado = vendas.reduce((s, v) => s + v.valor_total, 0);
-  const totalRecebido = cobrancas.filter(c => c.status === "RECEIVED" || c.status === "PAID").reduce((s, c) => s + c.valor_pago, 0);
+  const totalRecebido = cobrancas.filter(c => isPago(c.status)).reduce((s, c) => s + c.valor_pago, 0);
   const aReceber = cobrancas.filter(c => {
-    if (c.status === "RECEIVED" || c.status === "PAID") return false;
+    if (isPago(c.status) || isCancelado(c.status)) return false;
     if (!c.vencimento) return false;
     const venc = new Date(c.vencimento);
+    venc.setHours(0, 0, 0, 0);
     return venc >= hoje && venc <= horizonte;
-  }).reduce((s, c) => s + c.valor, 0);
+  }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
   const emAtraso = cobrancas.filter(c => {
-    if (c.status === "RECEIVED" || c.status === "PAID") return false;
+    if (isPago(c.status) || isCancelado(c.status)) return false;
     if (!c.vencimento) return false;
-    return new Date(c.vencimento) < hoje;
-  }).reduce((s, c) => s + c.valor, 0);
+    const venc = new Date(c.vencimento);
+    venc.setHours(0, 0, 0, 0);
+    return venc < hoje;
+  }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
 
   // ── Saldos e contas a pagar ──
   const saldoTotal = saldos.filter(s => s.ativo).reduce((acc, s) => acc + s.saldo, 0);
   const aPagarVencidos = contasPagar.filter(c => {
-    const statuses = ["PAID", "RECEIVED", "CANCELED", "CANCELLED"];
-    if (statuses.includes(c.status.toUpperCase())) return false;
-    if (!c.vencimento) return false;
-    return new Date(c.vencimento) < hoje;
-  }).reduce((s, c) => s + c.valor, 0);
-  const aPagarProximo = contasPagar.filter(c => {
-    const statuses = ["PAID", "RECEIVED", "CANCELED", "CANCELLED"];
-    if (statuses.includes(c.status.toUpperCase())) return false;
+    if (isPago(c.status) || isCancelado(c.status)) return false;
     if (!c.vencimento) return false;
     const venc = new Date(c.vencimento);
+    venc.setHours(0, 0, 0, 0);
+    return venc < hoje;
+  }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
+  const aPagarProximo = contasPagar.filter(c => {
+    if (isPago(c.status) || isCancelado(c.status)) return false;
+    if (!c.vencimento) return false;
+    const venc = new Date(c.vencimento);
+    venc.setHours(0, 0, 0, 0);
     return venc >= hoje && venc <= horizonte;
-  }).reduce((s, c) => s + c.valor, 0);
+  }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
 
   // ── Conciliação: contratos CRM sem contrato ativo no CA ───────────────────
   const nomesCA = contratos
@@ -2302,11 +2310,21 @@ function ContaAzulView({
 
   const statusBadge = (status: string) => {
     const s = status.toUpperCase();
-    if (s === "RECEIVED" || s === "PAID" || s === "ACTIVE") return "bg-green-100 text-green-700";
-    if (s === "OVERDUE" || s === "LATE") return "bg-red-100 text-red-700";
-    if (s === "PENDING" || s === "AWAITING") return "bg-yellow-100 text-yellow-700";
-    if (s === "CANCELED" || s === "CANCELLED") return "bg-gray-100 text-gray-500";
+    if (["RECEIVED", "PAID", "ACQUITTED", "RECEBIDO", "PAGO", "ACTIVE", "ATIVO"].includes(s)) return "bg-green-100 text-green-700";
+    if (["OVERDUE", "LATE", "VENCIDO"].includes(s)) return "bg-red-100 text-red-700";
+    if (["PENDING", "AWAITING", "PENDENTE", "AGUARDANDO"].includes(s)) return "bg-yellow-100 text-yellow-700";
+    if (["CANCELED", "CANCELLED", "CANCELADO"].includes(s)) return "bg-gray-100 text-gray-500";
     return "bg-blue-100 text-blue-700";
+  };
+
+  const statusLabel = (status: string) => {
+    const s = status.toUpperCase();
+    if (["RECEIVED", "PAID", "ACQUITTED"].includes(s)) return "Recebido";
+    if (["OVERDUE", "LATE"].includes(s)) return "Vencido";
+    if (["PENDING", "AWAITING"].includes(s)) return "Pendente";
+    if (["CANCELED", "CANCELLED"].includes(s)) return "Cancelado";
+    if (s === "ACTIVE" || s === "ATIVO") return "Ativo";
+    return status;
   };
 
   const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
@@ -2355,22 +2373,30 @@ function ContaAzulView({
 
       {/* ── Boletos / Recebíveis ── */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-blue-500" />
             <span className="text-sm font-semibold text-gray-800">Boletos &amp; Recebíveis</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">Horizonte futuro:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              { key: "a_receber", label: "A receber" },
+              { key: "vencidos", label: "Vencidos" },
+              { key: "recebidos", label: "Recebidos" },
+              { key: "todos", label: "Todos" },
+            ] as const).map(f => (
+              <button key={f.key} onClick={() => setFiltroCobrancas(f.key)}
+                className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  filtroCobrancas === f.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}>{f.label}</button>
+            ))}
+            <span className="text-xs text-gray-400 ml-1">|</span>
+            <span className="text-xs text-gray-500">Horizonte:</span>
             {([30, 60, 90] as const).map(d => (
-              <button
-                key={d}
-                onClick={() => setHorizonteFuturo(d)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition",
+              <button key={d} onClick={() => setHorizonteFuturo(d)}
+                className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition",
                   horizonteFuturo === d ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                )}
-              >{d}d</button>
+                )}>{d}d</button>
             ))}
           </div>
         </div>
@@ -2387,22 +2413,41 @@ function ContaAzulView({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {cobrancas.length === 0 ? (
-                <tr><td colSpan={6} className="px-5 py-8 text-center text-xs text-gray-400">Nenhuma cobrança encontrada</td></tr>
-              ) : cobrancas.map(c => (
-                <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[180px] truncate">{c.descricao}</td>
-                  <td className="px-4 py-3.5 text-gray-600 max-w-[160px] truncate">{c.cliente_nome ?? "—"}</td>
-                  <td className="px-4 py-3.5 text-gray-600">{fmtDate(c.vencimento)}</td>
-                  <td className="px-4 py-3.5 text-right font-medium text-gray-900">{fmt(c.valor)}</td>
-                  <td className="px-4 py-3.5 text-right text-gray-600">{c.valor_pago > 0 ? fmt(c.valor_pago) : "—"}</td>
-                  <td className="px-4 py-3.5 text-center">
-                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(c.status))}>
-                      {c.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {(() => {
+                const filtradas = cobrancas.filter(c => {
+                  if (filtroCobrancas === "recebidos") return isPago(c.status);
+                  if (filtroCobrancas === "vencidos") {
+                    if (isPago(c.status) || isCancelado(c.status)) return false;
+                    const venc = new Date(c.vencimento ?? "");
+                    venc.setHours(0,0,0,0);
+                    return c.vencimento && venc < hoje;
+                  }
+                  if (filtroCobrancas === "a_receber") {
+                    if (isPago(c.status) || isCancelado(c.status)) return false;
+                    const venc = new Date(c.vencimento ?? "");
+                    venc.setHours(0,0,0,0);
+                    return c.vencimento && venc >= hoje && venc <= horizonte;
+                  }
+                  return true; // todos
+                });
+                if (filtradas.length === 0) return (
+                  <tr><td colSpan={6} className="px-5 py-8 text-center text-xs text-gray-400">Nenhuma cobrança encontrada</td></tr>
+                );
+                return filtradas.map(c => (
+                  <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[180px] truncate">{c.descricao}</td>
+                    <td className="px-4 py-3.5 text-gray-600 max-w-[160px] truncate">{c.cliente_nome ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-gray-600">{fmtDate(c.vencimento)}</td>
+                    <td className="px-4 py-3.5 text-right font-medium text-gray-900">{fmt(c.valor)}</td>
+                    <td className="px-4 py-3.5 text-right text-gray-600">{c.valor_pago > 0 ? fmt(c.valor_pago) : "—"}</td>
+                    <td className="px-4 py-3.5 text-center">
+                      <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(c.status))}>
+                        {statusLabel(c.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ));
+              })()}
             </tbody>
           </table>
         </div>
@@ -2410,7 +2455,7 @@ function ContaAzulView({
 
       {/* ── Contas a pagar ── */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <TrendingDown className="h-4 w-4 text-red-500" />
             <span className="text-sm font-semibold text-gray-800">Contas a Pagar</span>
@@ -2420,9 +2465,18 @@ function ContaAzulView({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">Próximos {horizonteFuturo}d:</span>
-            <span className="text-xs font-semibold text-orange-600">{fmt(aPagarProximo)}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              { key: "a_pagar", label: "A pagar" },
+              { key: "vencidos", label: "Vencidos" },
+              { key: "pagos", label: "Pagos" },
+              { key: "todos", label: "Todos" },
+            ] as const).map(f => (
+              <button key={f.key} onClick={() => setFiltroContasPagar(f.key)}
+                className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition",
+                  filtroContasPagar === f.key ? "bg-red-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}>{f.label}</button>
+            ))}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -2437,21 +2491,40 @@ function ContaAzulView({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {contasPagar.length === 0 ? (
-                <tr><td colSpan={5} className="px-5 py-8 text-center text-xs text-gray-400">Nenhuma conta a pagar encontrada</td></tr>
-              ) : contasPagar.map(c => (
-                <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[180px] truncate">{c.descricao}</td>
-                  <td className="px-4 py-3.5 text-gray-600 max-w-[160px] truncate">{c.fornecedor_nome ?? "—"}</td>
-                  <td className="px-4 py-3.5 text-gray-600">{fmtDate(c.vencimento)}</td>
-                  <td className="px-4 py-3.5 text-right font-medium text-gray-900">{fmt(c.valor)}</td>
-                  <td className="px-4 py-3.5 text-center">
-                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(c.status))}>
-                      {c.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {(() => {
+                const filtradas = contasPagar.filter(c => {
+                  if (filtroContasPagar === "pagos") return isPago(c.status);
+                  if (filtroContasPagar === "vencidos") {
+                    if (isPago(c.status) || isCancelado(c.status)) return false;
+                    const venc = new Date(c.vencimento ?? "");
+                    venc.setHours(0,0,0,0);
+                    return c.vencimento && venc < hoje;
+                  }
+                  if (filtroContasPagar === "a_pagar") {
+                    if (isPago(c.status) || isCancelado(c.status)) return false;
+                    const venc = new Date(c.vencimento ?? "");
+                    venc.setHours(0,0,0,0);
+                    return c.vencimento && venc >= hoje && venc <= horizonte;
+                  }
+                  return true; // todos
+                });
+                if (filtradas.length === 0) return (
+                  <tr><td colSpan={5} className="px-5 py-8 text-center text-xs text-gray-400">Nenhuma conta a pagar encontrada</td></tr>
+                );
+                return filtradas.map(c => (
+                  <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[180px] truncate">{c.descricao}</td>
+                    <td className="px-4 py-3.5 text-gray-600 max-w-[160px] truncate">{c.fornecedor_nome ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-gray-600">{fmtDate(c.vencimento)}</td>
+                    <td className="px-4 py-3.5 text-right font-medium text-gray-900">{fmt(c.valor)}</td>
+                    <td className="px-4 py-3.5 text-center">
+                      <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", statusBadge(c.status))}>
+                        {statusLabel(c.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ));
+              })()}
             </tbody>
           </table>
         </div>
