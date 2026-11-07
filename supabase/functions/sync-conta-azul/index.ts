@@ -280,22 +280,11 @@ async function syncContratos(token: string) {
     const inicio = new Date(hoje.getFullYear() - 2, hoje.getMonth(), 1).toISOString().slice(0, 10);
     const fim = new Date(hoje.getFullYear() + 3, hoje.getMonth(), 1).toISOString().slice(0, 10);
 
-    // Tenta com data_inicio_recorrencia primeiro (campo que a API menciona no erro 400)
-    // Se falhar, tenta com data_inicio (campo documentado no OpenAPI)
-    let data: unknown;
-    try {
-      data = await apiCA(
-        `/v1/contratos?data_inicio_recorrencia=${inicio}&data_fim_recorrencia=${fim}&pagina=1&tamanho_pagina=50`,
-        token
-      );
-      console.log("Contratos: sucesso com data_inicio_recorrencia");
-    } catch (e1) {
-      console.log("Contratos: data_inicio_recorrencia falhou, tentando data_inicio:", String(e1));
-      data = await apiCA(
-        `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=50`,
-        token
-      );
-    }
+    // Endpoint documentado: data_inicio e data_fim (data_inicio_recorrencia sempre retorna 400)
+    const data = await apiCA(
+      `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=50`,
+      token
+    );
     contratos = Array.isArray(data) ? data : (data as any)?.content ?? (data as any)?.items ?? (data as any)?.contratos ?? (data as any)?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar contratos:", e);

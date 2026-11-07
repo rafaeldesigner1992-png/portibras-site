@@ -55,7 +55,7 @@ interface CrmContrato {
   nome_arquivo: string;
   status: string;
   conteudo: { parcela?: number } | null;
-  lead?: { nome_empresa: string; contato: string };
+  lead?: { nome: string; empresa: string };
 }
 
 interface CaSaldo {
@@ -544,7 +544,7 @@ function FinanceiroPage() {
       supabase.from("ca_contratos").select("*").order("cliente_nome").limit(200),
       supabase.from("ca_saldos").select("*").order("nome").limit(50),
       supabase.from("ca_contas_pagar").select("*").order("vencimento", { ascending: true }).limit(200),
-      supabase.from("crm_propostas").select("*, lead:crm_leads(nome_empresa, contato)").eq("status", "fechado").limit(200),
+      supabase.from("crm_propostas").select("*, lead:crm_leads(nome, empresa)").eq("status", "fechado").limit(200),
     ]);
     if (v.data) setCaVendas(v.data as CaVenda[]);
     if (c.data) setCaCobrancas(c.data as CaCobranca[]);
@@ -2290,7 +2290,7 @@ function ContaAzulView({
     .map(c => c.cliente_nome.toLowerCase().trim());
 
   const contratosSemCA = crmContratos.filter(crm => {
-    const nomeCrm = (crm.lead?.nome_empresa ?? "").toLowerCase().trim();
+    const nomeCrm = (crm.lead?.empresa ?? crm.lead?.nome ?? "").toLowerCase().trim();
     return nomeCrm && !nomesCA.some(n => n.includes(nomeCrm) || nomeCrm.includes(n));
   });
 
@@ -2551,7 +2551,7 @@ function ContaAzulView({
                 <div key={crm.id} className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5">
                   <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{crm.lead?.nome_empresa ?? crm.nome_arquivo}</p>
+                    <p className="text-sm font-medium text-gray-900">{crm.lead?.empresa ?? crm.lead?.nome ?? crm.nome_arquivo}</p>
                     <p className="text-xs text-gray-500">Proposta fechada · sem contrato ativo no Conta Azul</p>
                   </div>
                 </div>
