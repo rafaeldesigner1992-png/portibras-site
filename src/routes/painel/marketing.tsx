@@ -15,6 +15,20 @@ export const Route = createFileRoute("/painel/marketing")({
 
 type Periodo = "7" | "14" | "30" | "90";
 
+interface DadoKeyword {
+  date_from: string;
+  date_to: string;
+  keyword_text: string | null;
+  keyword_match_type: string | null;
+  campaign: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  conversions: number;
+  ctr: number;
+  cpc: number | null;
+}
+
 interface DadoDiario {
   date: string;
   campaign: string;
@@ -73,7 +87,9 @@ function MarketingPage() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [semDados, setSemDados] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<"campanhas" | "tendencia">("campanhas");
+  const [abaAtiva, setAbaAtiva] = useState<"campanhas" | "tendencia" | "keywords">("campanhas");
+  const [keywords, setKeywords] = useState<DadoKeyword[]>([]);
+  const [carregandoKw, setCarregandoKw] = useState(false);
 
   const carregar = useCallback(async (p: Periodo = periodo) => {
     setCarregando(true);
@@ -110,10 +126,27 @@ function MarketingPage() {
     }
   }, [periodo]);
 
+  const carregarKeywords = useCallback(async () => {
+    setCarregandoKw(true);
+    try {
+      const { data, error } = await supabase
+        .from("mkt_google_ads_keywords")
+        .select("*")
+        .order("clicks", { ascending: false });
+      if (error) throw error;
+      setKeywords(data ?? []);
+    } catch (e) {
+      console.error("Erro ao carregar keywords:", e);
+    } finally {
+      setCarregandoKw(false);
+    }
+  }, []);
+
   // Sincronização manual via Claude (Windsor.ai não é acessível via Edge Function)
   // Para atualizar os dados: peça ao Claude para buscar novos dados do Windsor e inserir no Supabase.
 
   useEffect(() => { carregar(periodo); }, [periodo]);
+  useEffect(() => { carregarKeywords(); }, []);
 
   // ── Agregações ──────────────────────────────────────────────────────────────
   const total = {
@@ -259,6 +292,7 @@ function MarketingPage() {
             {([
               { key: "campanhas", label: "Por Campanha" },
               { key: "tendencia", label: "Tendência diária" },
+              { key: "keywords", label: "Palavras-chave" },
             ] as const).map(t => (
               <button key={t.key} onClick={() => setAbaAtiva(t.key)}
                 className={cn("rounded-lg px-4 py-2 text-sm font-medium transition",
@@ -317,6 +351,68 @@ function MarketingPage() {
                       </tr>
                     </tfoot>
                   )}
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── Palavras-chave ── */}
+          {abaAtiva === "keywords" && (
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+              <div className="border-b border-gray-100 px-5 py-4 flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold text-gray-800">Palavras-chave</span>
+                  <span className="ml-2 text-xs text-gray-400">últimos 90 dias · ordenado por cliques</span>
+                </div>
+                {carregandoKw && <Loader2 className="h-4 w-4 animate-spin text-blue-400" />}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500">
+                      <th className="px-5 py-3">Palavra-chave</th>
+                      <th className="px-3 py-3">Tipo</th>
+                      <th className="px-4 py-3 text-right">Cliques</th>
+                      <th className="px-4 py-3 text-right">Impressões</th>
+                      <th className="px-4 py-3 text-right">CTR</th>
+                      <th className="px-4 py-3 text-right">CPC</th>
+                      <th className="px-4 py-3 text-right">Invest.</th>
+                      <th className="px-4 py-3 text-right">Conv.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {keywords.length === 0 ? (
+                      <tr><td colSpan={8} className="px-5 py-10 text-center text-xs text-gray-400">
+                        {carregandoKw ? "Carregando..." : "Nenhum dado — execute o keywords_seed.sql no Supabase"}
+                      </td></tr>
+                    ) : keywords.map((k, i) => {
+                      const matchColor = k.keyword_match_type === "EXACT"
+                        ? "bg-blue-100 text-blue-700"
+                        : k.keyword_match_type === "PHRASE"
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-orange-100 text-orange-700";
+                      return (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-5 py-3.5 font-medium text-gray-900 max-w-[220px]">
+                            <span className="block truncate" title={k.keyword_text ?? "—"}>{k.keyword_text ?? <span className="text-gray-400 italic">sem keyword</span>}</span>
+                          </td>
+                          <td className="px-3 py-3.5">
+                            {k.keyword_match_type ? (
+                              <span className={cn("rounded px-1.5 py-0.5 text-xs font-semibold", matchColor)}>
+                                {k.keyword_match_type === "EXACT" ? "Exato" : k.keyword_match_type === "PHRASE" ? "Frase" : "Ampla"}
+                              </span>
+                            ) : "—"}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-semibold text-gray-900">{fmtN(k.clicks)}</td>
+                          <td className="px-4 py-3.5 text-right text-gray-600">{fmtN(k.impressions)}</td>
+                          <td className="px-4 py-3.5 text-right text-gray-600">{fmtPct(k.ctr)}</td>
+                          <td className="px-4 py-3.5 text-right text-gray-600">{k.cpc ? fmt$(k.cpc) : "—"}</td>
+                          <td className="px-4 py-3.5 text-right text-gray-700">{k.spend > 0 ? fmt$(k.spend) : "—"}</td>
+                          <td className="px-4 py-3.5 text-right text-gray-600">{k.conversions > 0 ? fmtN(k.conversions) : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
                 </table>
               </div>
             </div>
