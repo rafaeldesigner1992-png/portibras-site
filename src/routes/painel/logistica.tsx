@@ -495,6 +495,10 @@ interface Atendimento {
   relatorio_campo: string | null;
   criado_em: string;
   atualizado_em: string;
+  // Contato do cliente para emails
+  cliente_nome: string | null;
+  cliente_email: string | null;
+  cliente_email_cc: string | null;
 }
 
 interface Material {
@@ -926,6 +930,10 @@ function LogisticaPage() {
   const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
   const [modalFeedUrl, setModalFeedUrl] = useState(false);
   const FEED_URL = "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/ical-feed";
+  // Modais de status com email
+  const [modalConcluir, setModalConcluir] = useState<Atendimento | null>(null);
+  const [modalCancelar, setModalCancelar] = useState<Atendimento | null>(null);
+  const [processandoStatusAtend, setProcessandoStatusAtend] = useState(false);
 
   // ── Vistorias ─────────────────────────────────────────────────────────────
   const [vistorias, setVistorias] = useState<Vistoria[]>([]);
@@ -1414,7 +1422,18 @@ function LogisticaPage() {
       descricao: formAtend.descricao || null,
       agendado_com_cliente: formAtend.agendado_com_cliente,
       em_sistema: formAtend.em_sistema,
+      cliente_nome: formAtend.cliente_nome?.trim() || null,
+      cliente_email: formAtend.cliente_email?.trim() || null,
+      cliente_email_cc: formAtend.cliente_email_cc?.trim() || null,
     };
+
+    // Detecta reagendamento: se edição e data mudou
+    const isReagendamento =
+      !!selAtend &&
+      !!formAtend.cliente_email?.trim() &&
+      !!formAtend.data_agendada &&
+      selAtend.data_agendada !== formAtend.data_agendada;
+
     if (selAtend) await supabase.from("atendimentos").update(payload).eq("id", selAtend.id);
     else await supabase.from("atendimentos").insert(payload);
 
@@ -1442,20 +1461,84 @@ function LogisticaPage() {
       }).catch(err => console.warn("Falha ao enviar email de agendamento:", err));
     }
 
+    // Envia email de reagendamento se a data mudou
+    if (isReagendamento) {
+      const atendAtualizado: Atendimento = {
+        ...selAtend!,
+        ...payload,
+        data_agendada: formAtend.data_agendada,
+        hora_inicio: formAtend.hora_inicio || null,
+        hora_fim: formAtend.hora_fim || null,
+      };
+      enviarEmailStatusAtend("reagendamento", atendAtualizado, {
+        data_agendada: formAtend.data_agendada,
+        hora_inicio: formAtend.hora_inicio || null,
+        hora_fim: formAtend.hora_fim || null,
+      });
+    }
+
     setModalAtend(false);
     await carregarAtendimentos();
     setSalvandoAtend(false);
   }
 
-  async function excluirAtend(id: string) {
-    if (!confirm("Excluir este atendimento e todos os seus materiais?")) return;
-    await supabase.from("atendimentos").delete().eq("id", id);
+  function enviarEmailStatusAtend(
+    evento: "reagendamento" | "cancelamento" | "conclusao_total" | "conclusao_parcial",
+    atend: Atendimento,
+    opts?: { data_agendada?: string; hora_inicio?: string | null; hora_fim?: string | null }
+  ) {
+    if (!atend.cliente_email) return;
+    const ccList = atend.cliente_email_cc
+      ?.split(",").map(e => e.trim()).filter(e => e.includes("@")) ?? [];
+    supabase.functions.invoke("send-atendimento-status-email", {
+      body: {
+        evento,
+        cliente_email: atend.cliente_email,
+        ...(ccList.length > 0 ? { cliente_email_cc: ccList } : {}),
+        cliente_nome: atend.cliente_nome || null,
+        titulo: atend.titulo,
+        data_agendada: opts?.data_agendada ?? atend.data_agendada,
+        hora_inicio: opts?.hora_inicio !== undefined ? opts.hora_inicio : atend.hora_inicio,
+        hora_fim: opts?.hora_fim !== undefined ? opts.hora_fim : atend.hora_fim,
+        endereco: atend.endereco,
+        tecnico_nome: atend.responsaveis?.join(", ") || null,
+      },
+    }).catch(err => console.warn("Falha ao enviar email de status:", err));
+  }
+
+  async function confirmarCancelamento() {
+    if (!modalCancelar) return;
+    setProcessandoStatusAtend(true);
+    await supabase.from("atendimentos").delete().eq("id", modalCancelar.id);
+    enviarEmailStatusAtend("cancelamento", modalCancelar);
+    setModalCancelar(null);
+    setProcessandoStatusAtend(false);
     await carregarAtendimentos();
   }
 
+  async function confirmarConclusao(tipo: "total" | "parcial") {
+    if (!modalConcluir) return;
+    setProcessandoStatusAtend(true);
+    const novoStatus = "Concluído";
+    await supabase.from("atendimentos").update({ status: novoStatus }).eq("id", modalConcluir.id);
+    setAtendimentos(prev => prev.map(a => a.id === modalConcluir.id ? { ...a, status: novoStatus } : a));
+    enviarEmailStatusAtend(tipo === "total" ? "conclusao_total" : "conclusao_parcial", modalConcluir);
+    setModalConcluir(null);
+    setProcessandoStatusAtend(false);
+  }
+
   async function atualizarStatusAtend(id: string, status: Atendimento["status"]) {
+    const atend = atendimentos.find(a => a.id === id);
+    // Conclusão e cancelamento agora passam pelos modais com email
+    if (status === "Concluído" && atend) { setModalConcluir(atend); return; }
+    if (status === "Cancelado" && atend) { setModalCancelar(atend); return; }
     await supabase.from("atendimentos").update({ status }).eq("id", id);
     setAtendimentos(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+  }
+
+  function excluirAtend(id: string) {
+    const atend = atendimentos.find(a => a.id === id);
+    if (atend) setModalCancelar(atend);
   }
 
   function abrirModalMat(atendimentoId: string) {
@@ -3082,6 +3165,76 @@ function LogisticaPage() {
                     className="flex-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-medium text-white hover:bg-[#155824]">
                     Fechar
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Confirmar Cancelamento */}
+          {modalCancelar && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !processandoStatusAtend && setModalCancelar(null)}>
+              <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <Trash2 className="h-5 w-5 text-red-500" /> Remover Atendimento
+                  </h3>
+                  <button onClick={() => setModalCancelar(null)} disabled={processandoStatusAtend} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <p className="text-sm text-gray-700">
+                    Deseja remover <strong>{modalCancelar.titulo}</strong>?
+                  </p>
+                  {modalCancelar.cliente_email && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+                      📧 Um e-mail será enviado para <strong>{modalCancelar.cliente_email}</strong> informando que o atendimento foi removido e que entraremos em contato em breve.
+                    </div>
+                  )}
+                  <div className="flex gap-3 pt-1">
+                    <button onClick={() => setModalCancelar(null)} disabled={processandoStatusAtend}
+                      className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                      Voltar
+                    </button>
+                    <button onClick={confirmarCancelamento} disabled={processandoStatusAtend}
+                      className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+                      {processandoStatusAtend ? "Removendo…" : "Remover"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Concluir Atendimento (Parcial / Total) */}
+          {modalConcluir && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !processandoStatusAtend && setModalConcluir(null)}>
+              <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <span className="text-green-600">✓</span> Concluir Atendimento
+                  </h3>
+                  <button onClick={() => setModalConcluir(null)} disabled={processandoStatusAtend} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <p className="text-sm text-gray-700">
+                    Como foi concluído o atendimento <strong>{modalConcluir.titulo}</strong>?
+                  </p>
+                  {modalConcluir.cliente_email && (
+                    <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-xs text-green-800">
+                      📧 Um e-mail de conclusão será enviado para <strong>{modalConcluir.cliente_email}</strong>.
+                    </div>
+                  )}
+                  <div className="flex gap-3 pt-1">
+                    <button onClick={() => confirmarConclusao("parcial")} disabled={processandoStatusAtend}
+                      className="flex-1 rounded-xl border border-purple-300 bg-purple-50 px-4 py-3 text-sm font-semibold text-purple-700 hover:bg-purple-100 disabled:opacity-60 flex flex-col items-center gap-1">
+                      <span>Parcial</span>
+                      <span className="text-xs font-normal text-purple-500">Nova visita necessária</span>
+                    </button>
+                    <button onClick={() => confirmarConclusao("total")} disabled={processandoStatusAtend}
+                      className="flex-1 rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60 flex flex-col items-center gap-1">
+                      <span>{processandoStatusAtend ? "Salvando…" : "Total"}</span>
+                      <span className="text-xs font-normal text-green-200">Serviço finalizado</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
