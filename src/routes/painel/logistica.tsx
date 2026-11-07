@@ -463,6 +463,17 @@ interface ItemAquisicao {
   criado_em: string;
 }
 
+// ─── Tarefa de Pedido ─────────────────────────────────────────────────────────
+interface TarefaPedido {
+  id: string;
+  pedido_id: string;
+  descricao: string;
+  concluida: boolean;
+  ordem: number;
+  criado_em: string;
+  concluida_em: string | null;
+}
+
 // ─── Pedidos Fechados (legado — mantido para compatibilidade) ─────────────────
 interface PedidoFechado {
   id: string;
@@ -889,7 +900,7 @@ function LogisticaPage() {
   const [pedidosLog, setPedidosLog] = useState<PedidoLogistico[]>([]);
   const [carregandoPedLog, setCarregandoPedLog] = useState(false);
   const [pedidoAberto, setPedidoAberto] = useState<PedidoLogistico | null>(null);
-  const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao">("info");
+  const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao" | "tarefas">("info");
   const [aquisicoes, setAquisicoes] = useState<ItemAquisicao[]>([]);
   const [carregandoAquis, setCarregandoAquis] = useState(false);
   const [formAquis, setFormAquis] = useState({ nome: "", quantidade: "1", unidade: "un", custo_unitario: "", fornecedor: "", link_compra: "", observacoes: "" });
@@ -899,6 +910,12 @@ function LogisticaPage() {
   const [salvandoAquis, setSalvandoAquis] = useState(false);
   const [atualizandoEtapa, setAtualizandoEtapa] = useState<string | null>(null);
   const [emitindoCert, setEmitindoCert] = useState(false);
+
+  // ── Tarefas do pedido ───────────────────────────────────────────────────────
+  const [tarefas, setTarefas] = useState<TarefaPedido[]>([]);
+  const [carregandoTarefas, setCarregandoTarefas] = useState(false);
+  const [novaTarefa, setNovaTarefa] = useState("");
+  const [salvandoTarefa, setSalvandoTarefa] = useState(false);
 
   // ── Estoque ────────────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemEstoque[]>([]);
@@ -1515,11 +1532,54 @@ function LogisticaPage() {
     setCarregandoAquis(false);
   }
 
+  async function carregarTarefas(pedidoId: string) {
+    setCarregandoTarefas(true);
+    const { data } = await supabase
+      .from("logistica_tarefas")
+      .select("*")
+      .eq("pedido_id", pedidoId)
+      .order("ordem", { ascending: true });
+    if (data) setTarefas(data as TarefaPedido[]);
+    setCarregandoTarefas(false);
+  }
+
+  async function adicionarTarefa() {
+    if (!pedidoAberto || !novaTarefa.trim()) return;
+    setSalvandoTarefa(true);
+    const maxOrdem = tarefas.length > 0 ? Math.max(...tarefas.map(t => t.ordem)) + 1 : 0;
+    const { data } = await supabase.from("logistica_tarefas").insert({
+      pedido_id: pedidoAberto.id,
+      descricao: novaTarefa.trim(),
+      concluida: false,
+      ordem: maxOrdem,
+    }).select().single();
+    if (data) setTarefas(ts => [...ts, data as TarefaPedido]);
+    setNovaTarefa("");
+    setSalvandoTarefa(false);
+  }
+
+  async function toggleTarefa(t: TarefaPedido) {
+    const concluida = !t.concluida;
+    await supabase.from("logistica_tarefas").update({
+      concluida,
+      concluida_em: concluida ? new Date().toISOString() : null,
+    }).eq("id", t.id);
+    setTarefas(ts => ts.map(x => x.id === t.id ? { ...x, concluida, concluida_em: concluida ? new Date().toISOString() : null } : x));
+  }
+
+  async function excluirTarefa(id: string) {
+    await supabase.from("logistica_tarefas").delete().eq("id", id);
+    setTarefas(ts => ts.filter(t => t.id !== id));
+  }
+
   async function abrirPedido(p: PedidoLogistico) {
     setPedidoAberto(p);
     setAbaPedido("info");
     setAquisicoes([]);
+    setTarefas([]);
+    setNovaTarefa("");
     carregarAquisicoes(p.id);
+    carregarTarefas(p.id);
   }
 
   async function moverEtapa(pedido: PedidoLogistico, novaEtapa: EtapaLogistica) {
@@ -2427,7 +2487,7 @@ function LogisticaPage() {
 
                   {/* Abas internas */}
                   <div className="flex border-b border-gray-100 shrink-0">
-                    {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }] as const).map(t => (
+                    {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }, { key: "tarefas", label: "Tarefas" }] as const).map(t => (
                       <button
                         key={t.key}
                         onClick={() => setAbaPedido(t.key)}
@@ -2441,6 +2501,18 @@ function LogisticaPage() {
                             {aquisicoes.filter(a => a.status === "pendente").length}
                           </span>
                         )}
+                        {t.key === "tarefas" && tarefas.length > 0 && (() => {
+                          const done = tarefas.filter(x => x.concluida).length;
+                          const pct = Math.round((done / tarefas.length) * 100);
+                          return (
+                            <span className={cn(
+                              "mr-1.5 inline-flex h-4 items-center justify-center rounded-full px-1.5 text-[9px] font-bold",
+                              pct === 100 ? "bg-emerald-500 text-white" : "bg-blue-100 text-blue-700"
+                            )}>
+                              {pct}%
+                            </span>
+                          );
+                        })()}
                         {t.label}
                       </button>
                     ))}
@@ -2877,6 +2949,111 @@ function LogisticaPage() {
                             className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors"
                           >
                             {salvandoAquis ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                            Adicionar
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {/* ─ ABA TAREFAS ─ */}
+                    {abaPedido === "tarefas" && (
+                      <>
+                        {/* Barra de progresso */}
+                        {tarefas.length > 0 && (() => {
+                          const done = tarefas.filter(t => t.concluida).length;
+                          const pct = Math.round((done / tarefas.length) * 100);
+                          return (
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-semibold text-gray-600">Progresso de entrega</span>
+                                <span className={cn(
+                                  "text-sm font-bold",
+                                  pct === 100 ? "text-emerald-600" : pct >= 50 ? "text-blue-600" : "text-orange-500"
+                                )}>{pct}%</span>
+                              </div>
+                              <div className="h-2.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                                <div
+                                  className={cn(
+                                    "h-full rounded-full transition-all duration-500",
+                                    pct === 100 ? "bg-emerald-500" : pct >= 50 ? "bg-blue-500" : "bg-orange-400"
+                                  )}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <p className="mt-1.5 text-[10px] text-gray-400">{done} de {tarefas.length} {tarefas.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</p>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Lista de tarefas */}
+                        {carregandoTarefas ? (
+                          <div className="flex items-center gap-2 text-gray-400 text-sm">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+                          </div>
+                        ) : tarefas.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-300">
+                            Nenhuma tarefa ainda
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {tarefas.map(t => (
+                              <div
+                                key={t.id}
+                                className={cn(
+                                  "flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
+                                  t.concluida
+                                    ? "border-emerald-100 bg-emerald-50/60"
+                                    : "border-gray-100 bg-white hover:bg-gray-50/50"
+                                )}
+                              >
+                                <button
+                                  onClick={() => toggleTarefa(t)}
+                                  className={cn(
+                                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+                                    t.concluida
+                                      ? "border-emerald-500 bg-emerald-500 text-white"
+                                      : "border-gray-300 hover:border-emerald-400"
+                                  )}
+                                >
+                                  {t.concluida && <Check className="h-3 w-3" />}
+                                </button>
+                                <span className={cn(
+                                  "flex-1 text-sm",
+                                  t.concluida ? "text-gray-400 line-through" : "text-gray-800"
+                                )}>
+                                  {t.descricao}
+                                </span>
+                                {t.concluida && t.concluida_em && (
+                                  <span className="text-[10px] text-emerald-500 shrink-0">
+                                    {new Date(t.concluida_em).toLocaleDateString("pt-BR")}
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => excluirTarefa(t.id)}
+                                  className="shrink-0 rounded-lg p-1 text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Campo para nova tarefa */}
+                        <div className="flex gap-2 pt-1">
+                          <input
+                            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/30"
+                            placeholder="Nova tarefa…"
+                            value={novaTarefa}
+                            onChange={e => setNovaTarefa(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && adicionarTarefa()}
+                          />
+                          <button
+                            onClick={adicionarTarefa}
+                            disabled={salvandoTarefa || !novaTarefa.trim()}
+                            className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors"
+                          >
+                            {salvandoTarefa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                             Adicionar
                           </button>
                         </div>
