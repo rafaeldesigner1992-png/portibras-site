@@ -582,6 +582,7 @@ const EMPTY_ATEND = {
   data_agendada: "", hora_inicio: "", hora_fim: "",
   responsaveis: [] as string[], endereco: "", atividade: "", descricao: "",
   agendado_com_cliente: false, em_sistema: false,
+  cliente_email: "", cliente_nome: "",
 };
 
 const EMPTY_MAT = {
@@ -1133,6 +1134,25 @@ function LogisticaPage() {
       tecnico_nome: tecnicoNome || null,
       observacoes: observacoes || null,
     }).eq("id", id);
+
+    // Envia email de confirmação ao cliente (se tiver email)
+    const vistoria = vistorias.find(v => v.id === id);
+    if (vistoria?.cliente_email) {
+      supabase.functions.invoke("send-agendamento-email", {
+        body: {
+          cliente_email: vistoria.cliente_email,
+          cliente_nome: vistoria.cliente_nome,
+          data_agendada: dataAgendada,
+          hora_inicio: null,
+          hora_fim: null,
+          endereco: vistoria.cliente_endereco,
+          tecnico_nome: tecnicoNome || null,
+          tipo: "vistoria",
+          observacoes: observacoes || null,
+        },
+      }).catch(err => console.warn("Falha ao enviar email de agendamento:", err));
+    }
+
     setAgendandoId(null);
     setDataAgendada("");
     setTecnicoNome("");
@@ -1367,6 +1387,8 @@ function LogisticaPage() {
         endereco: atend.endereco || "", atividade: atend.atividade || "",
         descricao: atend.descricao || "", agendado_com_cliente: atend.agendado_com_cliente,
         em_sistema: atend.em_sistema,
+        cliente_email: (atend as any).cliente_email || "",
+        cliente_nome: (atend as any).cliente_nome || "",
       });
     } else {
       setSelAtend(null);
@@ -1394,6 +1416,26 @@ function LogisticaPage() {
     };
     if (selAtend) await supabase.from("atendimentos").update(payload).eq("id", selAtend.id);
     else await supabase.from("atendimentos").insert(payload);
+
+    // Envia email ao cliente se agendamento confirmado com ele e há data + email
+    const emailCliente = formAtend.cliente_email?.trim();
+    if (formAtend.agendado_com_cliente && formAtend.data_agendada && emailCliente) {
+      supabase.functions.invoke("send-agendamento-email", {
+        body: {
+          cliente_email: emailCliente,
+          cliente_nome: formAtend.cliente_nome?.trim() || null,
+          data_agendada: formAtend.data_agendada,
+          hora_inicio: formAtend.hora_inicio || null,
+          hora_fim: formAtend.hora_fim || null,
+          endereco: formAtend.endereco || null,
+          tecnico_nome: formAtend.responsaveis?.join(", ") || null,
+          tipo: "atendimento",
+          titulo: formAtend.titulo,
+          observacoes: formAtend.descricao || null,
+        },
+      }).catch(err => console.warn("Falha ao enviar email de agendamento:", err));
+    }
+
     setModalAtend(false);
     await carregarAtendimentos();
     setSalvandoAtend(false);
@@ -3220,6 +3262,28 @@ function LogisticaPage() {
                       <span className="text-sm text-gray-700">Em sistema</span>
                     </label>
                   </div>
+                  {formAtend.agendado_com_cliente && (
+                    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 space-y-2">
+                      <p className="text-xs font-medium text-blue-700">📧 Envio de confirmação por email</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nome do cliente"
+                          value={formAtend.cliente_nome}
+                          onChange={e => setFormAtend(f => ({ ...f, cliente_nome: e.target.value }))}
+                          className="rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email do cliente (opcional)"
+                          value={formAtend.cliente_email}
+                          onChange={e => setFormAtend(f => ({ ...f, cliente_email: e.target.value }))}
+                          className="rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                        />
+                      </div>
+                      <p className="text-xs text-blue-500">Se preenchido, o cliente receberá uma confirmação de agendamento.</p>
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
                   <button onClick={() => setModalAtend(false)} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
