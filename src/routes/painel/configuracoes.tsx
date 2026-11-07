@@ -16,7 +16,40 @@ import {
   ChevronRight,
   AlertCircle,
   CheckCircle2,
+  ShoppingCart,
+  Pencil,
+  X,
+  Clock,
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
+
+// ─── Tipos ───────────────────────────────────────────────────────────────────
+
+type Suprimento = {
+  id: string;
+  nome: string;
+  codigo: string | null;
+  categoria: string | null;
+  unidade: string;
+  custo_unitario: number;
+  tempo_instalacao_min: number;
+  profissionais_ids: string[] | null;
+  link_compra: string | null;
+  atualizado_em: string | null;
+};
+
+const DIAS_ALERTA_SUP = 90;
+
+function diasDesdeAtualizacaoSup(iso: string) {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+const EMPTY_SUP: Partial<Suprimento> = {
+  nome: "", codigo: "", categoria: "", unidade: "un",
+  custo_unitario: 0, tempo_instalacao_min: 0,
+  profissionais_ids: [], link_compra: "",
+};
 
 export const Route = createFileRoute("/painel/configuracoes")({
   component: ConfiguracoesPage,
@@ -186,18 +219,350 @@ function ListaEditavel({
   );
 }
 
+// ─── Catálogo de Produtos e Serviços ─────────────────────────────────────────
+
+function SecaoSuprimentos() {
+  const [suprimentos, setSuprimentos] = useState<Suprimento[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [modal, setModal] = useState(false);
+  const [editando, setEditando] = useState<Suprimento | null>(null);
+  const [form, setForm] = useState<Partial<Suprimento>>({ ...EMPTY_SUP });
+  const [salvando, setSalvando] = useState(false);
+  const [feedback, setFeedback] = useState<"ok" | "erro" | null>(null);
+
+  useEffect(() => { carregar(); }, []);
+
+  async function carregar() {
+    setCarregando(true);
+    const { data } = await supabase
+      .from("logistica_suprimentos")
+      .select("*")
+      .order("nome");
+    setSuprimentos((data as Suprimento[]) ?? []);
+    setCarregando(false);
+  }
+
+  function abrirNovo() {
+    setEditando(null);
+    setForm({ ...EMPTY_SUP });
+    setModal(true);
+  }
+
+  function abrirEditar(s: Suprimento) {
+    setEditando(s);
+    setForm({ ...s });
+    setModal(true);
+  }
+
+  async function salvar() {
+    if (!form.nome?.trim()) return;
+    setSalvando(true);
+    setFeedback(null);
+    const payload = {
+      nome: form.nome!.trim(),
+      codigo: form.codigo || null,
+      categoria: form.categoria || null,
+      unidade: form.unidade || "un",
+      custo_unitario: Number(form.custo_unitario ?? 0),
+      tempo_instalacao_min: Number(form.tempo_instalacao_min ?? 0),
+      profissionais_ids: form.profissionais_ids ?? [],
+      link_compra: form.link_compra || null,
+    };
+    let error;
+    if (editando) {
+      ({ error } = await supabase.from("logistica_suprimentos").update(payload).eq("id", editando.id));
+    } else {
+      ({ error } = await supabase.from("logistica_suprimentos").insert(payload));
+    }
+    setSalvando(false);
+    if (error) { setFeedback("erro"); return; }
+    setFeedback("ok");
+    setTimeout(() => setFeedback(null), 2500);
+    setModal(false);
+    carregar();
+  }
+
+  async function excluir(id: string) {
+    if (!confirm("Remover este suprimento?")) return;
+    await supabase.from("logistica_suprimentos").delete().eq("id", id);
+    carregar();
+  }
+
+  const filtrados = suprimentos.filter(s =>
+    !busca || s.nome.toLowerCase().includes(busca.toLowerCase())
+      || (s.codigo ?? "").toLowerCase().includes(busca.toLowerCase())
+      || (s.categoria ?? "").toLowerCase().includes(busca.toLowerCase())
+  );
+
+  const desatualizados = suprimentos.filter(s =>
+    s.atualizado_em && diasDesdeAtualizacaoSup(s.atualizado_em) > DIAS_ALERTA_SUP
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Cabeçalho */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex-1 min-w-48">
+          <input type="text" placeholder="Buscar por nome, código ou categoria…" value={busca}
+            onChange={e => setBusca(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] focus:ring-2 focus:ring-[#1a6b2f]/20" />
+        </div>
+        <button onClick={abrirNovo}
+          className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
+          <Plus className="h-4 w-4" /> Novo Produto/Serviço
+        </button>
+      </div>
+
+      {/* Alerta preços desatualizados */}
+      {desatualizados.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-amber-700">
+              {desatualizados.length} item{desatualizados.length > 1 ? "ns" : ""} com preço não confirmado há mais de {DIAS_ALERTA_SUP} dias
+            </p>
+            <p className="mt-0.5 text-xs text-amber-600">{desatualizados.map(s => s.nome).join(", ")}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabela */}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {carregando ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-400">
+            <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+          </div>
+        ) : filtrados.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-gray-400">
+            <ShoppingCart className="mb-3 h-10 w-10 opacity-30" />
+            <p className="text-sm">{busca ? "Nenhum resultado para a busca" : "Nenhum produto ou serviço cadastrado"}</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Produto / Serviço</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Categoria</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Custo Unit.</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Tempo Inst.</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden sm:table-cell">Atualização</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden lg:table-cell">Link</th>
+                <th className="px-5 py-3 w-20" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtrados.map(s => {
+                const dias = s.atualizado_em ? diasDesdeAtualizacaoSup(s.atualizado_em) : 9999;
+                const desatualizado = dias > DIAS_ALERTA_SUP;
+                return (
+                  <tr key={s.id} className="hover:bg-gray-50/60">
+                    <td className="px-5 py-4">
+                      <p className="text-sm font-medium text-gray-900">{s.nome}</p>
+                      {s.codigo && <p className="text-xs text-gray-400 font-mono">{s.codigo}</p>}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-gray-500 hidden md:table-cell">{s.categoria || "—"}</td>
+                    <td className="px-5 py-4">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {s.custo_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                      <span className="ml-1 text-xs text-gray-400">/{s.unidade}</span>
+                    </td>
+                    <td className="px-5 py-4 hidden md:table-cell">
+                      {s.tempo_instalacao_min > 0 ? (
+                        <span className="flex items-center gap-1 text-xs text-gray-600 font-medium">
+                          <Clock className="h-3 w-3 text-gray-400" />
+                          {s.tempo_instalacao_min < 60
+                            ? `${s.tempo_instalacao_min}min`
+                            : `${Math.floor(s.tempo_instalacao_min / 60)}h${s.tempo_instalacao_min % 60 > 0 ? `${s.tempo_instalacao_min % 60}min` : ""}`}
+                          <span className="text-gray-400">/{s.unidade}</span>
+                        </span>
+                      ) : <span className="text-xs text-gray-300">—</span>}
+                    </td>
+                    <td className="px-5 py-4 hidden sm:table-cell">
+                      {s.atualizado_em ? (
+                        <div className="flex items-center gap-2">
+                          <span className={cn("flex items-center gap-1 text-xs", desatualizado ? "text-amber-600 font-medium" : "text-gray-400")}>
+                            <Clock className="h-3 w-3" />
+                            {new Date(s.atualizado_em).toLocaleDateString("pt-BR")}
+                            {desatualizado && ` (${dias}d)`}
+                          </span>
+                          {desatualizado && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                              Atualizar preço
+                            </span>
+                          )}
+                        </div>
+                      ) : "—"}
+                    </td>
+                    <td className="px-5 py-4 hidden lg:table-cell">
+                      {s.link_compra ? (
+                        <a href={s.link_compra} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 text-xs text-[#1a6b2f] hover:underline">
+                          <ExternalLink className="h-3 w-3" /> Ver link
+                        </a>
+                      ) : "—"}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => abrirEditar(s)} className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => excluir(s.id)} className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Feedback salvo */}
+      {feedback === "ok" && (
+        <p className="flex items-center gap-1.5 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4" /> Salvo com sucesso
+        </p>
+      )}
+      {feedback === "erro" && (
+        <p className="flex items-center gap-1.5 text-sm text-red-600">
+          <AlertCircle className="h-4 w-4" /> Erro ao salvar. Tente novamente.
+        </p>
+      )}
+
+      {/* Modal */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={e => e.target === e.currentTarget && setModal(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">{editando ? "Editar Produto/Serviço" : "Novo Produto/Serviço"}</h2>
+              <button onClick={() => setModal(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Nome *</label>
+                <input type="text" value={form.nome || ""}
+                  onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
+                  placeholder="Ex: Dobradiça Corta-Fogo 3/4"
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Código / Ref.</label>
+                  <input type="text" value={form.codigo || ""}
+                    onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Categoria</label>
+                  <input type="text" value={form.categoria || ""}
+                    onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
+                    placeholder="Ex: Ferragens"
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Custo unitário (R$)</label>
+                  <input type="number" min={0} step={0.01} value={form.custo_unitario ?? 0}
+                    onChange={e => setForm(f => ({ ...f, custo_unitario: Number(e.target.value) }))}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Unidade</label>
+                  <select value={form.unidade || "un"}
+                    onChange={e => setForm(f => ({ ...f, unidade: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
+                    {["un", "cx", "pc", "m", "kg", "l", "rolo", "par", "jg"].map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Tempo de instalação (min/unidade)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} step={1} value={form.tempo_instalacao_min ?? 0}
+                    onChange={e => setForm(f => ({ ...f, tempo_instalacao_min: Number(e.target.value) }))}
+                    className="w-32 rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                  <span className="text-sm text-gray-400">min/{form.unidade || "un"}</span>
+                  {(form.tempo_instalacao_min ?? 0) > 0 && (
+                    <span className="text-xs text-[#1a6b2f] font-medium">
+                      ≈ {(form.tempo_instalacao_min ?? 0) < 60
+                        ? `${form.tempo_instalacao_min}min`
+                        : `${Math.floor((form.tempo_instalacao_min ?? 0) / 60)}h${(form.tempo_instalacao_min ?? 0) % 60 > 0 ? `${(form.tempo_instalacao_min ?? 0) % 60}min` : ""}`}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-400">Usado para estimar dias de roteiro no orçamento</p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Link de compra</label>
+                <input type="url" value={form.link_compra || ""}
+                  onChange={e => setForm(f => ({ ...f, link_compra: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+              </div>
+              {editando?.atualizado_em && (
+                <p className="text-xs text-gray-400">
+                  Última atualização: {new Date(editando.atualizado_em).toLocaleDateString("pt-BR")} — ao salvar, a data será atualizada para hoje.
+                </p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setModal(false)}
+                  className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  Cancelar
+                </button>
+                <button onClick={salvar} disabled={salvando || !form.nome?.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+                  {salvando ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando…</> : "Salvar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Conteúdo por seção ──────────────────────────────────────────────────────
 
 function SecaoLogistica() {
   return (
-    <div className="space-y-6">
-      <ListaEditavel
-        titulo="Fornecedores de Compras"
-        descricao="Lista de fornecedores disponíveis ao registrar uma compra na aba Logística → Compras."
-        chave="logistica_fornecedores"
-        padrao={["G Sardou", "Disafe", "GUBLER", "DW15", "Original Portas"]}
-        placeholder="Nome do fornecedor…"
-      />
+    <div className="space-y-8">
+      {/* Fornecedores */}
+      <div>
+        <ListaEditavel
+          titulo="Fornecedores de Compras"
+          descricao="Lista de fornecedores disponíveis ao registrar uma compra na aba Logística → Compras."
+          chave="logistica_fornecedores"
+          padrao={["G Sardou", "Disafe", "GUBLER", "DW15", "Original Portas"]}
+          placeholder="Nome do fornecedor…"
+        />
+      </div>
+
+      {/* Catálogo de Produtos e Serviços */}
+      <div>
+        <div className="mb-4">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900">
+            <ShoppingCart className="h-4 w-4 text-[#1a6b2f]" />
+            Produtos e Serviços (Catálogo)
+          </h3>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Itens cadastrados no catálogo de suprimentos — usados em orçamentos e Materiais a Comprar.
+          </p>
+        </div>
+        <SecaoSuprimentos />
+      </div>
     </div>
   );
 }

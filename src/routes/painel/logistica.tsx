@@ -1817,6 +1817,7 @@ function LogisticaPage() {
     if (aba === "equipe") { carregarProfissionais(); carregarMoPadrao(); }
     if (aba === "suprimentos") { carregarSuprimentos(); carregarProfissionais(); }
     if (aba === "pedidos") { carregarSuprimentos(); } // pré-carrega catálogo para o seletor de aquisição
+    if (aba === "compras") { carregarSuprimentos(); } // necessário para autocomplete em Materiais a Comprar
   }, [aba]);
 
   async function carregarProfissionais() {
@@ -2071,7 +2072,6 @@ function LogisticaPage() {
             { key: "vistorias",    label: "Vistorias",    icon: ClipboardCheck },
             { key: "gantt",        label: "Gantt",        icon: BarChart2 },
             { key: "estoque",      label: "Estoque",      icon: Package },
-            { key: "suprimentos",  label: "Catálogo",     icon: ShoppingCart },
             { key: "equipe",       label: "Equipe",       icon: HardHat },
             { key: "tecnico",      label: "Área Técnica", icon: Wrench },
           ] as const).map(({ key, label, icon: Icon }) => {
@@ -2085,7 +2085,7 @@ function LogisticaPage() {
               // badge de itens pendentes de compra (buscado via pedidosLog indiretamente — simplificado)
             }
             if (key === "estoque" && abaixoMinimo.length > 0) badges.push({ count: abaixoMinimo.length, cor: "bg-orange-500" });
-            if (key === "suprimentos" && precosDesatualizados.length > 0) badges.push({ count: precosDesatualizados.length, cor: "bg-amber-500" });
+
             if (key === "vistorias") { const n = vistorias.filter(v => v.status === "pendente" || v.status === "agendada").length; if (n > 0) badges.push({ count: n, cor: "bg-orange-500" }); }
             if (key === "atendimentos") {
               const ativos = atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length;
@@ -4074,6 +4074,7 @@ function LogisticaPage() {
           {/* ── Sub-aba: Materiais a Comprar ── */}
           {subAbaCompras === "materiais" && (
             <>
+              {/* Cabeçalho */}
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-sm text-gray-500">
                   {matComprar.filter(m => m.status === "Pendente").length} pendente{matComprar.filter(m => m.status === "Pendente").length !== 1 ? "s" : ""} · {matComprar.length} total
@@ -4093,77 +4094,123 @@ function LogisticaPage() {
                   <p className="text-xs text-gray-400 mt-1">Adicione materiais que precisam ser comprados</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {/* Agrupar por status */}
-                  {(["Pendente", "Comprado", "Recebido"] as MatComprar["status"][]).map(status => {
-                    const grupo = matComprar.filter(m => m.status === status);
-                    if (grupo.length === 0) return null;
-                    return (
-                      <div key={status} className="mb-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2 px-1">{status} ({grupo.length})</p>
-                        <div className="space-y-2">
-                          {grupo.map(m => (
-                            <div key={m.id} className={cn(
-                              "rounded-xl border bg-white p-4 transition-all",
-                              m.status === "Recebido" ? "opacity-60 border-gray-100" : "border-gray-200 shadow-sm"
-                            )}>
-                              <div className="flex items-start gap-3">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-medium text-gray-900 text-sm">{m.descricao}</span>
+                /* ── Tabela por status ── */
+                (["Pendente", "Comprado", "Recebido"] as MatComprar["status"][]).map(status => {
+                  const grupo = matComprar.filter(m => m.status === status);
+                  if (grupo.length === 0) return null;
+                  // Somatório por descrição
+                  const totais: Record<string, { qtd: number; unidade: string }> = {};
+                  grupo.forEach(m => {
+                    if (!totais[m.descricao]) totais[m.descricao] = { qtd: 0, unidade: m.unidade };
+                    totais[m.descricao].qtd += Number(m.quantidade);
+                  });
+                  const statusCor: Record<string, string> = {
+                    "Pendente": "bg-orange-50 border-orange-200",
+                    "Comprado": "bg-blue-50 border-blue-200",
+                    "Recebido": "bg-green-50 border-green-200",
+                  };
+                  const statusTitCor: Record<string, string> = {
+                    "Pendente": "text-orange-700",
+                    "Comprado": "text-blue-700",
+                    "Recebido": "text-green-700",
+                  };
+                  return (
+                    <div key={status} className="mb-6">
+                      <div className={cn("rounded-xl border overflow-hidden shadow-sm", statusCor[status])}>
+                        {/* Cabeçalho grupo */}
+                        <div className={cn("px-4 py-2.5 flex items-center gap-2 border-b", statusCor[status])}>
+                          <span className={cn("text-xs font-bold uppercase tracking-wide", statusTitCor[status])}>{status}</span>
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", STATUS_MATC_COR[status])}>{grupo.length}</span>
+                        </div>
+                        {/* Tabela */}
+                        <div className="overflow-x-auto bg-white">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-gray-100 bg-gray-50">
+                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Material</th>
+                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Qtd</th>
+                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Urgência</th>
+                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Fornecedor</th>
+                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Clientes</th>
+                                <th className="px-4 py-2.5 w-20" />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                              {grupo.map(m => (
+                                <tr key={m.id} className={cn("hover:bg-gray-50/60", m.status === "Recebido" && "opacity-60")}>
+                                  <td className="px-4 py-3 font-medium text-gray-900">{m.descricao}</td>
+                                  <td className="px-4 py-3 text-center text-gray-700 font-mono">{m.quantidade} <span className="text-xs text-gray-400">{m.unidade}</span></td>
+                                  <td className="px-4 py-3">
                                     <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", URGENCIA_COR[m.urgencia])}>
                                       {m.urgencia === "urgente" ? "🔴 Urgente" : m.urgencia === "normal" ? "Normal" : "Baixa"}
                                     </span>
-                                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_MATC_COR[m.status])}>
-                                      {m.status}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
-                                    <span>{m.quantidade} {m.unidade}</span>
-                                    {m.fornecedor && <span>· {m.fornecedor}</span>}
-                                    {m.observacoes && <span className="text-gray-400">· {m.observacoes}</span>}
-                                  </div>
-                                  {m.vinculados && m.vinculados.length > 0 && (
-                                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                                      <User className="h-3 w-3 text-gray-400 shrink-0" />
-                                      {m.vinculados.map(v => (
-                                        <span key={v.id} className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[v.classificacao])}>
-                                          {v.titulo.length > 28 ? v.titulo.slice(0, 28) + "…" : v.titulo}
-                                        </span>
-                                      ))}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-gray-500">{m.fornecedor || <span className="text-gray-300">—</span>}</td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex flex-wrap gap-1">
+                                      {m.vinculados && m.vinculados.length > 0
+                                        ? m.vinculados.map(v => (
+                                            <span key={v.id} className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium", CLASS_COR[v.classificacao])}>
+                                              {v.titulo.length > 20 ? v.titulo.slice(0, 20) + "…" : v.titulo}
+                                            </span>
+                                          ))
+                                        : <span className="text-gray-300 text-xs">—</span>
+                                      }
                                     </div>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  {m.status !== "Recebido" && (
-                                    <button
-                                      onClick={() => avancarStatusMatC(m)}
-                                      title={m.status === "Pendente" ? "Marcar como Comprado" : "Marcar como Recebido"}
-                                      className="rounded p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50">
-                                      <Check className="h-3.5 w-3.5" />
-                                    </button>
-                                  )}
-                                  <button onClick={() => abrirEditarMatC(m)}
-                                    className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button onClick={() => excluirMatComprar(m.id)}
-                                    className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-0.5 justify-end">
+                                      {m.status !== "Recebido" && (
+                                        <button onClick={() => avancarStatusMatC(m)}
+                                          title={m.status === "Pendente" ? "Marcar como Comprado" : "Marcar como Recebido"}
+                                          className="rounded p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50">
+                                          <Check className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                      <button onClick={() => abrirEditarMatC(m)}
+                                        className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button onClick={() => excluirMatComprar(m.id)}
+                                        className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            {/* Rodapé com somatório */}
+                            <tfoot>
+                              <tr className="border-t-2 border-gray-200 bg-gray-50">
+                                <td className="px-4 py-2.5 text-xs font-bold text-gray-500 uppercase tracking-wide">Total</td>
+                                <td className="px-4 py-2.5 text-center" colSpan={5}>
+                                  <div className="flex flex-wrap gap-2 justify-center">
+                                    {Object.entries(totais).map(([desc, { qtd, unidade }]) => (
+                                      <span key={desc} className="rounded-full bg-gray-200 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                                        {desc}: <span className="text-[#1a6b2f]">{qtd}</span> {unidade}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })
               )}
 
               {/* Modal Nova/Editar Material */}
-              {modalMatC && (
+              {modalMatC && (() => {
+                const supFiltradosC = suprimentos.filter(s =>
+                  !formMatC.descricao || s.nome.toLowerCase().includes(formMatC.descricao.toLowerCase())
+                );
+                const mostraDropdown = formMatC.descricao.length > 0 && supFiltradosC.length > 0
+                  && !suprimentos.some(s => s.nome === formMatC.descricao);
+                return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalMatC(false)}>
                   <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
                     <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 sticky top-0 bg-white z-10">
@@ -4171,11 +4218,28 @@ function LogisticaPage() {
                       <button onClick={() => setModalMatC(false)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
                     </div>
                     <div className="p-6 space-y-4">
-                      <div>
-                        <label className="label-field">Descrição *</label>
+                      {/* Descrição com autocomplete de suprimentos */}
+                      <div className="relative">
+                        <label className="label-field">Material *</label>
                         <input className="input-field" value={formMatC.descricao}
                           onChange={e => setFormMatC(f => ({ ...f, descricao: e.target.value }))}
-                          placeholder="Ex: Fechadura antipânico, Dobradiça 3D..." />
+                          placeholder="Buscar produto/serviço do catálogo…" />
+                        {mostraDropdown && (
+                          <div className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                            {supFiltradosC.slice(0, 8).map(s => (
+                              <button key={s.id} type="button"
+                                onClick={() => setFormMatC(f => ({
+                                  ...f,
+                                  descricao: s.nome,
+                                  unidade: s.unidade || f.unidade,
+                                }))}
+                                className="w-full text-left px-3 py-2.5 text-sm text-gray-800 hover:bg-gray-50 flex items-center gap-2">
+                                <span className="flex-1 font-medium">{s.nome}</span>
+                                {s.categoria && <span className="text-xs text-gray-400 shrink-0">{s.categoria}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -4265,7 +4329,8 @@ function LogisticaPage() {
                     </div>
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </>
           )} {/* fim subAbaCompras === "materiais" */}
 
