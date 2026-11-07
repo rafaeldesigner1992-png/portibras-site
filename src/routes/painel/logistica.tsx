@@ -3156,15 +3156,29 @@ function LogisticaPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2 px-5 pb-5">
-                  <button onClick={() => { abrirModalAtend(calEventoPopup); setCalEventoPopup(null); }}
-                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <Pencil className="h-3.5 w-3.5 inline mr-1" /> Editar
-                  </button>
-                  <button onClick={() => setCalEventoPopup(null)}
-                    className="flex-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-medium text-white hover:bg-[#155824]">
-                    Fechar
-                  </button>
+                <div className="flex flex-col gap-2 px-5 pb-5">
+                  <div className="flex gap-2">
+                    <button onClick={() => { abrirModalAtend(calEventoPopup); setCalEventoPopup(null); }}
+                      className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                      <Pencil className="h-3.5 w-3.5 inline mr-1" /> Editar
+                    </button>
+                    <button onClick={() => setCalEventoPopup(null)}
+                      className="flex-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-medium text-white hover:bg-[#155824]">
+                      Fechar
+                    </button>
+                  </div>
+                  {calEventoPopup.status !== "Concluído" && calEventoPopup.status !== "Cancelado" && (
+                    <div className="flex gap-2">
+                      <button onClick={() => { setModalConcluir(calEventoPopup); setCalEventoPopup(null); }}
+                        className="flex-1 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-100">
+                        ✓ Concluir
+                      </button>
+                      <button onClick={() => { setModalCancelar(calEventoPopup); setCalEventoPopup(null); }}
+                        className="flex-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100">
+                        <Trash2 className="h-3.5 w-3.5 inline mr-1" /> Remover
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
