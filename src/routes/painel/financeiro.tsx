@@ -2259,10 +2259,10 @@ function ContaAzulView({
 
   // Status que significam "pago/recebido" na API Conta Azul
   const STATUS_PAGO = ["RECEIVED", "PAID", "ACQUITTED", "RECEBIDO", "PAGO"];
-  const isPago = (status: string) => STATUS_PAGO.includes(status.toUpperCase());
+  const isPago = (status: string | null | undefined) => !!status && STATUS_PAGO.includes(status.toUpperCase());
   // Status que significam "cancelado"
   const STATUS_CANCELADO = ["CANCELED", "CANCELLED", "CANCELADO"];
-  const isCancelado = (status: string) => STATUS_CANCELADO.includes(status.toUpperCase());
+  const isCancelado = (status: string | null | undefined) => !!status && STATUS_CANCELADO.includes(status.toUpperCase());
 
   const totalFaturado = vendas.reduce((s, v) => s + v.valor_total, 0);
   const totalRecebido = cobrancas.filter(c => isPago(c.status)).reduce((s, c) => s + c.valor_pago, 0);
@@ -2308,7 +2308,8 @@ function ContaAzulView({
     return nomeCrm && !nomesCA.some(n => n.includes(nomeCrm) || nomeCrm.includes(n));
   });
 
-  const statusBadge = (status: string) => {
+  const statusBadge = (status: string | null | undefined) => {
+    if (!status) return "bg-gray-100 text-gray-500";
     const s = status.toUpperCase();
     if (["RECEIVED", "PAID", "ACQUITTED", "RECEBIDO", "PAGO", "ACTIVE", "ATIVO"].includes(s)) return "bg-green-100 text-green-700";
     if (["OVERDUE", "LATE", "VENCIDO"].includes(s)) return "bg-red-100 text-red-700";
@@ -2317,7 +2318,8 @@ function ContaAzulView({
     return "bg-blue-100 text-blue-700";
   };
 
-  const statusLabel = (status: string) => {
+  const statusLabel = (status: string | null | undefined) => {
+    if (!status) return "—";
     const s = status.toUpperCase();
     if (["RECEIVED", "PAID", "ACQUITTED"].includes(s)) return "Recebido";
     if (["OVERDUE", "LATE"].includes(s)) return "Vencido";
