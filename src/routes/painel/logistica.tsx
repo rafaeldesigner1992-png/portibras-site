@@ -4171,23 +4171,8 @@ function LogisticaPage() {
                   <p className="text-xs text-gray-400 mt-1">Adicione materiais que precisam ser comprados</p>
                 </div>
               ) : (
-                /* ── Tabela por status ── */
-                (["Pendente", "Comprado", "Recebido"] as MatComprar["status"][]).map(status => {
-                  const grupo = matComprar.filter(m => m.status === status);
-                  if (grupo.length === 0) return null;
-                  // Somatório por descrição (qtd + valor)
-                  const totais: Record<string, { qtd: number; unidade: string; valor: number; temPreco: boolean }> = {};
-                  grupo.forEach(m => {
-                    if (!totais[m.descricao]) totais[m.descricao] = { qtd: 0, unidade: m.unidade, valor: 0, temPreco: false };
-                    const qty = Number(m.quantidade);
-                    totais[m.descricao].qtd += qty;
-                    if (m.custo_unitario != null && m.custo_unitario > 0) {
-                      totais[m.descricao].valor += qty * Number(m.custo_unitario);
-                      totais[m.descricao].temPreco = true;
-                    }
-                  });
-                  const totalGrupo = Object.values(totais).reduce((sum, t) => sum + t.valor, 0);
-                  const algumSemPreco = Object.values(totais).some(t => !t.temPreco);
+                /* ── Tabela por status → agrupada por cliente ── */
+                (() => {
                   const statusCor: Record<string, string> = {
                     "Pendente": "bg-orange-50 border-orange-200",
                     "Comprado": "bg-blue-50 border-blue-200",
@@ -4198,98 +4183,143 @@ function LogisticaPage() {
                     "Comprado": "text-blue-700",
                     "Recebido": "text-green-700",
                   };
-                  return (
-                    <div key={status} className="mb-6">
-                      <div className={cn("rounded-xl border overflow-hidden shadow-sm", statusCor[status])}>
-                        {/* Cabeçalho grupo */}
-                        <div className={cn("px-4 py-2.5 flex items-center gap-2 border-b", statusCor[status])}>
-                          <span className={cn("text-xs font-bold uppercase tracking-wide", statusTitCor[status])}>{status}</span>
-                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", STATUS_MATC_COR[status])}>{grupo.length}</span>
-                        </div>
-                        {/* Tabela */}
-                        <div className="overflow-x-auto bg-white">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b border-gray-100 bg-gray-50">
-                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Material</th>
-                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Qtd</th>
-                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Urgência</th>
-                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Fornecedor</th>
-                                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Clientes</th>
-                                <th className="px-4 py-2.5 w-20" />
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {grupo.map(m => (
-                                <tr key={m.id} className={cn(
-                                  "hover:bg-gray-50/60",
-                                  m.status === "Recebido" && "opacity-60",
-                                  m._origem === "pedido" && "bg-blue-50/30"
-                                )}>
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-medium text-gray-900">{m.descricao}</span>
-                                      {m._origem === "pedido" && (
-                                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                                          Pedido
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-3 text-center text-gray-700 font-mono">{m.quantidade} <span className="text-xs text-gray-400">{m.unidade}</span></td>
-                                  <td className="px-4 py-3">
-                                    {m._origem !== "pedido" && (
-                                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", URGENCIA_COR[m.urgencia])}>
-                                        {m.urgencia === "urgente" ? "🔴 Urgente" : m.urgencia === "normal" ? "Normal" : "Baixa"}
-                                      </span>
+
+                  // Helper: obter nome do cliente de um item
+                  function nomeClienteItem(m: MatComprar): string {
+                    if (m._origem === "pedido" && m._pedido_nome) return m._pedido_nome;
+                    if (m.vinculados && m.vinculados.length > 0) return m.vinculados[0].titulo;
+                    return "__sem_cliente__";
+                  }
+
+                  return (["Pendente", "Comprado", "Recebido"] as MatComprar["status"][]).map(status => {
+                    const grupo = matComprar.filter(m => m.status === status);
+                    if (grupo.length === 0) return null;
+
+                    // Agrupar por cliente
+                    const clienteMap: Record<string, MatComprar[]> = {};
+                    grupo.forEach(m => {
+                      const chave = nomeClienteItem(m);
+                      if (!clienteMap[chave]) clienteMap[chave] = [];
+                      clienteMap[chave].push(m);
+                    });
+                    // Ordenar: clientes nomeados primeiro, sem cliente por último
+                    const clientesOrdenados = Object.keys(clienteMap).sort((a, b) => {
+                      if (a === "__sem_cliente__") return 1;
+                      if (b === "__sem_cliente__") return -1;
+                      return a.localeCompare(b, "pt-BR");
+                    });
+
+                    // Somatório geral do status (qtd + valor)
+                    const totais: Record<string, { qtd: number; unidade: string; valor: number; temPreco: boolean }> = {};
+                    grupo.forEach(m => {
+                      if (!totais[m.descricao]) totais[m.descricao] = { qtd: 0, unidade: m.unidade, valor: 0, temPreco: false };
+                      const qty = Number(m.quantidade);
+                      totais[m.descricao].qtd += qty;
+                      if (m.custo_unitario != null && m.custo_unitario > 0) {
+                        totais[m.descricao].valor += qty * Number(m.custo_unitario);
+                        totais[m.descricao].temPreco = true;
+                      }
+                    });
+                    const totalGrupo = Object.values(totais).reduce((sum, t) => sum + t.valor, 0);
+                    const algumSemPreco = Object.values(totais).some(t => !t.temPreco);
+
+                    return (
+                      <div key={status} className="mb-6">
+                        <div className={cn("rounded-xl border overflow-hidden shadow-sm", statusCor[status])}>
+                          {/* Cabeçalho status */}
+                          <div className={cn("px-4 py-2.5 flex items-center gap-2 border-b", statusCor[status])}>
+                            <span className={cn("text-xs font-bold uppercase tracking-wide", statusTitCor[status])}>{status}</span>
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", STATUS_MATC_COR[status])}>{grupo.length}</span>
+                          </div>
+
+                          {/* Sub-grupos por cliente */}
+                          {clientesOrdenados.map((cliente, cidx) => {
+                            const itensCliente = clienteMap[cliente];
+                            const nomeExibido = cliente === "__sem_cliente__" ? "Sem cliente" : cliente;
+                            const isPedido = itensCliente.some(m => m._origem === "pedido");
+                            return (
+                              <div key={cliente} className={cidx > 0 ? "border-t border-gray-100" : ""}>
+                                {/* Cabeçalho do cliente */}
+                                <div className="px-4 py-1.5 bg-gray-50 flex items-center gap-2 border-b border-gray-100">
+                                  {isPedido
+                                    ? <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">{nomeExibido}</span>
+                                    : cliente === "__sem_cliente__"
+                                      ? <span className="text-[11px] text-gray-400 italic">{nomeExibido}</span>
+                                      : <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">{nomeExibido}</span>
+                                  }
+                                  <span className="text-[10px] text-gray-400">{itensCliente.length} {itensCliente.length === 1 ? "item" : "itens"}</span>
+                                </div>
+                                {/* Tabela dos itens desse cliente */}
+                                <div className="overflow-x-auto bg-white">
+                                  <table className="w-full text-sm">
+                                    {cidx === 0 && (
+                                      <thead>
+                                        <tr className="border-b border-gray-100 bg-gray-50/50">
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Material</th>
+                                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-400 uppercase tracking-wide w-24">Qtd</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide w-28">Urgência</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Fornecedor</th>
+                                          <th className="px-4 py-2 w-20" />
+                                        </tr>
+                                      </thead>
                                     )}
-                                  </td>
-                                  <td className="px-4 py-3 text-xs text-gray-500">{m.fornecedor || <span className="text-gray-300">—</span>}</td>
-                                  <td className="px-4 py-3">
-                                    <div className="flex flex-wrap gap-1">
-                                      {m._origem === "pedido" && m._pedido_nome ? (
-                                        <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
-                                          {m._pedido_nome.length > 22 ? m._pedido_nome.slice(0, 22) + "…" : m._pedido_nome}
-                                        </span>
-                                      ) : m.vinculados && m.vinculados.length > 0
-                                        ? m.vinculados.map(v => (
-                                            <span key={v.id} className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium", CLASS_COR[v.classificacao])}>
-                                              {v.titulo.length > 20 ? v.titulo.slice(0, 20) + "…" : v.titulo}
-                                            </span>
-                                          ))
-                                        : <span className="text-gray-300 text-xs">—</span>
-                                      }
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center gap-0.5 justify-end">
-                                      {m.status !== "Recebido" && (
-                                        <button onClick={() => avancarStatusMatC(m)}
-                                          title={m.status === "Pendente" ? "Marcar como Comprado" : "Marcar como Recebido"}
-                                          className="rounded p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50">
-                                          <Check className="h-3.5 w-3.5" />
-                                        </button>
-                                      )}
-                                      {m._origem !== "pedido" && (
-                                        <>
-                                          <button onClick={() => abrirEditarMatC(m)}
-                                            className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
-                                            <Pencil className="h-3.5 w-3.5" />
-                                          </button>
-                                          <button onClick={() => excluirMatComprar(m.id)}
-                                            className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        {/* Card de totais abaixo da tabela */}
+                                    <tbody className="divide-y divide-gray-50">
+                                      {itensCliente.map(m => (
+                                        <tr key={m.id} className={cn(
+                                          "hover:bg-gray-50/60",
+                                          m.status === "Recebido" && "opacity-60",
+                                          m._origem === "pedido" && "bg-blue-50/20"
+                                        )}>
+                                          <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="font-medium text-gray-900">{m.descricao}</span>
+                                              {m._origem === "pedido" && (
+                                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">Pedido</span>
+                                              )}
+                                            </div>
+                                          </td>
+                                          <td className="px-4 py-3 text-center text-gray-700 font-mono">{m.quantidade} <span className="text-xs text-gray-400">{m.unidade}</span></td>
+                                          <td className="px-4 py-3">
+                                            {m._origem !== "pedido" && (
+                                              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", URGENCIA_COR[m.urgencia])}>
+                                                {m.urgencia === "urgente" ? "🔴 Urgente" : m.urgencia === "normal" ? "Normal" : "Baixa"}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-3 text-xs text-gray-500">{m.fornecedor || <span className="text-gray-300">—</span>}</td>
+                                          <td className="px-4 py-3">
+                                            <div className="flex items-center gap-0.5 justify-end">
+                                              {m.status !== "Recebido" && (
+                                                <button onClick={() => avancarStatusMatC(m)}
+                                                  title={m.status === "Pendente" ? "Marcar como Comprado" : "Marcar como Recebido"}
+                                                  className="rounded p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50">
+                                                  <Check className="h-3.5 w-3.5" />
+                                                </button>
+                                              )}
+                                              {m._origem !== "pedido" && (
+                                                <>
+                                                  <button onClick={() => abrirEditarMatC(m)}
+                                                    className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                  </button>
+                                                  <button onClick={() => excluirMatComprar(m.id)}
+                                                    className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                  </button>
+                                                </>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Card de totais abaixo da tabela */}
                         <div className={cn("px-4 py-3 border-t", statusCor[status])}>
                           <div className="flex flex-wrap gap-x-6 gap-y-2 items-start">
                             <div className="flex-1 min-w-[200px]">
@@ -4334,7 +4364,8 @@ function LogisticaPage() {
                       </div>
                     </div>
                   );
-                })
+                });
+              })()
               )}
 
               {/* Modal Nova/Editar Material */}
