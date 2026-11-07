@@ -447,6 +447,7 @@ interface PedidoLogistico {
   ticket_contato_nome: string | null;
   ticket_contato_tel: string | null;
   ticket_sla_at: string | null;
+  classificacao_op: "fornecimento" | "instalacao" | null;
 }
 
 interface ItemAquisicao {
@@ -2706,6 +2707,34 @@ function LogisticaPage() {
                           </div>
                         </div>
 
+                        {/* Classificação operacional */}
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                          <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Classificação operacional</p>
+                          <div className="flex gap-2">
+                            {(["instalacao", "fornecimento"] as const).map(op => {
+                              const ativo = (pedidoAberto.classificacao_op ?? "instalacao") === op;
+                              return (
+                                <button
+                                  key={op}
+                                  onClick={async () => {
+                                    await supabase.from("logistica_pedidos").update({ classificacao_op: op }).eq("id", pedidoAberto.id);
+                                    setPedidoAberto(p => p ? { ...p, classificacao_op: op } : p);
+                                    setPedidosLog(ps => ps.map(p => p.id === pedidoAberto.id ? { ...p, classificacao_op: op } : p));
+                                  }}
+                                  className={cn(
+                                    "flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+                                    ativo
+                                      ? "border-[#1a6b2f] bg-[#1a6b2f]/10 text-[#1a6b2f]"
+                                      : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                                  )}
+                                >
+                                  {op === "instalacao" ? "🔧 Com instalação" : "📦 Apenas fornecimento"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
                         {/* Status de compra + cobrança */}
                         {(() => {
                           const compraItens = aquisicoes;
@@ -3137,16 +3166,15 @@ function LogisticaPage() {
                     {abaPedido === "tarefas" && (() => {
                       // Sugestões geradas a partir das aquisições + tarefa fixa de cobrança
                       const descricoesCadastradas = new Set(tarefas.map(t => t.descricao));
+                      // "Com instalação" → Instalar; "Apenas fornecimento" → Entregar
+                      const isInstalacao = (pedidoAberto.classificacao_op ?? "instalacao") === "instalacao";
                       const sugestoes: { descricao: string; icone: string; cor: string }[] = [
-                        // 1 tarefa de aquisição global
                         { descricao: "Adquirir materiais", icone: "🛒", cor: "blue" },
-                        // 1 tarefa de instalação por item de aquisição
                         ...aquisicoes.map(a => ({
-                          descricao: `Instalar: ${a.nome}`,
-                          icone: "🔧",
-                          cor: "orange",
+                          descricao: isInstalacao ? `Instalar: ${a.nome}` : `Entregar: ${a.nome}`,
+                          icone: isInstalacao ? "🔧" : "📦",
+                          cor: isInstalacao ? "orange" : "purple",
                         })),
-                        // cobrança sempre por último
                         { descricao: "Realizar cobrança", icone: "💰", cor: "emerald" },
                       ].filter(s => !descricoesCadastradas.has(s.descricao));
 
