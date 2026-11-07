@@ -140,7 +140,7 @@ async function syncVendas(token: string) {
 }
 
 // ─── Sync: Cobranças / Recebíveis ────────────────────────────────────────────
-// Endpoint correto: GET /v1/financeiro/contas-a-receber (não /v1/financeiro/contasreceber)
+// Endpoint correto (OpenAPI oficial): GET /v1/financeiro/eventos-financeiros/contas-a-receber/buscar
 async function syncCobrancas(token: string) {
   const hoje = new Date();
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
@@ -149,7 +149,7 @@ async function syncCobrancas(token: string) {
   let cobrancas: unknown[] = [];
   try {
     const data = await apiCA(
-      `/v1/financeiro/contas-a-receber?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
+      `/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
       token
     );
     cobrancas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? [];
@@ -179,7 +179,7 @@ async function syncCobrancas(token: string) {
 }
 
 // ─── Sync: Contas a Pagar ─────────────────────────────────────────────────────
-// Endpoint correto: GET /v1/financeiro/contas-a-pagar (não /v1/financeiro/contaspagar)
+// Endpoint correto (OpenAPI oficial): GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar
 async function syncContasPagar(token: string) {
   const hoje = new Date();
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
@@ -188,7 +188,7 @@ async function syncContasPagar(token: string) {
   let contas: unknown[] = [];
   try {
     const data = await apiCA(
-      `/v1/financeiro/contas-a-pagar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
+      `/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
       token
     );
     contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? [];
@@ -218,12 +218,20 @@ async function syncContasPagar(token: string) {
 }
 
 // ─── Sync: Saldos das contas bancárias ──────────────────────────────────────
-// Endpoint correto: GET /v1/conta-financeira (não /v1/financeiro/contasfinanceiras)
+// Endpoint: GET /v1/conta-financeira (sem parâmetros obrigatórios; paginação opcional)
+// Saldo individual: GET /v1/conta-financeira/{id}/saldo-atual → { saldo_atual: number }
 async function syncSaldos(token: string) {
   let contas: unknown[] = [];
   try {
-    const data = await apiCA(`/v1/conta-financeira?pagina=1&tamanho_pagina=50`, token);
-    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? data?.contasFinanceiras ?? [];
+    // Tenta sem paginação primeiro; se não funcionar, tenta com pagina/tamanho_pagina
+    let data: unknown;
+    try {
+      data = await apiCA(`/v1/conta-financeira`, token);
+    } catch (e1) {
+      console.log("conta-financeira sem params falhou, tentando com paginação:", String(e1));
+      data = await apiCA(`/v1/conta-financeira?pagina=1&tamanho_pagina=50`, token);
+    }
+    contas = Array.isArray(data) ? data : (data as any)?.content ?? (data as any)?.items ?? (data as any)?.data ?? (data as any)?.contasFinanceiras ?? [];
   } catch (e) {
     console.error("Erro ao buscar saldos:", e);
     return 0;
@@ -236,7 +244,9 @@ async function syncSaldos(token: string) {
     let saldoAtual = Number(c.saldo ?? c.saldo_atual ?? c.balance ?? c.currentBalance ?? 0);
     try {
       const saldoRes = await apiCA(`/v1/conta-financeira/${c.id}/saldo-atual`, token);
-      if (saldoRes?.saldo !== undefined) saldoAtual = Number(saldoRes.saldo);
+      // A API retorna { saldo_atual: number } conforme documentação
+      if (saldoRes?.saldo_atual !== undefined) saldoAtual = Number(saldoRes.saldo_atual);
+      else if (saldoRes?.saldo !== undefined) saldoAtual = Number(saldoRes.saldo);
     } catch {
       // usa o saldo do objeto da conta se não conseguir buscar individualmente
     }
@@ -260,6 +270,8 @@ async function syncSaldos(token: string) {
 
 // ─── Sync: Contratos ──────────────────────────────────────────────────────────
 // Endpoint: GET /v1/contratos — data_inicio e data_fim são OBRIGATÓRIOS
+// Nota: a API pode retornar 400 "Data de início da recorrência não pode ser nula"
+// se o campo data_inicio_recorrencia for esperado (undocumented). Tentamos ambos.
 async function syncContratos(token: string) {
   let contratos: unknown[] = [];
   try {
@@ -268,11 +280,23 @@ async function syncContratos(token: string) {
     const inicio = new Date(hoje.getFullYear() - 2, hoje.getMonth(), 1).toISOString().slice(0, 10);
     const fim = new Date(hoje.getFullYear() + 3, hoje.getMonth(), 1).toISOString().slice(0, 10);
 
-    const data = await apiCA(
-      `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=50`,
-      token
-    );
-    contratos = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.contratos ?? data?.data ?? [];
+    // Tenta com data_inicio_recorrencia primeiro (campo que a API menciona no erro 400)
+    // Se falhar, tenta com data_inicio (campo documentado no OpenAPI)
+    let data: unknown;
+    try {
+      data = await apiCA(
+        `/v1/contratos?data_inicio_recorrencia=${inicio}&data_fim_recorrencia=${fim}&pagina=1&tamanho_pagina=50`,
+        token
+      );
+      console.log("Contratos: sucesso com data_inicio_recorrencia");
+    } catch (e1) {
+      console.log("Contratos: data_inicio_recorrencia falhou, tentando data_inicio:", String(e1));
+      data = await apiCA(
+        `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=50`,
+        token
+      );
+    }
+    contratos = Array.isArray(data) ? data : (data as any)?.content ?? (data as any)?.items ?? (data as any)?.contratos ?? (data as any)?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar contratos:", e);
     return 0;
@@ -325,10 +349,11 @@ serve(async (req) => {
 
       const endpoints = [
         `/v1/venda/busca?data_inicio=${dataInicioCobranca}&data_fim=${hoje.toISOString().slice(0,10)}&pagina=1&tamanho_pagina=5`,
-        `/v1/financeiro/contas-a-receber?data_vencimento_de=${dataInicioCobranca}&data_vencimento_ate=${dataFimCobranca}&pagina=1&tamanho_pagina=5`,
-        `/v1/financeiro/contas-a-pagar?data_vencimento_de=${dataInicioCobranca}&data_vencimento_ate=${dataFimCobranca}&pagina=1&tamanho_pagina=5`,
+        `/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${dataInicioCobranca}&data_vencimento_ate=${dataFimCobranca}&pagina=1&tamanho_pagina=5`,
+        `/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${dataInicioCobranca}&data_vencimento_ate=${dataFimCobranca}&pagina=1&tamanho_pagina=5`,
+        `/v1/contratos?data_inicio_recorrencia=${inicio}&data_fim_recorrencia=${fim}&pagina=1&tamanho_pagina=5`,
         `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=5`,
-        `/v1/conta-financeira?pagina=1&tamanho_pagina=5`,
+        `/v1/conta-financeira`,
       ];
 
       const results: Record<string, unknown> = {};
