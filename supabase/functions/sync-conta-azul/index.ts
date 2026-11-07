@@ -100,6 +100,23 @@ async function apiCA(path: string, token: string) {
   return res.json();
 }
 
+// ─── Helper: busca todas as páginas de um endpoint paginado ──────────────────
+async function fetchAllPages(baseUrl: string, token: string, pageSize = 200): Promise<unknown[]> {
+  const all: unknown[] = [];
+  let pagina = 1;
+  while (true) {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const data = await apiCA(`${baseUrl}${sep}pagina=${pagina}&tamanho_pagina=${pageSize}`, token);
+    const items: unknown[] = Array.isArray(data) ? data : data?.itens ?? data?.content ?? data?.items ?? data?.data ?? [];
+    all.push(...items);
+    const total: number = data?.itens_totais ?? data?.total ?? items.length;
+    if (all.length >= total || items.length < pageSize) break;
+    pagina++;
+    if (pagina > 20) break; // segurança: max 4000 registros
+  }
+  return all;
+}
+
 // ─── Sync: Vendas ─────────────────────────────────────────────────────────────
 // Endpoint correto: GET /v1/venda/busca (não /v1/vendas)
 async function syncVendas(token: string) {
@@ -143,16 +160,15 @@ async function syncVendas(token: string) {
 // Endpoint correto (OpenAPI oficial): GET /v1/financeiro/eventos-financeiros/contas-a-receber/buscar
 async function syncCobrancas(token: string) {
   const hoje = new Date();
-  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
-  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0).toISOString().slice(0, 10);
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1).toISOString().slice(0, 10);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 6, 0).toISOString().slice(0, 10);
 
   let cobrancas: unknown[] = [];
   try {
-    const data = await apiCA(
-      `/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
+    cobrancas = await fetchAllPages(
+      `/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}`,
       token
     );
-    cobrancas = Array.isArray(data) ? data : data?.itens ?? data?.content ?? data?.items ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar cobranças:", e);
     return 0;
@@ -182,16 +198,15 @@ async function syncCobrancas(token: string) {
 // Endpoint correto (OpenAPI oficial): GET /v1/financeiro/eventos-financeiros/contas-a-pagar/buscar
 async function syncContasPagar(token: string) {
   const hoje = new Date();
-  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
-  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0).toISOString().slice(0, 10);
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1).toISOString().slice(0, 10);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 6, 0).toISOString().slice(0, 10);
 
   let contas: unknown[] = [];
   try {
-    const data = await apiCA(
-      `/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
+    contas = await fetchAllPages(
+      `/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}`,
       token
     );
-    contas = Array.isArray(data) ? data : data?.itens ?? data?.content ?? data?.items ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar contas a pagar:", e);
     return 0;
