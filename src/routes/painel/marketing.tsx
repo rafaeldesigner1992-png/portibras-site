@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   TrendingUp, MousePointerClick, DollarSign, Zap, RefreshCw,
-  Loader2, Eye, BarChart3, ArrowUp, ArrowDown, Minus, AlertCircle, Info,
+  Loader2, Eye, BarChart3, ArrowUp, ArrowDown, Minus, AlertCircle, Info, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -87,9 +87,13 @@ function MarketingPage() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [semDados, setSemDados] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<"campanhas" | "tendencia" | "keywords">("campanhas");
+  const [abaAtiva, setAbaAtiva] = useState<"campanhas" | "tendencia" | "keywords" | "insights">("campanhas");
   const [keywords, setKeywords] = useState<DadoKeyword[]>([]);
   const [carregandoKw, setCarregandoKw] = useState(false);
+  const [insight, setInsight] = useState<string | null>(null);
+  const [gerandoInsight, setGerandoInsight] = useState(false);
+  const [erroInsight, setErroInsight] = useState<string | null>(null);
+  const [insightMeta, setInsightMeta] = useState<{ gerado_em: string; periodo_dias: number } | null>(null);
 
   const carregar = useCallback(async (p: Periodo = periodo) => {
     setCarregando(true);
@@ -144,6 +148,35 @@ function MarketingPage() {
 
   // Sincronização manual via Claude (Windsor.ai não é acessível via Edge Function)
   // Para atualizar os dados: peça ao Claude para buscar novos dados do Windsor e inserir no Supabase.
+
+  const gerarInsight = useCallback(async () => {
+    setGerandoInsight(true);
+    setErroInsight(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/marketing-insights`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ periodo: Number(periodo) }),
+        }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setInsight(data.insight);
+      setInsightMeta({ gerado_em: data.gerado_em, periodo_dias: data.periodo_dias });
+    } catch (e) {
+      setErroInsight("Erro ao gerar insights. Verifique a API Key da OpenAI no Supabase.");
+      console.error(e);
+    } finally {
+      setGerandoInsight(false);
+    }
+  }, [periodo]);
 
   useEffect(() => { carregar(periodo); }, [periodo]);
   useEffect(() => { carregarKeywords(); }, []);
@@ -293,6 +326,7 @@ function MarketingPage() {
               { key: "campanhas", label: "Por Campanha" },
               { key: "tendencia", label: "Tendência diária" },
               { key: "keywords", label: "Palavras-chave" },
+              { key: "insights", label: "✨ IA Insights" },
             ] as const).map(t => (
               <button key={t.key} onClick={() => setAbaAtiva(t.key)}
                 className={cn("rounded-lg px-4 py-2 text-sm font-medium transition",
@@ -415,6 +449,86 @@ function MarketingPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* ── IA Insights ── */}
+          {abaAtiva === "insights" && (
+            <div className="space-y-4">
+              {/* Header com botão */}
+              <div className="rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 px-5 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-purple-600" />
+                      <span className="text-sm font-semibold text-purple-900">Agente de Marketing IA</span>
+                    </div>
+                    <p className="mt-1 text-xs text-purple-700">
+                      Especialista em Google Ads · Neuromarketing · Mercado Corta-Fogo
+                    </p>
+                    {insightMeta && (
+                      <p className="mt-1 text-xs text-purple-500">
+                        Gerado em {new Date(insightMeta.gerado_em).toLocaleString("pt-BR")} · últimos {insightMeta.periodo_dias} dias
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={gerarInsight}
+                    disabled={gerandoInsight}
+                    className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60 transition shadow-sm"
+                  >
+                    {gerandoInsight
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Analisando...</>
+                      : <><Sparkles className="h-4 w-4" /> {insight ? "Atualizar Insights" : "Gerar Insights"}</>
+                    }
+                  </button>
+                </div>
+              </div>
+
+              {/* Erro */}
+              {erroInsight && (
+                <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {erroInsight}
+                </div>
+              )}
+
+              {/* Estado vazio */}
+              {!insight && !gerandoInsight && !erroInsight && (
+                <div className="rounded-xl border border-dashed border-purple-200 bg-white px-6 py-12 text-center">
+                  <Sparkles className="mx-auto h-10 w-10 text-purple-300 mb-3" />
+                  <p className="text-sm font-medium text-gray-700">Nenhuma análise gerada ainda</p>
+                  <p className="mt-1 text-xs text-gray-400">Clique em "Gerar Insights" para o agente analisar seus dados de Google Ads</p>
+                </div>
+              )}
+
+              {/* Loading */}
+              {gerandoInsight && (
+                <div className="rounded-xl border border-purple-100 bg-white px-6 py-12 text-center">
+                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-purple-500 mb-3" />
+                  <p className="text-sm font-medium text-gray-700">Analisando suas campanhas...</p>
+                  <p className="mt-1 text-xs text-gray-400">O agente está estudando seus dados · aguarde ~15 segundos</p>
+                </div>
+              )}
+
+              {/* Resultado */}
+              {insight && !gerandoInsight && (
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-gray-100 px-5 py-3 bg-gray-50">
+                    <span className="text-xs font-medium text-gray-500">Análise do Agente IA — GPT-4o-mini</span>
+                  </div>
+                  <div className="px-5 py-5 prose prose-sm max-w-none text-gray-800"
+                    dangerouslySetInnerHTML={{
+                      __html: insight
+                        .replace(/^## (.+)$/gm, '<h2 class="text-base font-bold text-gray-900 mt-5 mb-2">$1</h2>')
+                        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-sm">$1</li>')
+                        .replace(/\n\n/g, '<br/><br/>')
+                        .replace(/\n/g, '<br/>')
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
