@@ -856,11 +856,13 @@ function CalculadoraOrcamento({ lead, onClose, onPropostaSalva }: { lead: Lead; 
     const valorFmt = precoFinal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const nomeArquivoOrc = `${numPropostaOrc.current}_${empresa.replace(/\s+/g, "_")}.pdf`;
     try {
+      const totalItens = itens.reduce((acc, i) => acc + i.quantidade, 0);
       await salvarPropostaDb(lead.id, "orcamento", nomeArquivoOrc, {
         numProposta: numPropostaOrc.current,
-        parcela: precoFinal,
-        portas: 0,
-        valorTotal: precoFinal,
+        parcela: precoFinal,   // valor total do orçamento (exibido como "Valor total")
+        portas: totalItens,    // qtd total de itens (exibido como "Itens orçados")
+        custoCorretivo: custoTotal,
+        frequencia: 0,
       });
       onPropostaSalva?.();
     } catch {
@@ -2312,18 +2314,33 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Resumo da proposta</p>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-xs text-gray-400">Portas</p>
-              <p className="font-semibold text-gray-800">{c.portas}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Parcela mensal</p>
-              <p className="font-semibold text-[#C94500]">{c.parcela.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Total 12×</p>
-              <p className="font-semibold text-gray-800">{(c.parcela * 12).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-            </div>
+            {proposta.tipo === "manutencao" ? (
+              <>
+                <div>
+                  <p className="text-xs text-gray-400">Portas</p>
+                  <p className="font-semibold text-gray-800">{c.portas}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Parcela mensal</p>
+                  <p className="font-semibold text-[#C94500]">{c.parcela.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Total 12×</p>
+                  <p className="font-semibold text-gray-800">{(c.parcela * 12).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <p className="text-xs text-gray-400">Itens orçados</p>
+                  <p className="font-semibold text-gray-800">{c.portas > 0 ? c.portas : "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Valor total</p>
+                  <p className="font-semibold text-[#C94500]">{c.parcela.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                </div>
+              </>
+            )}
             <div>
               <p className="text-xs text-gray-400">Nº Proposta</p>
               <p className="font-semibold text-gray-800">{c.numProposta}</p>
