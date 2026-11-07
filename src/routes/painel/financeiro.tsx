@@ -538,12 +538,12 @@ function FinanceiroPage() {
   const carregarDadosCA = useCallback(async () => {
     setCarregandoCA(true);
     const [v, c, ct, s, cp, crm] = await Promise.all([
-      supabase.from("ca_vendas").select("*").order("data_emissao", { ascending: false }).limit(200),
-      supabase.from("ca_cobrancas").select("*").order("vencimento", { ascending: true }).limit(200),
-      supabase.from("ca_contratos").select("*").order("cliente_nome").limit(200),
+      supabase.from("ca_vendas").select("*").order("data_emissao", { ascending: false }).limit(1000),
+      supabase.from("ca_cobrancas").select("*").order("vencimento", { ascending: true }).limit(1000),
+      supabase.from("ca_contratos").select("*").order("cliente_nome").limit(500),
       supabase.from("ca_saldos").select("*").order("nome").limit(50),
-      supabase.from("ca_contas_pagar").select("*").order("vencimento", { ascending: true }).limit(200),
-      supabase.from("crm_propostas").select("*, lead:crm_leads(nome, empresa)").eq("status", "fechado").limit(200),
+      supabase.from("ca_contas_pagar").select("*").order("vencimento", { ascending: true }).limit(1000),
+      supabase.from("crm_propostas").select("*, lead:crm_leads(nome, empresa)").eq("status", "fechado").limit(500),
     ]);
     if (v.data) setCaVendas(v.data as CaVenda[]);
     if (c.data) setCaCobrancas(c.data as CaCobranca[]);
@@ -2222,6 +2222,23 @@ function ContaAzulView({
   const [filtroCobrancas, setFiltroCobrancas] = useState<"todos" | "a_receber" | "vencidos" | "recebidos">("a_receber");
   const [filtroContasPagar, setFiltroContasPagar] = useState<"todos" | "a_pagar" | "vencidos" | "pagos">("a_pagar");
 
+  // Período: padrão = início do mês atual até fim do próximo mês
+  const hoje2 = new Date();
+  const defaultInicio = new Date(hoje2.getFullYear(), hoje2.getMonth(), 1).toISOString().slice(0, 10);
+  const defaultFim = new Date(hoje2.getFullYear(), hoje2.getMonth() + 2, 0).toISOString().slice(0, 10);
+  const [periodoInicio, setPeriodoInicio] = useState(defaultInicio);
+  const [periodoFim, setPeriodoFim] = useState(defaultFim);
+
+  // Aplica filtro de período nas cobranças e contas a pagar
+  const cobrancasFiltradas = cobrancas.filter(c => {
+    if (!c.vencimento) return true;
+    return c.vencimento >= periodoInicio && c.vencimento <= periodoFim;
+  });
+  const contasPagarFiltradas = contasPagar.filter(c => {
+    if (!c.vencimento) return true;
+    return c.vencimento >= periodoInicio && c.vencimento <= periodoFim;
+  });
+
   if (!conectado) {
     return (
       <div className="flex flex-col items-center justify-center gap-6 py-20 text-center">
@@ -2265,35 +2282,35 @@ function ContaAzulView({
   const isCancelado = (status: string | null | undefined) => !!status && STATUS_CANCELADO.includes(status.toUpperCase());
 
   const totalFaturado = vendas.reduce((s, v) => s + v.valor_total, 0);
-  const totalRecebido = cobrancas.filter(c => isPago(c.status)).reduce((s, c) => s + c.valor_pago, 0);
-  const aReceber = cobrancas.filter(c => {
+  const totalRecebido = cobrancasFiltradas.filter(c => isPago(c.status)).reduce((s, c) => s + c.valor_pago, 0);
+  const aReceber = cobrancasFiltradas.filter(c => {
     if (isPago(c.status) || isCancelado(c.status)) return false;
     if (!c.vencimento) return false;
     const venc = new Date(c.vencimento);
     venc.setHours(0, 0, 0, 0);
     return venc >= hoje && venc <= horizonte;
   }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
-  const emAtraso = cobrancas.filter(c => {
+  const emAtraso = cobrancasFiltradas.filter(c => {
     if (isPago(c.status) || isCancelado(c.status)) return false;
     if (!c.vencimento) return false;
     const venc = new Date(c.vencimento);
     venc.setHours(0, 0, 0, 0);
     return venc < hoje;
   }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
-  const totalAReceber = cobrancas
+  const totalAReceber = cobrancasFiltradas
     .filter(c => !isPago(c.status) && !isCancelado(c.status))
     .reduce((s, c) => s + (c.valor - c.valor_pago), 0);
 
   // ── Saldos e contas a pagar ──
   const saldoTotal = saldos.filter(s => s.ativo).reduce((acc, s) => acc + s.saldo, 0);
-  const aPagarVencidos = contasPagar.filter(c => {
+  const aPagarVencidos = contasPagarFiltradas.filter(c => {
     if (isPago(c.status) || isCancelado(c.status)) return false;
     if (!c.vencimento) return false;
     const venc = new Date(c.vencimento);
     venc.setHours(0, 0, 0, 0);
     return venc < hoje;
   }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
-  const aPagarProximo = contasPagar.filter(c => {
+  const aPagarProximo = contasPagarFiltradas.filter(c => {
     if (isPago(c.status) || isCancelado(c.status)) return false;
     if (!c.vencimento) return false;
     const venc = new Date(c.vencimento);
@@ -2358,6 +2375,31 @@ function ContaAzulView({
         </div>
       )}
 
+      {/* ── Seletor de período ── */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+        <span className="text-xs font-medium text-gray-500">Período:</span>
+        {[
+          { label: "Este mês", inicio: new Date(hoje2.getFullYear(), hoje2.getMonth(), 1).toISOString().slice(0,10), fim: new Date(hoje2.getFullYear(), hoje2.getMonth()+1, 0).toISOString().slice(0,10) },
+          { label: "Próx. 30d", inicio: hoje2.toISOString().slice(0,10), fim: new Date(hoje2.getTime()+30*86400000).toISOString().slice(0,10) },
+          { label: "Próx. 60d", inicio: hoje2.toISOString().slice(0,10), fim: new Date(hoje2.getTime()+60*86400000).toISOString().slice(0,10) },
+          { label: "Próx. 90d", inicio: hoje2.toISOString().slice(0,10), fim: new Date(hoje2.getTime()+90*86400000).toISOString().slice(0,10) },
+          { label: "Tudo", inicio: "2000-01-01", fim: "2099-12-31" },
+        ].map(p => (
+          <button key={p.label} onClick={() => { setPeriodoInicio(p.inicio); setPeriodoFim(p.fim); }}
+            className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition",
+              periodoInicio === p.inicio && periodoFim === p.fim ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            )}>{p.label}</button>
+        ))}
+        <span className="text-xs text-gray-400 ml-1">|</span>
+        <div className="flex items-center gap-1.5">
+          <input type="date" value={periodoInicio} onChange={e => setPeriodoInicio(e.target.value)}
+            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          <span className="text-xs text-gray-400">até</span>
+          <input type="date" value={periodoFim} onChange={e => setPeriodoFim(e.target.value)}
+            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+        </div>
+      </div>
+
       {/* ── KPIs linha 2: Recebíveis e pagamentos ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
@@ -2419,7 +2461,7 @@ function ContaAzulView({
             </thead>
             <tbody className="divide-y divide-gray-50">
               {(() => {
-                const filtradas = cobrancas.filter(c => {
+                const filtradas = cobrancasFiltradas.filter(c => {
                   if (filtroCobrancas === "recebidos") return isPago(c.status);
                   if (filtroCobrancas === "vencidos") {
                     if (isPago(c.status) || isCancelado(c.status)) return false;
@@ -2497,7 +2539,7 @@ function ContaAzulView({
             </thead>
             <tbody className="divide-y divide-gray-50">
               {(() => {
-                const filtradas = contasPagar.filter(c => {
+                const filtradas = contasPagarFiltradas.filter(c => {
                   if (filtroContasPagar === "pagos") return isPago(c.status);
                   if (filtroContasPagar === "vencidos") {
                     if (isPago(c.status) || isCancelado(c.status)) return false;
