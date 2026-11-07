@@ -413,8 +413,9 @@ const PRIORIDADE_CORES: Record<string, string> = {
 };
 
 // ─── Pedidos Logísticos (vindos do CRM) ───────────────────────────────────────
-type EtapaLogistica = "tratamento" | "aguard_material" | "aguard_cobranca" | "em_execucao" | "concluido" | "cancelado";
-type TipoCobranca   = "antes" | "apos" | "sem_cobranca";
+type EtapaLogistica  = "tratamento" | "aguard_material" | "aguard_cobranca" | "em_execucao" | "concluido" | "cancelado";
+type TipoCobranca    = "antes" | "apos" | "sem_cobranca";
+type StatusCobranca  = "aguardando" | "cobrado_parcial" | "cobrado_total";
 
 interface PedidoLogistico {
   id: string;
@@ -435,6 +436,7 @@ interface PedidoLogistico {
   tipo_cobranca: TipoCobranca;
   cobrado: boolean;
   cobrado_em: string | null;
+  status_cobranca: StatusCobranca | null;
   responsavel: string | null;
   observacoes: string | null;
   criado_em: string;
@@ -2485,6 +2487,47 @@ function LogisticaPage() {
                           </div>
                         </div>
 
+                        {/* Status de compra + cobrança */}
+                        {(() => {
+                          const compraItens = aquisicoes;
+                          const totalItens = compraItens.length;
+                          const recebidos = compraItens.filter(a => a.status === "recebido").length;
+                          const pedidos   = compraItens.filter(a => a.status === "pedido").length;
+                          const pendentes = compraItens.filter(a => a.status === "pendente").length;
+                          const compraLabel = totalItens === 0 ? null
+                            : recebidos === totalItens ? { label: "Tudo recebido", cls: "bg-emerald-100 text-emerald-700" }
+                            : pedidos + recebidos === totalItens ? { label: "Pedido realizado", cls: "bg-blue-100 text-blue-700" }
+                            : pendentes === totalItens ? { label: "Aguard. compra", cls: "bg-orange-100 text-orange-700" }
+                            : { label: `${recebidos}/${totalItens} recebidos`, cls: "bg-yellow-100 text-yellow-700" };
+                          const cobLabel: Record<StatusCobranca, { label: string; cls: string }> = {
+                            aguardando:     { label: "Aguard. cobrança", cls: "bg-orange-100 text-orange-700" },
+                            cobrado_parcial:{ label: "Cobrado parcial",  cls: "bg-yellow-100 text-yellow-700" },
+                            cobrado_total:  { label: "Cobrado",          cls: "bg-emerald-100 text-emerald-700" },
+                          };
+                          const cobInfo = pedidoAberto.status_cobranca ? cobLabel[pedidoAberto.status_cobranca] : null;
+                          if (!compraLabel && !cobInfo) return null;
+                          return (
+                            <div className="flex gap-3">
+                              {compraLabel && totalItens > 0 && (
+                                <div className="flex-1 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                                  <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Status de Compra</p>
+                                  <div className="flex items-center gap-2">
+                                    <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold", compraLabel.cls)}>{compraLabel.label}</span>
+                                    <span className="text-[10px] text-gray-400">{totalItens} {totalItens === 1 ? "item" : "itens"}</span>
+                                  </div>
+                                </div>
+                              )}
+                              {cobInfo && (
+                                <div className="flex-1 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                                  <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Status de Cobrança</p>
+                                  <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold", cobInfo.cls)}>{cobInfo.label}</span>
+                                  <p className="text-[9px] text-gray-400 mt-1">Gerenciado em Financeiro</p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         {/* Valores */}
                         <div className="grid grid-cols-3 gap-3">
                           <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
@@ -2700,20 +2743,15 @@ function LogisticaPage() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                  <select
-                                    value={a.status}
-                                    onChange={e => atualizarStatusAquis(a.id, e.target.value as ItemAquisicao["status"])}
-                                    className={cn(
-                                      "text-[10px] font-semibold rounded-full px-2 py-0.5 border-0 outline-none cursor-pointer",
-                                      a.status === "pendente" ? "bg-orange-100 text-orange-700"
-                                        : a.status === "pedido" ? "bg-blue-100 text-blue-700"
-                                        : "bg-emerald-100 text-emerald-700"
-                                    )}
-                                  >
-                                    <option value="pendente">Pendente</option>
-                                    <option value="pedido">Pedido</option>
-                                    <option value="recebido">Recebido</option>
-                                  </select>
+                                  {/* Status somente leitura — alterado em Compras > Materiais a Comprar */}
+                                  <span className={cn(
+                                    "text-[10px] font-semibold rounded-full px-2.5 py-0.5",
+                                    a.status === "pendente" ? "bg-orange-100 text-orange-700"
+                                      : a.status === "pedido" ? "bg-blue-100 text-blue-700"
+                                      : "bg-emerald-100 text-emerald-700"
+                                  )}>
+                                    {a.status === "pendente" ? "Pendente" : a.status === "pedido" ? "Pedido" : "Recebido"}
+                                  </span>
                                   <button onClick={() => removerAquisicao(a.id)} className="text-gray-300 hover:text-red-500 transition-colors">
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </button>
