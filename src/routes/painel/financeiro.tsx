@@ -2280,6 +2280,9 @@ function ContaAzulView({
     venc.setHours(0, 0, 0, 0);
     return venc < hoje;
   }).reduce((s, c) => s + (c.valor - c.valor_pago), 0);
+  const totalAReceber = cobrancas
+    .filter(c => !isPago(c.status) && !isCancelado(c.status))
+    .reduce((s, c) => s + (c.valor - c.valor_pago), 0);
 
   // ── Saldos e contas a pagar ──
   const saldoTotal = saldos.filter(s => s.ativo).reduce((acc, s) => acc + s.saldo, 0);
@@ -2358,7 +2361,7 @@ function ContaAzulView({
       {/* ── KPIs linha 2: Recebíveis e pagamentos ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "Faturado (período)", valor: fmt(totalFaturado), icon: FileText, cor: "bg-blue-50 text-blue-600" },
+          { label: "Total a receber", valor: fmt(totalAReceber), icon: FileText, cor: "bg-blue-50 text-blue-600" },
           { label: "Recebido", valor: fmt(totalRecebido), icon: CheckCircle2, cor: "bg-green-50 text-green-600" },
           { label: `A receber vencidos`, valor: fmt(emAtraso), icon: AlertCircle, cor: emAtraso > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-400" },
           { label: `A pagar vencidos`, valor: fmt(aPagarVencidos), icon: TrendingDown, cor: aPagarVencidos > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-400" },
