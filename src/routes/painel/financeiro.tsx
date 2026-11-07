@@ -504,9 +504,6 @@ function FinanceiroPage() {
   const [caConectado, setCaConectado] = useState(false);
   const [filtroMeses, setFiltroMeses] = useState<1 | 2 | 3>(1);
   const [horizonteFuturo, setHorizonteFuturo] = useState<30 | 60 | 90>(30);
-  const [filtroCobrancas, setFiltroCobrancas] = useState<"todos" | "a_receber" | "vencidos" | "recebidos">("a_receber");
-  const [filtroContasPagar, setFiltroContasPagar] = useState<"todos" | "a_pagar" | "vencidos" | "pagos">("a_pagar");
-
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     carregar();
@@ -2222,6 +2219,9 @@ function ContaAzulView({
   horizonteFuturo: 30 | 60 | 90;
   setHorizonteFuturo: (v: 30 | 60 | 90) => void;
 }) {
+  const [filtroCobrancas, setFiltroCobrancas] = useState<"todos" | "a_receber" | "vencidos" | "recebidos">("a_receber");
+  const [filtroContasPagar, setFiltroContasPagar] = useState<"todos" | "a_pagar" | "vencidos" | "pagos">("a_pagar");
+
   if (!conectado) {
     return (
       <div className="flex flex-col items-center justify-center gap-6 py-20 text-center">
