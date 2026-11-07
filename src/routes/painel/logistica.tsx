@@ -968,6 +968,10 @@ function LogisticaPage() {
     criado_em: string;
     atualizado_em: string;
     vinculados?: { id: string; titulo: string; classificacao: string }[];
+    // itens vindos de aquisições de pedidos
+    _origem?: "pedido";
+    _pedido_nome?: string;
+    _pedido_id?: string;
   };
   const URGENCIA_COR: Record<string, string> = {
     "baixa":   "bg-gray-100 text-gray-500",
@@ -995,12 +999,14 @@ function LogisticaPage() {
 
   async function carregarMatComprar() {
     setCarregandoMatC(true);
+
+    // ── 1. Materiais cadastrados manualmente ──────────────────────────────────
     const { data } = await supabase
       .from("logistica_materiais_comprar")
       .select("*")
       .order("criado_em", { ascending: false });
-    if (!data) { setCarregandoMatC(false); return; }
-    const ids = data.map((m: MatComprar) => m.id);
+
+    const ids = (data ?? []).map((m: MatComprar) => m.id);
     const { data: vinculos } = ids.length
       ? await supabase.from("logistica_materiais_comprar_atendimentos").select("material_id, atendimento_id").in("material_id", ids)
       : { data: [] };
@@ -1009,14 +1015,61 @@ function LogisticaPage() {
       if (!mapaV[v.material_id]) mapaV[v.material_id] = [];
       mapaV[v.material_id].push(v.atendimento_id);
     }
-    const enriquecidos = data.map((m: MatComprar) => ({
+    const manuais: MatComprar[] = (data ?? []).map((m: MatComprar) => ({
       ...m,
       vinculados: (mapaV[m.id] ?? [])
         .map(aid => atendimentos.find(a => a.id === aid))
         .filter(Boolean)
         .map(a => ({ id: a!.id, titulo: a!.titulo, classificacao: a!.classificacao })),
     }));
-    setMatComprar(enriquecidos);
+
+    // ── 2. Itens de aquisição dos pedidos (pendente ou pedido) ────────────────
+    const { data: aquisData } = await supabase
+      .from("logistica_aquisicoes")
+      .select("id, pedido_id, nome, quantidade, unidade, fornecedor, status, criado_em")
+      .in("status", ["pendente", "pedido"]);
+
+    // Mapear status de aquisição → status de MatComprar
+    const statusAquis: Record<string, MatComprar["status"]> = {
+      pendente: "Pendente",
+      pedido:   "Comprado",
+      recebido: "Recebido",
+    };
+
+    // Buscar nomes dos pedidos relacionados
+    const pedidoIds = [...new Set((aquisData ?? []).map((a: { pedido_id: string }) => a.pedido_id))];
+    const mapaPedido: Record<string, string> = {};
+    if (pedidoIds.length) {
+      const { data: pedData } = await supabase
+        .from("logistica_pedidos")
+        .select("id, cliente_nome, cliente_empresa")
+        .in("id", pedidoIds);
+      for (const p of (pedData ?? [])) {
+        mapaPedido[p.id] = p.cliente_empresa || p.cliente_nome || "Pedido";
+      }
+    }
+
+    const dePedidos: MatComprar[] = (aquisData ?? []).map((a: {
+      id: string; pedido_id: string; nome: string; quantidade: number;
+      unidade: string; fornecedor: string | null; status: string; criado_em: string;
+    }) => ({
+      id: a.id,
+      descricao: a.nome,
+      quantidade: a.quantidade,
+      unidade: a.unidade || "un",
+      fornecedor: a.fornecedor,
+      urgencia: "normal" as const,
+      status: statusAquis[a.status] ?? "Pendente",
+      observacoes: null,
+      criado_em: a.criado_em,
+      atualizado_em: a.criado_em,
+      vinculados: [],
+      _origem: "pedido" as const,
+      _pedido_nome: mapaPedido[a.pedido_id] ?? "Pedido",
+      _pedido_id: a.pedido_id,
+    }));
+
+    setMatComprar([...manuais, ...dePedidos]);
     setCarregandoMatC(false);
   }
 
@@ -1066,7 +1119,18 @@ function LogisticaPage() {
     };
     const novo = proximo[m.status];
     if (novo === m.status) return;
-    await supabase.from("logistica_materiais_comprar").update({ status: novo }).eq("id", m.id);
+
+    if (m._origem === "pedido") {
+      // Atualiza logistica_aquisicoes (mapeamento inverso de status)
+      const statusInv: Record<MatComprar["status"], string> = {
+        "Pendente": "pendente",
+        "Comprado": "pedido",
+        "Recebido": "recebido",
+      };
+      await supabase.from("logistica_aquisicoes").update({ status: statusInv[novo] }).eq("id", m.id);
+    } else {
+      await supabase.from("logistica_materiais_comprar").update({ status: novo }).eq("id", m.id);
+    }
     setMatComprar(ms => ms.map(x => x.id === m.id ? { ...x, status: novo } : x));
   }
 
@@ -4137,18 +4201,37 @@ function LogisticaPage() {
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                               {grupo.map(m => (
-                                <tr key={m.id} className={cn("hover:bg-gray-50/60", m.status === "Recebido" && "opacity-60")}>
-                                  <td className="px-4 py-3 font-medium text-gray-900">{m.descricao}</td>
+                                <tr key={m.id} className={cn(
+                                  "hover:bg-gray-50/60",
+                                  m.status === "Recebido" && "opacity-60",
+                                  m._origem === "pedido" && "bg-blue-50/30"
+                                )}>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-medium text-gray-900">{m.descricao}</span>
+                                      {m._origem === "pedido" && (
+                                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                                          Pedido
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
                                   <td className="px-4 py-3 text-center text-gray-700 font-mono">{m.quantidade} <span className="text-xs text-gray-400">{m.unidade}</span></td>
                                   <td className="px-4 py-3">
-                                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", URGENCIA_COR[m.urgencia])}>
-                                      {m.urgencia === "urgente" ? "🔴 Urgente" : m.urgencia === "normal" ? "Normal" : "Baixa"}
-                                    </span>
+                                    {m._origem !== "pedido" && (
+                                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", URGENCIA_COR[m.urgencia])}>
+                                        {m.urgencia === "urgente" ? "🔴 Urgente" : m.urgencia === "normal" ? "Normal" : "Baixa"}
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="px-4 py-3 text-xs text-gray-500">{m.fornecedor || <span className="text-gray-300">—</span>}</td>
                                   <td className="px-4 py-3">
                                     <div className="flex flex-wrap gap-1">
-                                      {m.vinculados && m.vinculados.length > 0
+                                      {m._origem === "pedido" && m._pedido_nome ? (
+                                        <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                                          {m._pedido_nome.length > 22 ? m._pedido_nome.slice(0, 22) + "…" : m._pedido_nome}
+                                        </span>
+                                      ) : m.vinculados && m.vinculados.length > 0
                                         ? m.vinculados.map(v => (
                                             <span key={v.id} className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium", CLASS_COR[v.classificacao])}>
                                               {v.titulo.length > 20 ? v.titulo.slice(0, 20) + "…" : v.titulo}
@@ -4167,14 +4250,18 @@ function LogisticaPage() {
                                           <Check className="h-3.5 w-3.5" />
                                         </button>
                                       )}
-                                      <button onClick={() => abrirEditarMatC(m)}
-                                        className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button onClick={() => excluirMatComprar(m.id)}
-                                        className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
+                                      {m._origem !== "pedido" && (
+                                        <>
+                                          <button onClick={() => abrirEditarMatC(m)}
+                                            className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
+                                            <Pencil className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button onClick={() => excluirMatComprar(m.id)}
+                                            className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>
