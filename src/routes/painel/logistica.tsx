@@ -4814,39 +4814,43 @@ function LogisticaPage() {
                             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", STATUS_MATC_COR[status])}>{grupo.length}</span>
                           </div>
 
-                          {/* Sub-grupos por cliente */}
-                          {clientesOrdenados.map((cliente, cidx) => {
-                            const itensCliente = clienteMap[cliente];
-                            const nomeExibido = cliente === "__sem_cliente__" ? "Sem cliente" : cliente;
-                            const isPedido = itensCliente.some(m => m._origem === "pedido");
-                            return (
-                              <div key={cliente} className={cidx > 0 ? "border-t border-gray-100" : ""}>
-                                {/* Cabeçalho do cliente */}
-                                <div className="px-4 py-1.5 bg-gray-50 flex items-center gap-2 border-b border-gray-100">
-                                  {isPedido
-                                    ? <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">{nomeExibido}</span>
-                                    : cliente === "__sem_cliente__"
-                                      ? <span className="text-[11px] text-gray-400 italic">{nomeExibido}</span>
-                                      : <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">{nomeExibido}</span>
-                                  }
-                                  <span className="text-[10px] text-gray-400">{itensCliente.length} {itensCliente.length === 1 ? "item" : "itens"}</span>
-                                </div>
-                                {/* Tabela dos itens desse cliente */}
-                                <div className="overflow-x-auto bg-white">
-                                  <table className="w-full text-sm">
-                                    <thead>
-                                      <tr className="border-b border-gray-100 bg-gray-50/50">
-                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Material</th>
-                                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-400 uppercase tracking-wide w-24">Qtd</th>
-                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide w-28">Urgência</th>
-                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Fornecedor</th>
-                                        <th className="px-4 py-2 w-20" />
+                          {/* Tabela única com cabeçalho fixo — grupos de cliente como linhas separadoras */}
+                          <div className="overflow-x-auto bg-white">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-gray-100 bg-gray-50/50">
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Material</th>
+                                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-400 uppercase tracking-wide w-24">Qtd</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide w-28">Urgência</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Fornecedor</th>
+                                  <th className="px-4 py-2 w-20" />
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {clientesOrdenados.map((cliente, cidx) => {
+                                  const itensCliente = clienteMap[cliente];
+                                  const nomeExibido = cliente === "__sem_cliente__" ? "Sem cliente" : cliente;
+                                  const isPedido = itensCliente.some(m => m._origem === "pedido");
+                                  return (
+                                    <>
+                                      {/* Linha separadora do cliente */}
+                                      <tr key={`sep-${cliente}`} className={cidx > 0 ? "border-t border-gray-200" : ""}>
+                                        <td colSpan={5} className="px-4 py-1.5 bg-gray-50">
+                                          <div className="flex items-center gap-2">
+                                            {isPedido
+                                              ? <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">{nomeExibido}</span>
+                                              : cliente === "__sem_cliente__"
+                                                ? <span className="text-[11px] text-gray-400 italic">{nomeExibido}</span>
+                                                : <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">{nomeExibido}</span>
+                                            }
+                                            <span className="text-[10px] text-gray-400">{itensCliente.length} {itensCliente.length === 1 ? "item" : "itens"}</span>
+                                          </div>
+                                        </td>
                                       </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-50">
+                                      {/* Linhas dos itens */}
                                       {itensCliente.map(m => (
                                         <tr key={m.id} className={cn(
-                                          "hover:bg-gray-50/60",
+                                          "border-t border-gray-50 hover:bg-gray-50/60",
                                           m.status === "Recebido" && "opacity-60",
                                           m._origem === "pedido" && "bg-blue-50/20"
                                         )}>
@@ -4891,12 +4895,12 @@ function LogisticaPage() {
                                           </td>
                                         </tr>
                                       ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            );
-                          })}
+                                    </>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
 
                           {/* Card de totais abaixo da tabela */}
                         <div className={cn("px-4 py-3 border-t", statusCor[status])}>
