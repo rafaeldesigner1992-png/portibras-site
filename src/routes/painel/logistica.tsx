@@ -1532,9 +1532,10 @@ function LogisticaPage() {
         for (const id of ids) {
           const aqItens = (aqData ?? []).filter((a: { pedido_id: string; status: string }) => a.pedido_id === id);
           const tItens  = (tData  ?? []).filter((t: { pedido_id: string; concluida: boolean }) => t.pedido_id === id);
+          // Lógica de preenchimento: "tem dados?" (não "está concluído?")
           prog[id] = {
-            aquisicao: aqItens.length > 0 && aqItens.every((a: { status: string }) => a.status === "recebido"),
-            tarefas:   tItens.length > 0 && tItens.every((t: { concluida: boolean }) => t.concluida),
+            aquisicao: aqItens.length > 0,   // tem pelo menos 1 item de aquisição
+            tarefas:   tItens.length > 0,    // tem pelo menos 1 tarefa cadastrada
           };
         }
         setProgressoCards(prog);
@@ -1586,8 +1587,8 @@ function LogisticaPage() {
     setProgressoCards(p => ({
       ...p,
       [pedidoId]: {
-        aquisicao: aItens.length > 0 && aItens.every(a => a.status === "recebido"),
-        tarefas:   tItens.length > 0 && tItens.every(t => t.concluida),
+        aquisicao: aItens.length > 0,  // preenchida = tem dados
+        tarefas:   tItens.length > 0,  // preenchida = tem dados
       },
     }));
   }
@@ -2449,10 +2450,11 @@ function LogisticaPage() {
                           );
                         }
 
-                        const prog = progressoCards[p.id];
-                        const infoOk = !!(p.etapa && p.tipo_cobranca);
-                        const aquisOk = prog?.aquisicao ?? false;
-                        const tarefOk = prog?.tarefas ?? false;
+                                        const prog = progressoCards[p.id];
+                        // Preenchimento de cada aba (não conclusão — apenas "tem dados?")
+                        const infoOk = !!(p.valor_venda != null && p.valor_venda > 0);
+                        const aquisOk = prog?.aquisicao ?? false;  // tem >=1 item
+                        const tarefOk = prog?.tarefas ?? false;    // tem >=1 tarefa
 
                         return (
                           <div
@@ -2476,31 +2478,22 @@ function LogisticaPage() {
                               <p className="text-sm font-bold text-[#1a6b2f] tabular-nums mb-2">{fmt(p.valor_venda)}</p>
                             )}
 
-                            {/* Footer: cobrança + bolinhas + avançar */}
+                            {/* Footer: bolinhas de preenchimento + avançar */}
                             <div className="flex items-center justify-between mt-1 pt-2 border-t border-gray-50">
-                              {/* Bolinhas de progresso das 3 abas */}
-                              <div className="flex items-center gap-1.5">
-                                {/* Informações */}
+                              {/* 3 bolinhas — azul = aba preenchida, cinza = falta preencher */}
+                              <div className="flex items-center gap-1">
                                 <div className={cn(
-                                  "flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold transition-colors",
-                                  infoOk ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-300"
-                                )} title="Informações">
-                                  {infoOk ? "✓" : "i"}
-                                </div>
-                                {/* Aquisição */}
+                                  "h-2.5 w-2.5 rounded-full transition-colors",
+                                  infoOk ? "bg-blue-500" : "bg-gray-200"
+                                )} title="Informações" />
                                 <div className={cn(
-                                  "flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold transition-colors",
-                                  aquisOk ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-300"
-                                )} title="Aquisição">
-                                  {aquisOk ? "✓" : "a"}
-                                </div>
-                                {/* Tarefas */}
+                                  "h-2.5 w-2.5 rounded-full transition-colors",
+                                  aquisOk ? "bg-blue-500" : "bg-gray-200"
+                                )} title="Aquisição" />
                                 <div className={cn(
-                                  "flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold transition-colors",
-                                  tarefOk ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-300"
-                                )} title="Tarefas">
-                                  {tarefOk ? "✓" : "t"}
-                                </div>
+                                  "h-2.5 w-2.5 rounded-full transition-colors",
+                                  tarefOk ? "bg-blue-500" : "bg-gray-200"
+                                )} title="Tarefas" />
                               </div>
                               {prox && (
                                 <button
@@ -2549,17 +2542,29 @@ function LogisticaPage() {
 
                   {/* Abas internas */}
                   <div className="flex border-b border-gray-100 shrink-0">
-                    {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }, { key: "tarefas", label: "Tarefas" }] as const).map(t => (
+                    {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }, { key: "tarefas", label: "Tarefas" }] as const).map(t => {
+                      // Indicador de preenchimento por aba (bolinha azul = tem dados)
+                      const infoPreenchida = !!(pedidoAberto && pedidoAberto.valor_venda != null && pedidoAberto.valor_venda > 0);
+                      const aquisPreenchida = aquisicoes.length > 0;
+                      const tarefPreenchida = tarefas.length > 0;
+                      const tabPreenchida = t.key === "info" ? infoPreenchida : t.key === "aquisicao" ? aquisPreenchida : tarefPreenchida;
+
+                      return (
                       <button
                         key={t.key}
                         onClick={() => setAbaPedido(t.key)}
                         className={cn(
-                          "px-5 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors",
+                          "relative flex items-center gap-1.5 px-5 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors",
                           abaPedido === t.key ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-700"
                         )}
                       >
+                        {/* Bolinha de preenchimento: azul = preenchida, cinza = falta */}
+                        <span className={cn(
+                          "h-2 w-2 rounded-full flex-shrink-0 transition-colors",
+                          tabPreenchida ? "bg-blue-500" : "bg-gray-300"
+                        )} />
                         {t.key === "aquisicao" && aquisicoes.filter(a => a.status === "pendente").length > 0 && (
-                          <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-bold text-white">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-bold text-white">
                             {aquisicoes.filter(a => a.status === "pendente").length}
                           </span>
                         )}
@@ -2568,7 +2573,7 @@ function LogisticaPage() {
                           const pct = Math.round((done / tarefas.length) * 100);
                           return (
                             <span className={cn(
-                              "mr-1.5 inline-flex h-4 items-center justify-center rounded-full px-1.5 text-[9px] font-bold",
+                              "inline-flex h-4 items-center justify-center rounded-full px-1.5 text-[9px] font-bold",
                               pct === 100 ? "bg-emerald-500 text-white" : "bg-blue-100 text-blue-700"
                             )}>
                               {pct}%
@@ -2577,7 +2582,8 @@ function LogisticaPage() {
                         })()}
                         {t.label}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-5 space-y-4">
