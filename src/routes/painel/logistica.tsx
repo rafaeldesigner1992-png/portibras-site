@@ -967,6 +967,7 @@ function LogisticaPage() {
     observacoes: string | null;
     criado_em: string;
     atualizado_em: string;
+    custo_unitario?: number | null;
     vinculados?: { id: string; titulo: string; classificacao: string }[];
     // itens vindos de aquisições de pedidos
     _origem?: "pedido";
@@ -1015,18 +1016,25 @@ function LogisticaPage() {
       if (!mapaV[v.material_id]) mapaV[v.material_id] = [];
       mapaV[v.material_id].push(v.atendimento_id);
     }
-    const manuais: MatComprar[] = (data ?? []).map((m: MatComprar) => ({
-      ...m,
-      vinculados: (mapaV[m.id] ?? [])
-        .map(aid => atendimentos.find(a => a.id === aid))
-        .filter(Boolean)
-        .map(a => ({ id: a!.id, titulo: a!.titulo, classificacao: a!.classificacao })),
-    }));
+    const manuais: MatComprar[] = (data ?? []).map((m: MatComprar) => {
+      // custo_unitario: da tabela (se existir) ou fallback do catálogo de suprimentos pelo nome
+      const custoFallback = m.custo_unitario != null
+        ? m.custo_unitario
+        : (suprimentos.find(s => s.nome.toLowerCase() === m.descricao.toLowerCase())?.custo_unitario ?? null);
+      return {
+        ...m,
+        custo_unitario: custoFallback,
+        vinculados: (mapaV[m.id] ?? [])
+          .map(aid => atendimentos.find(a => a.id === aid))
+          .filter(Boolean)
+          .map(a => ({ id: a!.id, titulo: a!.titulo, classificacao: a!.classificacao })),
+      };
+    });
 
     // ── 2. Itens de aquisição dos pedidos (pendente ou pedido) ────────────────
     const { data: aquisData } = await supabase
       .from("logistica_aquisicoes")
-      .select("id, pedido_id, nome, quantidade, unidade, fornecedor, status, criado_em")
+      .select("id, pedido_id, nome, quantidade, unidade, fornecedor, custo_unitario, status, criado_em")
       .in("status", ["pendente", "pedido"]);
 
     // Mapear status de aquisição → status de MatComprar
@@ -1051,23 +1059,28 @@ function LogisticaPage() {
 
     const dePedidos: MatComprar[] = (aquisData ?? []).map((a: {
       id: string; pedido_id: string; nome: string; quantidade: number;
-      unidade: string; fornecedor: string | null; status: string; criado_em: string;
-    }) => ({
-      id: a.id,
-      descricao: a.nome,
-      quantidade: a.quantidade,
-      unidade: a.unidade || "un",
-      fornecedor: a.fornecedor,
-      urgencia: "normal" as const,
-      status: statusAquis[a.status] ?? "Pendente",
-      observacoes: null,
-      criado_em: a.criado_em,
-      atualizado_em: a.criado_em,
-      vinculados: [],
-      _origem: "pedido" as const,
-      _pedido_nome: mapaPedido[a.pedido_id] ?? "Pedido",
-      _pedido_id: a.pedido_id,
-    }));
+      unidade: string; fornecedor: string | null; custo_unitario: number | null; status: string; criado_em: string;
+    }) => {
+      // Fallback: buscar custo no catálogo de suprimentos pelo nome
+      const custoFallback = suprimentos.find(s => s.nome.toLowerCase() === a.nome.toLowerCase())?.custo_unitario ?? null;
+      return {
+        id: a.id,
+        descricao: a.nome,
+        quantidade: a.quantidade,
+        unidade: a.unidade || "un",
+        fornecedor: a.fornecedor,
+        custo_unitario: a.custo_unitario ?? custoFallback,
+        urgencia: "normal" as const,
+        status: statusAquis[a.status] ?? "Pendente",
+        observacoes: null,
+        criado_em: a.criado_em,
+        atualizado_em: a.criado_em,
+        vinculados: [],
+        _origem: "pedido" as const,
+        _pedido_nome: mapaPedido[a.pedido_id] ?? "Pedido",
+        _pedido_id: a.pedido_id,
+      };
+    });
 
     setMatComprar([...manuais, ...dePedidos]);
     setCarregandoMatC(false);
@@ -4162,12 +4175,19 @@ function LogisticaPage() {
                 (["Pendente", "Comprado", "Recebido"] as MatComprar["status"][]).map(status => {
                   const grupo = matComprar.filter(m => m.status === status);
                   if (grupo.length === 0) return null;
-                  // Somatório por descrição
-                  const totais: Record<string, { qtd: number; unidade: string }> = {};
+                  // Somatório por descrição (qtd + valor)
+                  const totais: Record<string, { qtd: number; unidade: string; valor: number; temPreco: boolean }> = {};
                   grupo.forEach(m => {
-                    if (!totais[m.descricao]) totais[m.descricao] = { qtd: 0, unidade: m.unidade };
-                    totais[m.descricao].qtd += Number(m.quantidade);
+                    if (!totais[m.descricao]) totais[m.descricao] = { qtd: 0, unidade: m.unidade, valor: 0, temPreco: false };
+                    const qty = Number(m.quantidade);
+                    totais[m.descricao].qtd += qty;
+                    if (m.custo_unitario != null && m.custo_unitario > 0) {
+                      totais[m.descricao].valor += qty * Number(m.custo_unitario);
+                      totais[m.descricao].temPreco = true;
+                    }
                   });
+                  const totalGrupo = Object.values(totais).reduce((sum, t) => sum + t.valor, 0);
+                  const algumSemPreco = Object.values(totais).some(t => !t.temPreco);
                   const statusCor: Record<string, string> = {
                     "Pendente": "bg-orange-50 border-orange-200",
                     "Comprado": "bg-blue-50 border-blue-200",
@@ -4267,22 +4287,49 @@ function LogisticaPage() {
                                 </tr>
                               ))}
                             </tbody>
-                            {/* Rodapé com somatório */}
-                            <tfoot>
-                              <tr className="border-t-2 border-gray-200 bg-gray-50">
-                                <td className="px-4 py-2.5 text-xs font-bold text-gray-500 uppercase tracking-wide">Total</td>
-                                <td className="px-4 py-2.5 text-center" colSpan={5}>
-                                  <div className="flex flex-wrap gap-2 justify-center">
-                                    {Object.entries(totais).map(([desc, { qtd, unidade }]) => (
-                                      <span key={desc} className="rounded-full bg-gray-200 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                                        {desc}: <span className="text-[#1a6b2f]">{qtd}</span> {unidade}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                              </tr>
-                            </tfoot>
                           </table>
+                        </div>
+                        {/* Card de totais abaixo da tabela */}
+                        <div className={cn("px-4 py-3 border-t", statusCor[status])}>
+                          <div className="flex flex-wrap gap-x-6 gap-y-2 items-start">
+                            <div className="flex-1 min-w-[200px]">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">Resumo de quantidades</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {Object.entries(totais).map(([desc, { qtd, unidade }]) => (
+                                  <span key={desc} className="rounded-full bg-white border border-gray-200 px-2.5 py-0.5 text-xs font-medium text-gray-700 shadow-sm">
+                                    {desc}: <span className="font-bold text-[#1a6b2f]">{qtd}</span> <span className="text-gray-400">{unidade}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">Total a adquirir</p>
+                              <div className="flex flex-col items-end gap-1">
+                                {Object.entries(totais).map(([desc, { qtd, unidade, valor, temPreco }]) => (
+                                  <div key={desc} className="flex items-center gap-2 text-xs text-gray-600">
+                                    <span className="text-gray-400">{desc} ({qtd} {unidade}) =</span>
+                                    {temPreco
+                                      ? <span className="font-semibold text-gray-800">
+                                          R$ {valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                      : <span className="text-gray-400 italic text-[11px]">sem preço cadastrado</span>
+                                    }
+                                  </div>
+                                ))}
+                                {totalGrupo > 0 && (
+                                  <div className="mt-1 pt-1.5 border-t border-gray-200 w-full text-right">
+                                    <span className="text-xs text-gray-500 mr-2">Total do grupo:</span>
+                                    <span className="text-sm font-bold text-[#1a6b2f]">
+                                      R$ {totalGrupo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                    {algumSemPreco && (
+                                      <p className="text-[10px] text-orange-500 mt-0.5">* alguns itens sem preço cadastrado não estão incluídos</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
