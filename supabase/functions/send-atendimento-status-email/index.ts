@@ -31,7 +31,8 @@ function headerHtml(subtitulo: string, corBanner: string, icone: string): string
   return `
     <tr>
       <td style="background:#ffffff;padding:28px 40px 20px;text-align:center;border-bottom:3px solid #1a6b2f;">
-        <img src="${LOGO_DATA}" alt="Portibras" width="220" style="max-width:220px;height:auto;display:block;margin:0 auto;" />
+        <span style="font-family:Arial,sans-serif;font-size:26px;font-weight:800;letter-spacing:2px;color:#1a6b2f;display:block;">PORTIBRAS</span>
+        <span style="font-family:Arial,sans-serif;font-size:11px;color:#666666;letter-spacing:0.5px;">Manutenção e Instalação de Portas Corta-Fogo</span>
       </td>
     </tr>
     <tr>
