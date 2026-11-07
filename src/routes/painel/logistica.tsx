@@ -909,6 +909,7 @@ function LogisticaPage() {
   // ── Pedidos Logísticos ─────────────────────────────────────────────────────
   const [pedidosLog, setPedidosLog] = useState<PedidoLogistico[]>([]);
   const [carregandoPedLog, setCarregandoPedLog] = useState(false);
+  const [viewPedidos, setViewPedidos] = useState<"kanban" | "lista">("kanban");
   // progresso por pedido: { aquisicao: bool, tarefas: bool }
   const [progressoCards, setProgressoCards] = useState<Record<string, { info: boolean; aquisicao: boolean; tarefas: boolean }>>({});
   const [pedidoAberto, setPedidoAberto] = useState<PedidoLogistico | null>(null);
@@ -2392,7 +2393,42 @@ function LogisticaPage() {
               ))}
             </div>
 
+            {/* ── Toggle Kanban / Lista ── */}
+            <div className="mb-4 flex items-center justify-end">
+              <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 gap-0.5">
+                <button
+                  onClick={() => setViewPedidos("kanban")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    viewPedidos === "kanban" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 14 14">
+                    <rect x="1" y="1" width="4" height="12" rx="1" fill="currentColor" opacity=".4"/>
+                    <rect x="6" y="1" width="4" height="8" rx="1" fill="currentColor"/>
+                    <rect x="11" y="1" width="2" height="10" rx="1" fill="currentColor" opacity=".4"/>
+                  </svg>
+                  Kanban
+                </button>
+                <button
+                  onClick={() => setViewPedidos("lista")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    viewPedidos === "lista" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 14 14">
+                    <rect x="1" y="1" width="12" height="2.5" rx="1" fill="currentColor"/>
+                    <rect x="1" y="5.5" width="12" height="2.5" rx="1" fill="currentColor" opacity=".6"/>
+                    <rect x="1" y="10" width="12" height="2.5" rx="1" fill="currentColor" opacity=".3"/>
+                  </svg>
+                  Lista
+                </button>
+              </div>
+            </div>
+
             {/* ── Kanban ── */}
+            {viewPedidos === "kanban" && (
             <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: 420 }}>
               {ETAPAS.map(etapa => {
                 const cards = pedidosLog.filter(p => p.etapa === etapa.key);
@@ -2571,6 +2607,87 @@ function LogisticaPage() {
                 );
               })}
             </div>
+            )} {/* fim viewPedidos === "kanban" */}
+
+            {/* ── Vista Lista ── */}
+            {viewPedidos === "lista" && (
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                {/* Cabeçalho da tabela */}
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 border-b border-gray-100 px-4 py-2.5 bg-gray-50">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Cliente</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Etapa</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Valor</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Tipo</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Check</span>
+                </div>
+
+                {carregandoPedLog ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+                  </div>
+                ) : pedidosLog.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-gray-300">Nenhum pedido ativo</div>
+                ) : (
+                  ETAPAS.map(etapa => {
+                    const grupo = pedidosLog.filter(p => p.etapa === etapa.key);
+                    if (grupo.length === 0) return null;
+                    return (
+                      <div key={etapa.key}>
+                        {/* Separador de etapa */}
+                        <div className="flex items-center gap-2 px-4 py-2 bg-gray-50/60 border-b border-gray-100">
+                          <span className={cn("h-2 w-2 rounded-full flex-shrink-0", etapa.dot)} />
+                          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">{etapa.label}</span>
+                          <span className={cn("ml-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold", etapa.pill)}>{grupo.length}</span>
+                        </div>
+                        {grupo.map((p, i) => {
+                          const cliente = p.cliente_empresa || p.cliente_nome || "—";
+                          const tipo = p.tipo_servico === "manutencao" ? "Manut." : "Orç.";
+                          const dias = Math.floor((Date.now() - new Date(p.criado_em).getTime()) / 86_400_000);
+                          const prog = progressoCards[p.id];
+                          const infoOk  = prog?.info      ?? false;
+                          const aquisOk = prog?.aquisicao ?? false;
+                          const tarefOk = prog?.tarefas   ?? false;
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => abrirPedido(p)}
+                              className={cn(
+                                "grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-center px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors",
+                                i < grupo.length - 1 && "border-b border-gray-50"
+                              )}
+                            >
+                              {/* Cliente */}
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{cliente}</p>
+                                <p className="text-[10px] text-gray-400">{dias === 0 ? "hoje" : `há ${dias}d`}</p>
+                              </div>
+                              {/* Etapa */}
+                              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium w-fit", etapa.pill)}>
+                                {etapa.label}
+                              </span>
+                              {/* Valor */}
+                              <span className={cn("text-sm font-semibold tabular-nums", p.valor_venda ? "text-[#1a6b2f]" : "text-gray-300")}>
+                                {fmt(p.valor_venda)}
+                              </span>
+                              {/* Tipo */}
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 w-fit">
+                                {tipo}
+                              </span>
+                              {/* 3 bolinhas */}
+                              <div className="flex items-center gap-1">
+                                <div className={cn("h-2.5 w-2.5 rounded-full", infoOk  ? "bg-blue-500" : "bg-gray-200")} title="Informações" />
+                                <div className={cn("h-2.5 w-2.5 rounded-full", aquisOk ? "bg-blue-500" : "bg-gray-200")} title="Aquisição" />
+                                <div className={cn("h-2.5 w-2.5 rounded-full", tarefOk ? "bg-blue-500" : "bg-gray-200")} title="Tarefas" />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
 
             {/* Painel lateral do card */}
             {pedidoAberto && (
