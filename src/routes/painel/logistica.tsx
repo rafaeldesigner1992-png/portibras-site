@@ -4252,17 +4252,15 @@ function LogisticaPage() {
                                 {/* Tabela dos itens desse cliente */}
                                 <div className="overflow-x-auto bg-white">
                                   <table className="w-full text-sm">
-                                    {cidx === 0 && (
-                                      <thead>
-                                        <tr className="border-b border-gray-100 bg-gray-50/50">
-                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Material</th>
-                                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-400 uppercase tracking-wide w-24">Qtd</th>
-                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide w-28">Urgência</th>
-                                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Fornecedor</th>
-                                          <th className="px-4 py-2 w-20" />
-                                        </tr>
-                                      </thead>
-                                    )}
+                                    <thead>
+                                      <tr className="border-b border-gray-100 bg-gray-50/50">
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Material</th>
+                                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-400 uppercase tracking-wide w-24">Qtd</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide w-28">Urgência</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Fornecedor</th>
+                                        <th className="px-4 py-2 w-20" />
+                                      </tr>
+                                    </thead>
                                     <tbody className="divide-y divide-gray-50">
                                       {itensCliente.map(m => (
                                         <tr key={m.id} className={cn(
@@ -4288,27 +4286,26 @@ function LogisticaPage() {
                                           </td>
                                           <td className="px-4 py-3 text-xs text-gray-500">{m.fornecedor || <span className="text-gray-300">—</span>}</td>
                                           <td className="px-4 py-3">
-                                            <div className="flex items-center gap-0.5 justify-end">
-                                              {m.status !== "Recebido" && (
-                                                <button onClick={() => avancarStatusMatC(m)}
-                                                  title={m.status === "Pendente" ? "Marcar como Comprado" : "Marcar como Recebido"}
-                                                  className="rounded p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50">
-                                                  <Check className="h-3.5 w-3.5" />
+                                            {/* Itens de pedido: somente leitura — status gerenciado em Compras > Pedido de Compras */}
+                                            {m._origem !== "pedido" && (
+                                              <div className="flex items-center gap-0.5 justify-end">
+                                                {m.status !== "Recebido" && (
+                                                  <button onClick={() => avancarStatusMatC(m)}
+                                                    title={m.status === "Pendente" ? "Marcar como Comprado" : "Marcar como Recebido"}
+                                                    className="rounded p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50">
+                                                    <Check className="h-3.5 w-3.5" />
+                                                  </button>
+                                                )}
+                                                <button onClick={() => abrirEditarMatC(m)}
+                                                  className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
+                                                  <Pencil className="h-3.5 w-3.5" />
                                                 </button>
-                                              )}
-                                              {m._origem !== "pedido" && (
-                                                <>
-                                                  <button onClick={() => abrirEditarMatC(m)}
-                                                    className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
-                                                    <Pencil className="h-3.5 w-3.5" />
-                                                  </button>
-                                                  <button onClick={() => excluirMatComprar(m.id)}
-                                                    className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                  </button>
-                                                </>
-                                              )}
-                                            </div>
+                                                <button onClick={() => excluirMatComprar(m.id)}
+                                                  className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                              </div>
+                                            )}
                                           </td>
                                         </tr>
                                       ))}
