@@ -152,7 +152,7 @@ async function syncCobrancas(token: string) {
       `/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
       token
     );
-    cobrancas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? [];
+    cobrancas = Array.isArray(data) ? data : data?.itens ?? data?.content ?? data?.items ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar cobranças:", e);
     return 0;
@@ -164,11 +164,11 @@ async function syncCobrancas(token: string) {
     id: String(c.id),
     descricao: c.descricao ?? c.description ?? c.name ?? "—",
     cliente_nome: c.cliente?.nome ?? c.customer?.name ?? c.client?.name ?? null,
-    valor: Number(c.valor ?? c.value ?? c.amount ?? c.total ?? 0),
+    valor: Number(c.total ?? c.valor ?? c.value ?? c.amount ?? 0),
     vencimento: c.data_vencimento ?? c.vencimento ?? c.dueDate ?? c.due_date ?? null,
     status: c.status ?? c.situacao ?? "pending",
     pago_em: c.data_pagamento ?? c.paymentDate ?? c.paid_at ?? null,
-    valor_pago: Number(c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
+    valor_pago: Number(c.pago ?? c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
     tipo: "receita",
     sincronizado_em: new Date().toISOString(),
   }));
@@ -191,7 +191,7 @@ async function syncContasPagar(token: string) {
       `/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${inicio}&data_vencimento_ate=${fim}&pagina=1&tamanho_pagina=200`,
       token
     );
-    contas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.data ?? [];
+    contas = Array.isArray(data) ? data : data?.itens ?? data?.content ?? data?.items ?? data?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar contas a pagar:", e);
     return 0;
@@ -203,12 +203,12 @@ async function syncContasPagar(token: string) {
     id: String(c.id),
     descricao: c.descricao ?? c.description ?? c.name ?? "—",
     fornecedor_nome: c.fornecedor?.nome ?? c.supplier?.name ?? c.vendor?.name ?? null,
-    valor: Number(c.valor ?? c.value ?? c.amount ?? c.total ?? 0),
+    valor: Number(c.total ?? c.valor ?? c.value ?? c.amount ?? 0),
     vencimento: c.data_vencimento ?? c.vencimento ?? c.dueDate ?? c.due_date ?? null,
     status: c.status ?? c.situacao ?? "pending",
     pago_em: c.data_pagamento ?? c.paymentDate ?? c.paid_at ?? null,
-    valor_pago: Number(c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
-    categoria: c.categoria?.nome ?? c.category?.name ?? c.costCenter ?? null,
+    valor_pago: Number(c.pago ?? c.valor_pago ?? c.paidValue ?? c.amountPaid ?? 0),
+    categoria: c.categorias?.[0]?.nome ?? c.categoria?.nome ?? c.category?.name ?? null,
     sincronizado_em: new Date().toISOString(),
   }));
 
@@ -231,7 +231,7 @@ async function syncSaldos(token: string) {
       console.log("conta-financeira sem params falhou, tentando com paginação:", String(e1));
       data = await apiCA(`/v1/conta-financeira?pagina=1&tamanho_pagina=50`, token);
     }
-    contas = Array.isArray(data) ? data : (data as any)?.content ?? (data as any)?.items ?? (data as any)?.data ?? (data as any)?.contasFinanceiras ?? [];
+    contas = Array.isArray(data) ? data : (data as any)?.itens ?? (data as any)?.content ?? (data as any)?.items ?? (data as any)?.data ?? (data as any)?.contasFinanceiras ?? [];
   } catch (e) {
     console.error("Erro ao buscar saldos:", e);
     return 0;
@@ -285,7 +285,7 @@ async function syncContratos(token: string) {
       `/v1/contratos?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=50`,
       token
     );
-    contratos = Array.isArray(data) ? data : (data as any)?.content ?? (data as any)?.items ?? (data as any)?.contratos ?? (data as any)?.data ?? [];
+    contratos = Array.isArray(data) ? data : (data as any)?.itens ?? (data as any)?.content ?? (data as any)?.items ?? (data as any)?.contratos ?? (data as any)?.data ?? [];
   } catch (e) {
     console.error("Erro ao buscar contratos:", e);
     return 0;
