@@ -205,7 +205,151 @@ function FinanceiroPage() {
 
   // ── UI state ──
   const [secaoAberta, setSecaoAberta] = useState<"config" | "custos" | "dividas" | "saude" | null>("saude");
-  const [abaAtiva, setAbaAtiva] = useState<"interno" | "conta-azul" | "vendas">("interno");
+  const [abaAtiva, setAbaAtiva] = useState<"interno" | "conta-azul" | "vendas" | "compras">("interno");
+
+  // ── Compras a Pagar ──────────────────────────────────────────────────────
+  interface CompraPagar {
+    id: string;
+    aquisicao_id: string | null;
+    pedido_id: string | null;
+    descricao: string;
+    fornecedor: string | null;
+    valor: number;
+    vencimento: string | null;
+    status: "pendente" | "pago" | "cancelado";
+    pago_em: string | null;
+    valor_pago: number | null;
+    forma_pagamento: string | null;
+    observacoes: string | null;
+    criado_em: string;
+    // join info
+    _pedido_nome?: string;
+    _aquisicao_nome?: string;
+  }
+  interface AquisicaoOpcao {
+    id: string;
+    pedido_id: string;
+    nome: string;
+    quantidade: number;
+    unidade: string;
+    fornecedor: string | null;
+    custo_unitario: number | null;
+    status: string;
+    _pedido_nome?: string;
+  }
+
+  const [comprasPagar, setComprasPagar] = useState<CompraPagar[]>([]);
+  const [carregandoCompras, setCarregandoCompras] = useState(false);
+  const [modalCompra, setModalCompra] = useState(false);
+  const [compraEditando, setCompraEditando] = useState<CompraPagar | null>(null);
+  const [formCompra, setFormCompra] = useState<Partial<CompraPagar>>({});
+  const [subAbaCompras, setSubAbaCompras] = useState<"pendente" | "pago">("pendente");
+  const [aquisicoesFin, setAquisicoesFin] = useState<AquisicaoOpcao[]>([]);
+  const [buscaAquisFin, setBuscaAquisFin] = useState("");
+
+  async function carregarComprasPagar() {
+    setCarregandoCompras(true);
+    const { data } = await supabase
+      .from("financeiro_compras_pagar")
+      .select("*")
+      .order("vencimento", { ascending: true });
+    if (!data) { setCarregandoCompras(false); return; }
+
+    // Buscar nomes dos pedidos
+    const pedidoIds = [...new Set(data.filter(c => c.pedido_id).map(c => c.pedido_id as string))];
+    const mapaPedido: Record<string, string> = {};
+    if (pedidoIds.length) {
+      const { data: peds } = await supabase.from("logistica_pedidos")
+        .select("id, cliente_nome, cliente_empresa").in("id", pedidoIds);
+      for (const p of (peds ?? [])) {
+        mapaPedido[p.id] = p.cliente_empresa || p.cliente_nome || "Pedido";
+      }
+    }
+    // Buscar nomes das aquisições
+    const aquisIds = [...new Set(data.filter(c => c.aquisicao_id).map(c => c.aquisicao_id as string))];
+    const mapaAquis: Record<string, string> = {};
+    if (aquisIds.length) {
+      const { data: aq } = await supabase.from("logistica_aquisicoes")
+        .select("id, nome").in("id", aquisIds);
+      for (const a of (aq ?? [])) mapaAquis[a.id] = a.nome;
+    }
+
+    setComprasPagar(data.map(c => ({
+      ...c,
+      _pedido_nome: c.pedido_id ? mapaPedido[c.pedido_id] : undefined,
+      _aquisicao_nome: c.aquisicao_id ? mapaAquis[c.aquisicao_id] : undefined,
+    })) as CompraPagar[]);
+    setCarregandoCompras(false);
+  }
+
+  async function carregarAquisicoesFin() {
+    const { data: aq } = await supabase.from("logistica_aquisicoes")
+      .select("id, pedido_id, nome, quantidade, unidade, fornecedor, custo_unitario, status")
+      .in("status", ["pendente", "pedido", "recebido"])
+      .order("criado_em", { ascending: false });
+    if (!aq) return;
+    const pedidoIds = [...new Set(aq.map(a => a.pedido_id))];
+    const mapaPedido: Record<string, string> = {};
+    if (pedidoIds.length) {
+      const { data: peds } = await supabase.from("logistica_pedidos")
+        .select("id, cliente_nome, cliente_empresa").in("id", pedidoIds);
+      for (const p of (peds ?? [])) mapaPedido[p.id] = p.cliente_empresa || p.cliente_nome || "Pedido";
+    }
+    setAquisicoesFin(aq.map(a => ({ ...a, _pedido_nome: mapaPedido[a.pedido_id] })) as AquisicaoOpcao[]);
+  }
+
+  function abrirNovaCompra() {
+    setCompraEditando(null);
+    setFormCompra({ status: "pendente", valor: 0, vencimento: new Date().toISOString().slice(0, 10) });
+    setBuscaAquisFin("");
+    setModalCompra(true);
+  }
+
+  function abrirEditarCompra(c: CompraPagar) {
+    setCompraEditando(c);
+    setFormCompra({ ...c });
+    setBuscaAquisFin("");
+    setModalCompra(true);
+  }
+
+  async function salvarCompra() {
+    if (!formCompra.descricao?.trim() || !formCompra.valor) return;
+    const payload = {
+      aquisicao_id: formCompra.aquisicao_id || null,
+      pedido_id: formCompra.pedido_id || null,
+      descricao: formCompra.descricao,
+      fornecedor: formCompra.fornecedor || null,
+      valor: formCompra.valor,
+      vencimento: formCompra.vencimento || null,
+      status: formCompra.status ?? "pendente",
+      pago_em: formCompra.pago_em || null,
+      valor_pago: formCompra.valor_pago || null,
+      forma_pagamento: formCompra.forma_pagamento || null,
+      observacoes: formCompra.observacoes || null,
+    };
+    if (compraEditando) {
+      await supabase.from("financeiro_compras_pagar").update(payload).eq("id", compraEditando.id);
+    } else {
+      await supabase.from("financeiro_compras_pagar").insert(payload);
+    }
+    setModalCompra(false);
+    carregarComprasPagar();
+  }
+
+  async function marcarCompraPaga(c: CompraPagar) {
+    await supabase.from("financeiro_compras_pagar").update({
+      status: "pago",
+      pago_em: new Date().toISOString().slice(0, 10),
+      valor_pago: c.valor,
+    }).eq("id", c.id);
+    carregarComprasPagar();
+  }
+
+  async function excluirCompra(id: string) {
+    if (!confirm("Excluir esta conta a pagar?")) return;
+    await supabase.from("financeiro_compras_pagar").delete().eq("id", id);
+    carregarComprasPagar();
+  }
 
   // ── Vendas fechadas do CRM ─────────────────────────────────────────────
   interface VendaCRM {
@@ -676,6 +820,14 @@ function FinanceiroPage() {
               <Plus className="h-4 w-4" /> Lançamento
             </button>
           )}
+          {abaAtiva === "compras" && (
+            <button
+              onClick={abrirNovaCompra}
+              className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-700"
+            >
+              <Plus className="h-4 w-4" /> Nova Conta a Pagar
+            </button>
+          )}
         </div>
       </div>
 
@@ -684,11 +836,15 @@ function FinanceiroPage() {
         {([
           { key: "interno", label: "Lançamentos internos" },
           { key: "vendas", label: "📦 Vendas" },
+          { key: "compras", label: "🛒 Compras" },
           { key: "conta-azul", label: "💙 Conta Azul" },
         ] as const).map(({ key, label }) => (
           <button
             key={key}
-            onClick={() => setAbaAtiva(key)}
+            onClick={() => {
+              setAbaAtiva(key);
+              if (key === "compras") { carregarComprasPagar(); carregarAquisicoesFin(); }
+            }}
             className={cn(
               "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
               abaAtiva === key
@@ -700,6 +856,311 @@ function FinanceiroPage() {
           </button>
         ))}
       </div>
+
+      {/* ══════════ ABA COMPRAS ══════════ */}
+      {abaAtiva === "compras" && (
+        <div className="space-y-5">
+          {/* Sub-abas pendente / pago */}
+          <div className="flex items-center gap-3">
+            <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden text-xs font-semibold">
+              <button
+                onClick={() => setSubAbaCompras("pendente")}
+                className={cn("flex items-center gap-1.5 px-3 py-2 transition-colors",
+                  subAbaCompras === "pendente" ? "bg-orange-600 text-white" : "text-gray-500 hover:bg-gray-50")}
+              >
+                A Pagar
+                {comprasPagar.filter(c => c.status === "pendente").length > 0 && (
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                    subAbaCompras === "pendente" ? "bg-white/30 text-white" : "bg-orange-100 text-orange-700")}>
+                    {comprasPagar.filter(c => c.status === "pendente").length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setSubAbaCompras("pago")}
+                className={cn("flex items-center gap-1.5 px-3 py-2 transition-colors border-l border-gray-200",
+                  subAbaCompras === "pago" ? "bg-emerald-600 text-white" : "text-gray-500 hover:bg-gray-50")}
+              >
+                Pagos
+                {comprasPagar.filter(c => c.status === "pago").length > 0 && (
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                    subAbaCompras === "pago" ? "bg-white/30 text-white" : "bg-emerald-100 text-emerald-700")}>
+                    {comprasPagar.filter(c => c.status === "pago").length}
+                  </span>
+                )}
+              </button>
+            </div>
+            {carregandoCompras && <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-orange-500" />}
+          </div>
+
+          {/* Total a pagar (só na sub-aba pendente) */}
+          {subAbaCompras === "pendente" && comprasPagar.filter(c => c.status === "pendente").length > 0 && (() => {
+            const totalPendente = comprasPagar.filter(c => c.status === "pendente").reduce((s, c) => s + c.valor, 0);
+            return (
+              <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-orange-800">Total a pagar a fornecedores</span>
+                <span className="text-lg font-bold text-orange-700">
+                  {totalPendente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Lista */}
+          {(() => {
+            const lista = comprasPagar.filter(c => c.status === subAbaCompras);
+            if (lista.length === 0 && !carregandoCompras) return (
+              <div className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-300">
+                {subAbaCompras === "pendente" ? "Nenhuma conta a pagar" : "Nenhum pagamento registrado"}
+              </div>
+            );
+            return (
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">Descrição</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Fornecedor</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Pedido</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Vencimento</th>
+                      {subAbaCompras === "pago" && (
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Pago em</th>
+                      )}
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Valor</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-400">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {lista.map(c => {
+                      const hoje = new Date().toISOString().slice(0, 10);
+                      const vencido = c.vencimento && c.vencimento < hoje && c.status === "pendente";
+                      return (
+                        <tr key={c.id} className={cn("transition-colors hover:bg-gray-50/50", vencido && "bg-red-50/40")}>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-gray-900">{c.descricao}</div>
+                            {c._aquisicao_nome && (
+                              <div className="text-[11px] text-gray-400">Item: {c._aquisicao_nome}</div>
+                            )}
+                            {vencido && (
+                              <span className="mt-0.5 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-600">Vencido</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{c.fornecedor || "—"}</td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            {c._pedido_nome ? (
+                              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">{c._pedido_nome}</span>
+                            ) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">
+                            {c.vencimento ? new Date(c.vencimento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}
+                          </td>
+                          {subAbaCompras === "pago" && (
+                            <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">
+                              {c.pago_em ? new Date(c.pago_em + "T12:00:00").toLocaleDateString("pt-BR") : "—"}
+                              {c.forma_pagamento && <div className="text-[10px] text-gray-400">{c.forma_pagamento}</div>}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                            {(c.valor_pago ?? c.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1 justify-end">
+                              {c.status === "pendente" && (
+                                <button
+                                  onClick={() => marcarCompraPaga(c)}
+                                  title="Marcar como pago"
+                                  className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => abrirEditarCompra(c)}
+                                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 transition-colors"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => excluirCompra(c.id)}
+                                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Modal nova/editar conta a pagar */}
+      {modalCompra && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setModalCompra(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900">{compraEditando ? "Editar Conta a Pagar" : "Nova Conta a Pagar"}</h2>
+
+            {/* Descrição */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Descrição *</label>
+              <input
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                value={formCompra.descricao ?? ""}
+                onChange={e => setFormCompra(p => ({ ...p, descricao: e.target.value }))}
+                placeholder="Ex: Tinta epóxi – Fornecedor X"
+              />
+            </div>
+
+            {/* Vincular a aquisição */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Vincular a item de aquisição (opcional)</label>
+              <input
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 mb-1"
+                placeholder="Buscar item…"
+                value={buscaAquisFin}
+                onChange={e => setBuscaAquisFin(e.target.value)}
+              />
+              {buscaAquisFin.trim().length > 0 && (
+                <div className="max-h-36 overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-sm">
+                  {aquisicoesFin
+                    .filter(a => a.nome.toLowerCase().includes(buscaAquisFin.toLowerCase()) || (a._pedido_nome ?? "").toLowerCase().includes(buscaAquisFin.toLowerCase()))
+                    .slice(0, 8)
+                    .map(a => (
+                      <button
+                        key={a.id}
+                        className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-orange-50 text-left"
+                        onClick={() => {
+                          setFormCompra(p => ({
+                            ...p,
+                            aquisicao_id: a.id,
+                            pedido_id: a.pedido_id,
+                            descricao: p.descricao || a.nome,
+                            fornecedor: p.fornecedor || a.fornecedor || "",
+                            valor: p.valor || (a.custo_unitario ? a.custo_unitario * a.quantidade : 0),
+                          }));
+                          setBuscaAquisFin(a.nome);
+                        }}
+                      >
+                        <span className="font-medium text-gray-800">{a.nome}</span>
+                        <span className="text-gray-400 ml-2">{a._pedido_nome}</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+              {formCompra.aquisicao_id && (
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-orange-600">
+                  <Check className="h-3 w-3" />
+                  Item vinculado
+                  <button className="ml-1 text-gray-400 underline" onClick={() => setFormCompra(p => ({ ...p, aquisicao_id: undefined, pedido_id: undefined }))}>remover</button>
+                </div>
+              )}
+            </div>
+
+            {/* Fornecedor + Valor */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Fornecedor</label>
+                <input
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  value={formCompra.fornecedor ?? ""}
+                  onChange={e => setFormCompra(p => ({ ...p, fornecedor: e.target.value }))}
+                  placeholder="Nome do fornecedor"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Valor (R$) *</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  value={formCompra.valor ?? ""}
+                  onChange={e => setFormCompra(p => ({ ...p, valor: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+
+            {/* Vencimento */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Vencimento</label>
+              <input
+                type="date"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                value={formCompra.vencimento ?? ""}
+                onChange={e => setFormCompra(p => ({ ...p, vencimento: e.target.value }))}
+              />
+            </div>
+
+            {/* Se editando e status=pago, mostrar campos de pagamento */}
+            {compraEditando && (
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pagamento</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Status</label>
+                    <select
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none"
+                      value={formCompra.status ?? "pendente"}
+                      onChange={e => setFormCompra(p => ({ ...p, status: e.target.value as "pendente" | "pago" | "cancelado" }))}
+                    >
+                      <option value="pendente">Pendente</option>
+                      <option value="pago">Pago</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Pago em</label>
+                    <input type="date" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                      value={formCompra.pago_em ?? ""} onChange={e => setFormCompra(p => ({ ...p, pago_em: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Valor pago (R$)</label>
+                    <input type="number" min="0" step="0.01" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                      value={formCompra.valor_pago ?? ""} onChange={e => setFormCompra(p => ({ ...p, valor_pago: parseFloat(e.target.value) || null }))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Forma de pagamento</label>
+                    <select className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                      value={formCompra.forma_pagamento ?? ""} onChange={e => setFormCompra(p => ({ ...p, forma_pagamento: e.target.value || null }))}>
+                      <option value="">—</option>
+                      <option value="Pix">Pix</option>
+                      <option value="Boleto">Boleto</option>
+                      <option value="Transferência">Transferência</option>
+                      <option value="Cartão">Cartão</option>
+                      <option value="Dinheiro">Dinheiro</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Observações */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Observações</label>
+              <textarea
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none"
+                rows={2}
+                value={formCompra.observacoes ?? ""}
+                onChange={e => setFormCompra(p => ({ ...p, observacoes: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setModalCompra(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={salvarCompra} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700">
+                {compraEditando ? "Salvar" : "Criar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══════════ ABA VENDAS ══════════ */}
       {abaAtiva === "vendas" && (
