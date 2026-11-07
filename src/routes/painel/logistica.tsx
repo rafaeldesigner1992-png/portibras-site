@@ -2956,13 +2956,29 @@ function LogisticaPage() {
                     )}
 
                     {/* ─ ABA TAREFAS ─ */}
-                    {abaPedido === "tarefas" && (
-                      <>
-                        {/* Barra de progresso */}
-                        {tarefas.length > 0 && (() => {
-                          const done = tarefas.filter(t => t.concluida).length;
-                          const pct = Math.round((done / tarefas.length) * 100);
-                          return (
+                    {abaPedido === "tarefas" && (() => {
+                      // Sugestões geradas a partir das aquisições + tarefa fixa de cobrança
+                      const descricoesCadastradas = new Set(tarefas.map(t => t.descricao));
+                      const sugestoes: { descricao: string; icone: string; cor: string }[] = [
+                        // 1 tarefa de aquisição global
+                        { descricao: "Adquirir materiais", icone: "🛒", cor: "blue" },
+                        // 1 tarefa de instalação por item de aquisição
+                        ...aquisicoes.map(a => ({
+                          descricao: `Instalar: ${a.nome}`,
+                          icone: "🔧",
+                          cor: "orange",
+                        })),
+                        // cobrança sempre por último
+                        { descricao: "Realizar cobrança", icone: "💰", cor: "emerald" },
+                      ].filter(s => !descricoesCadastradas.has(s.descricao));
+
+                      const done = tarefas.filter(t => t.concluida).length;
+                      const pct = tarefas.length > 0 ? Math.round((done / tarefas.length) * 100) : 0;
+
+                      return (
+                        <>
+                          {/* Barra de progresso */}
+                          {tarefas.length > 0 && (
                             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-semibold text-gray-600">Progresso de entrega</span>
@@ -2982,83 +2998,111 @@ function LogisticaPage() {
                               </div>
                               <p className="mt-1.5 text-[10px] text-gray-400">{done} de {tarefas.length} {tarefas.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</p>
                             </div>
-                          );
-                        })()}
+                          )}
 
-                        {/* Lista de tarefas */}
-                        {carregandoTarefas ? (
-                          <div className="flex items-center gap-2 text-gray-400 text-sm">
-                            <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
-                          </div>
-                        ) : tarefas.length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-300">
-                            Nenhuma tarefa ainda
-                          </div>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {tarefas.map(t => (
-                              <div
-                                key={t.id}
-                                className={cn(
-                                  "flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
-                                  t.concluida
-                                    ? "border-emerald-100 bg-emerald-50/60"
-                                    : "border-gray-100 bg-white hover:bg-gray-50/50"
-                                )}
-                              >
-                                <button
-                                  onClick={() => toggleTarefa(t)}
+                          {/* Lista de tarefas cadastradas */}
+                          {carregandoTarefas ? (
+                            <div className="flex items-center gap-2 text-gray-400 text-sm">
+                              <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+                            </div>
+                          ) : tarefas.length > 0 && (
+                            <div className="space-y-1.5">
+                              {tarefas.map(t => (
+                                <div
+                                  key={t.id}
                                   className={cn(
-                                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+                                    "flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
                                     t.concluida
-                                      ? "border-emerald-500 bg-emerald-500 text-white"
-                                      : "border-gray-300 hover:border-emerald-400"
+                                      ? "border-emerald-100 bg-emerald-50/60"
+                                      : "border-gray-100 bg-white hover:bg-gray-50/50"
                                   )}
                                 >
-                                  {t.concluida && <Check className="h-3 w-3" />}
-                                </button>
-                                <span className={cn(
-                                  "flex-1 text-sm",
-                                  t.concluida ? "text-gray-400 line-through" : "text-gray-800"
-                                )}>
-                                  {t.descricao}
-                                </span>
-                                {t.concluida && t.concluida_em && (
-                                  <span className="text-[10px] text-emerald-500 shrink-0">
-                                    {new Date(t.concluida_em).toLocaleDateString("pt-BR")}
+                                  <button
+                                    onClick={() => toggleTarefa(t)}
+                                    className={cn(
+                                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+                                      t.concluida
+                                        ? "border-emerald-500 bg-emerald-500 text-white"
+                                        : "border-gray-300 hover:border-emerald-400"
+                                    )}
+                                  >
+                                    {t.concluida && <Check className="h-3 w-3" />}
+                                  </button>
+                                  <span className={cn(
+                                    "flex-1 text-sm",
+                                    t.concluida ? "text-gray-400 line-through" : "text-gray-800"
+                                  )}>
+                                    {t.descricao}
                                   </span>
-                                )}
-                                <button
-                                  onClick={() => excluirTarefa(t.id)}
-                                  className="shrink-0 rounded-lg p-1 text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                                  {t.concluida && t.concluida_em && (
+                                    <span className="text-[10px] text-emerald-500 shrink-0">
+                                      {new Date(t.concluida_em).toLocaleDateString("pt-BR")}
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => excluirTarefa(t.id)}
+                                    className="shrink-0 rounded-lg p-1 text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
-                        {/* Campo para nova tarefa */}
-                        <div className="flex gap-2 pt-1">
-                          <input
-                            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/30"
-                            placeholder="Nova tarefa…"
-                            value={novaTarefa}
-                            onChange={e => setNovaTarefa(e.target.value)}
-                            onKeyDown={e => e.key === "Enter" && adicionarTarefa()}
-                          />
-                          <button
-                            onClick={adicionarTarefa}
-                            disabled={salvandoTarefa || !novaTarefa.trim()}
-                            className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#155824] disabled:opacity-40 transition-colors"
-                          >
-                            {salvandoTarefa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                            Adicionar
-                          </button>
-                        </div>
-                      </>
-                    )}
+                          {/* Sugestões a adicionar */}
+                          {sugestoes.length > 0 && (
+                            <div className="space-y-1.5">
+                              {tarefas.length === 0 && !carregandoTarefas && (
+                                <p className="text-xs text-gray-400 mb-2">Escolha as tarefas deste pedido:</p>
+                              )}
+                              {tarefas.length > 0 && (
+                                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-300 mt-1 mb-1.5">Adicionar à lista</p>
+                              )}
+                              {sugestoes.map(s => (
+                                <button
+                                  key={s.descricao}
+                                  onClick={() => {
+                                    setNovaTarefa(s.descricao);
+                                    // dispara imediatamente
+                                    if (!pedidoAberto) return;
+                                    setSalvandoTarefa(true);
+                                    const maxOrdem = tarefas.length > 0 ? Math.max(...tarefas.map(t => t.ordem)) + 1 : 0;
+                                    supabase.from("logistica_tarefas").insert({
+                                      pedido_id: pedidoAberto.id,
+                                      descricao: s.descricao,
+                                      concluida: false,
+                                      ordem: maxOrdem,
+                                    }).select().single().then(({ data }) => {
+                                      if (data) setTarefas(ts => [...ts, data as TarefaPedido]);
+                                      setSalvandoTarefa(false);
+                                      setNovaTarefa("");
+                                    });
+                                  }}
+                                  disabled={salvandoTarefa}
+                                  className={cn(
+                                    "flex w-full items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 text-sm text-left transition-colors disabled:opacity-40",
+                                    s.cor === "blue"    && "border-blue-200 text-blue-600 hover:bg-blue-50",
+                                    s.cor === "orange"  && "border-orange-200 text-orange-600 hover:bg-orange-50",
+                                    s.cor === "emerald" && "border-emerald-200 text-emerald-600 hover:bg-emerald-50",
+                                  )}
+                                >
+                                  <span>{s.icone}</span>
+                                  <span className="flex-1">{s.descricao}</span>
+                                  <Plus className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {tarefas.length === 0 && sugestoes.length === 0 && !carregandoTarefas && (
+                            <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-300">
+                              Nenhuma tarefa ainda
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
