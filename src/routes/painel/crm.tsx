@@ -269,7 +269,7 @@ interface FormaPagamento {
   diaVencimento: number; // dia do mês sugerido
 }
 
-function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+function CalculadoraOrcamento({ lead, onClose, onPropostaSalva }: { lead: Lead; onClose: () => void; onPropostaSalva?: () => void }) {
   const [suprimentos, setSuprimentos] = useState<Suprimento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [itens, setItens] = useState<ItemOrcamento[]>([]);
@@ -807,6 +807,13 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       pm.createPdf(docDef).download(nomeArquivo);
       try {
         await salvarPropostaStorage(lead.id, "orcamento", nomeArquivo, docDef);
+        // Registra no histórico
+        await supabase.from("crm_conversas").insert({
+          lead_id: lead.id,
+          texto: `📄 Orçamento gerado: ${nomeArquivo}`,
+          autor: "Sistema",
+        });
+        onPropostaSalva?.();
         setPdfOrcSalvo(true);
         setTimeout(() => setPdfOrcSalvo(false), 4000);
       } catch (storageErr) {
@@ -837,12 +844,23 @@ function CalculadoraOrcamento({ lead, onClose }: { lead: Lead; onClose: () => vo
       preco_final: precoFinal,
       observacoes: obsOrc,
     };
-    if (orcamentoExistente?.id) {
-      await supabase.from("crm_orcamentos").update(payload).eq("id", orcamentoExistente.id);
+    const isNovo = !orcamentoExistente?.id;
+    if (!isNovo) {
+      await supabase.from("crm_orcamentos").update(payload).eq("id", orcamentoExistente!.id);
     } else {
       const { data } = await supabase.from("crm_orcamentos").insert(payload).select().single();
       if (data) setOrcamentoExistente(data as Orcamento);
     }
+    // Registra no histórico do lead
+    const empresa = lead.empresa || lead.nome || "Cliente";
+    const valorFmt = precoFinal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    await supabase.from("crm_conversas").insert({
+      lead_id: lead.id,
+      texto: isNovo
+        ? `📋 Orçamento criado para ${empresa} — Total: ${valorFmt}`
+        : `📋 Orçamento atualizado para ${empresa} — Total: ${valorFmt}`,
+      autor: "Sistema",
+    });
     setSalvando(false);
     setSalvo(true);
     setTimeout(() => setSalvo(false), 2500);
@@ -5190,7 +5208,7 @@ function CrmPage() {
 
               {abaCard === "orcamento" && (
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} />
+                  <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} onPropostaSalva={() => carregarPropostas(cardAberto.id)} />
                 </div>
               )}
 
