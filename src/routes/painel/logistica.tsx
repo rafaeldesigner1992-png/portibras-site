@@ -955,6 +955,142 @@ function LogisticaPage() {
   const [salvandoMat, setSalvandoMat] = useState(false);
   const [atendFiltroCompras, setAtendFiltroCompras] = useState<string | null>(null);
 
+  // ── Materiais a Comprar ───────────────────────────────────────────────────
+  type MatComprar = {
+    id: string;
+    descricao: string;
+    quantidade: number;
+    unidade: string;
+    fornecedor: string | null;
+    urgencia: "baixa" | "normal" | "urgente";
+    status: "Pendente" | "Comprado" | "Recebido";
+    observacoes: string | null;
+    criado_em: string;
+    atualizado_em: string;
+    vinculados?: { id: string; titulo: string; classificacao: string }[];
+  };
+  const URGENCIA_COR: Record<string, string> = {
+    "baixa":   "bg-gray-100 text-gray-500",
+    "normal":  "bg-blue-100 text-blue-700",
+    "urgente": "bg-red-100 text-red-700",
+  };
+  const STATUS_MATC_COR: Record<string, string> = {
+    "Pendente":  "bg-orange-100 text-orange-700",
+    "Comprado":  "bg-blue-100 text-blue-700",
+    "Recebido":  "bg-green-100 text-green-700",
+  };
+  const EMPTY_MATC = {
+    descricao: "", quantidade: "1", unidade: "un",
+    fornecedor: "", urgencia: "normal" as MatComprar["urgencia"],
+    status: "Pendente" as MatComprar["status"],
+    observacoes: "", atendSel: [] as string[],
+  };
+  const [matComprar, setMatComprar] = useState<MatComprar[]>([]);
+  const [carregandoMatC, setCarregandoMatC] = useState(false);
+  const [modalMatC, setModalMatC] = useState(false);
+  const [matCEditando, setMatCEditando] = useState<string | null>(null);
+  const [formMatC, setFormMatC] = useState({ ...EMPTY_MATC });
+  const [salvandoMatC, setSalvandoMatC] = useState(false);
+  const [subAbaCompras, setSubAbaCompras] = useState<"pedidos" | "materiais">("pedidos");
+
+  async function carregarMatComprar() {
+    setCarregandoMatC(true);
+    const { data } = await supabase
+      .from("logistica_materiais_comprar")
+      .select("*")
+      .order("criado_em", { ascending: false });
+    if (!data) { setCarregandoMatC(false); return; }
+    const ids = data.map((m: MatComprar) => m.id);
+    const { data: vinculos } = ids.length
+      ? await supabase.from("logistica_materiais_comprar_atendimentos").select("material_id, atendimento_id").in("material_id", ids)
+      : { data: [] };
+    const mapaV: Record<string, string[]> = {};
+    for (const v of (vinculos ?? [])) {
+      if (!mapaV[v.material_id]) mapaV[v.material_id] = [];
+      mapaV[v.material_id].push(v.atendimento_id);
+    }
+    const enriquecidos = data.map((m: MatComprar) => ({
+      ...m,
+      vinculados: (mapaV[m.id] ?? [])
+        .map(aid => atendimentos.find(a => a.id === aid))
+        .filter(Boolean)
+        .map(a => ({ id: a!.id, titulo: a!.titulo, classificacao: a!.classificacao })),
+    }));
+    setMatComprar(enriquecidos);
+    setCarregandoMatC(false);
+  }
+
+  async function salvarMatComprar() {
+    if (!formMatC.descricao.trim()) return;
+    setSalvandoMatC(true);
+    const payload = {
+      descricao: formMatC.descricao.trim(),
+      quantidade: Number(formMatC.quantidade) || 1,
+      unidade: formMatC.unidade || "un",
+      fornecedor: formMatC.fornecedor || null,
+      urgencia: formMatC.urgencia,
+      status: formMatC.status,
+      observacoes: formMatC.observacoes || null,
+    };
+    let matId = matCEditando;
+    if (matCEditando) {
+      await supabase.from("logistica_materiais_comprar").update(payload).eq("id", matCEditando);
+      await supabase.from("logistica_materiais_comprar_atendimentos").delete().eq("material_id", matCEditando);
+    } else {
+      const { data } = await supabase.from("logistica_materiais_comprar").insert(payload).select().single();
+      matId = data?.id ?? null;
+    }
+    if (matId && formMatC.atendSel.length) {
+      await supabase.from("logistica_materiais_comprar_atendimentos").insert(
+        formMatC.atendSel.map(aid => ({ material_id: matId, atendimento_id: aid }))
+      );
+    }
+    setSalvandoMatC(false);
+    setModalMatC(false);
+    setMatCEditando(null);
+    setFormMatC({ ...EMPTY_MATC });
+    carregarMatComprar();
+  }
+
+  async function excluirMatComprar(id: string) {
+    if (!confirm("Excluir este material?")) return;
+    await supabase.from("logistica_materiais_comprar").delete().eq("id", id);
+    carregarMatComprar();
+  }
+
+  async function avancarStatusMatC(m: MatComprar) {
+    const proximo: Record<MatComprar["status"], MatComprar["status"]> = {
+      "Pendente": "Comprado",
+      "Comprado": "Recebido",
+      "Recebido": "Recebido",
+    };
+    const novo = proximo[m.status];
+    if (novo === m.status) return;
+    await supabase.from("logistica_materiais_comprar").update({ status: novo }).eq("id", m.id);
+    setMatComprar(ms => ms.map(x => x.id === m.id ? { ...x, status: novo } : x));
+  }
+
+  function abrirNovaMatC() {
+    setMatCEditando(null);
+    setFormMatC({ ...EMPTY_MATC });
+    setModalMatC(true);
+  }
+
+  function abrirEditarMatC(m: MatComprar) {
+    setMatCEditando(m.id);
+    setFormMatC({
+      descricao: m.descricao,
+      quantidade: m.quantidade.toString(),
+      unidade: m.unidade,
+      fornecedor: m.fornecedor ?? "",
+      urgencia: m.urgencia,
+      status: m.status,
+      observacoes: m.observacoes ?? "",
+      atendSel: m.vinculados?.map(v => v.id) ?? [],
+    });
+    setModalMatC(true);
+  }
+
   // ── Compras consolidadas (novo modelo) ────────────────────────────────────
   type Compra = {
     id: string;
@@ -1110,7 +1246,7 @@ function LogisticaPage() {
     if (aba === "pedidos") carregarPedidosLog();
     if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); }
     if (aba === "gantt") carregarAtendimentos();
-    if (aba === "compras") { carregarAtendimentos().then(() => carregarCompras()); }
+    if (aba === "compras") { carregarAtendimentos().then(() => { carregarCompras(); carregarMatComprar(); }); }
     if (aba === "estoque") carregarEstoque();
     if (aba === "vistorias") carregarVistorias();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3801,6 +3937,38 @@ function LogisticaPage() {
       {/* ═══════ ABA COMPRAS ═══════ */}
       {aba === "compras" && (
         <>
+          {/* Sub-abas */}
+          <div className="mb-5 flex items-center gap-1 border-b border-gray-200">
+            <button
+              onClick={() => setSubAbaCompras("pedidos")}
+              className={cn("px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px",
+                subAbaCompras === "pedidos"
+                  ? "border-[#1a6b2f] text-[#1a6b2f]"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}>
+              <ShoppingCart className="inline h-3.5 w-3.5 mr-1.5 -mt-0.5" />
+              Pedidos de Compra
+            </button>
+            <button
+              onClick={() => setSubAbaCompras("materiais")}
+              className={cn("px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px relative",
+                subAbaCompras === "materiais"
+                  ? "border-[#1a6b2f] text-[#1a6b2f]"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}>
+              <ClipboardList className="inline h-3.5 w-3.5 mr-1.5 -mt-0.5" />
+              Materiais a Comprar
+              {matComprar.filter(m => m.status === "Pendente").length > 0 && (
+                <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-bold text-white">
+                  {matComprar.filter(m => m.status === "Pendente").length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* ── Sub-aba: Pedidos de Compra ── */}
+          {subAbaCompras === "pedidos" && (
+          <>
           {/* Cabeçalho */}
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-gray-500">{compras.length} compra{compras.length !== 1 ? "s" : ""} registrada{compras.length !== 1 ? "s" : ""}</p>
@@ -3899,6 +4067,207 @@ function LogisticaPage() {
               })}
             </div>
           )}
+
+          </>
+          )} {/* fim subAbaCompras === "pedidos" */}
+
+          {/* ── Sub-aba: Materiais a Comprar ── */}
+          {subAbaCompras === "materiais" && (
+            <>
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm text-gray-500">
+                  {matComprar.filter(m => m.status === "Pendente").length} pendente{matComprar.filter(m => m.status === "Pendente").length !== 1 ? "s" : ""} · {matComprar.length} total
+                </p>
+                <button onClick={abrirNovaMatC}
+                  className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
+                  <Plus className="h-4 w-4" /> Novo Material
+                </button>
+              </div>
+
+              {carregandoMatC ? (
+                <div className="flex items-center gap-2 text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
+              ) : matComprar.length === 0 ? (
+                <div className="flex flex-col items-center py-16 text-gray-400">
+                  <ClipboardList className="mb-3 h-10 w-10 opacity-30" />
+                  <p className="text-sm">Nenhum material cadastrado</p>
+                  <p className="text-xs text-gray-400 mt-1">Adicione materiais que precisam ser comprados</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* Agrupar por status */}
+                  {(["Pendente", "Comprado", "Recebido"] as MatComprar["status"][]).map(status => {
+                    const grupo = matComprar.filter(m => m.status === status);
+                    if (grupo.length === 0) return null;
+                    return (
+                      <div key={status} className="mb-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2 px-1">{status} ({grupo.length})</p>
+                        <div className="space-y-2">
+                          {grupo.map(m => (
+                            <div key={m.id} className={cn(
+                              "rounded-xl border bg-white p-4 transition-all",
+                              m.status === "Recebido" ? "opacity-60 border-gray-100" : "border-gray-200 shadow-sm"
+                            )}>
+                              <div className="flex items-start gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium text-gray-900 text-sm">{m.descricao}</span>
+                                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", URGENCIA_COR[m.urgencia])}>
+                                      {m.urgencia === "urgente" ? "🔴 Urgente" : m.urgencia === "normal" ? "Normal" : "Baixa"}
+                                    </span>
+                                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_MATC_COR[m.status])}>
+                                      {m.status}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                                    <span>{m.quantidade} {m.unidade}</span>
+                                    {m.fornecedor && <span>· {m.fornecedor}</span>}
+                                    {m.observacoes && <span className="text-gray-400">· {m.observacoes}</span>}
+                                  </div>
+                                  {m.vinculados && m.vinculados.length > 0 && (
+                                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                                      <User className="h-3 w-3 text-gray-400 shrink-0" />
+                                      {m.vinculados.map(v => (
+                                        <span key={v.id} className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[v.classificacao])}>
+                                          {v.titulo.length > 28 ? v.titulo.slice(0, 28) + "…" : v.titulo}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {m.status !== "Recebido" && (
+                                    <button
+                                      onClick={() => avancarStatusMatC(m)}
+                                      title={m.status === "Pendente" ? "Marcar como Comprado" : "Marcar como Recebido"}
+                                      className="rounded p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50">
+                                      <Check className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  <button onClick={() => abrirEditarMatC(m)}
+                                    className="rounded p-1.5 text-gray-400 hover:text-[#1a6b2f] hover:bg-green-50">
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => excluirMatComprar(m.id)}
+                                    className="rounded p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Modal Nova/Editar Material */}
+              {modalMatC && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalMatC(false)}>
+                  <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 sticky top-0 bg-white z-10">
+                      <h3 className="font-semibold text-gray-900">{matCEditando ? "Editar Material" : "Novo Material a Comprar"}</h3>
+                      <button onClick={() => setModalMatC(false)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      <div>
+                        <label className="label-field">Descrição *</label>
+                        <input className="input-field" value={formMatC.descricao}
+                          onChange={e => setFormMatC(f => ({ ...f, descricao: e.target.value }))}
+                          placeholder="Ex: Fechadura antipânico, Dobradiça 3D..." />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="label-field">Quantidade</label>
+                          <input type="number" className="input-field" value={formMatC.quantidade}
+                            onChange={e => setFormMatC(f => ({ ...f, quantidade: e.target.value }))}
+                            min={1} step={1} />
+                        </div>
+                        <div>
+                          <label className="label-field">Unidade</label>
+                          <input className="input-field" value={formMatC.unidade}
+                            onChange={e => setFormMatC(f => ({ ...f, unidade: e.target.value }))}
+                            placeholder="un, m, kg..." />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label-field">Fornecedor</label>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {[...FORNECEDORES, "Outro"].map(f => {
+                            const sel = formMatC.fornecedor === f;
+                            return (
+                              <button key={f} type="button"
+                                onClick={() => setFormMatC(fc => ({ ...fc, fornecedor: sel ? "" : f }))}
+                                className={cn("rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                                  sel ? "bg-[#1a6b2f] text-white border-[#1a6b2f]" : "bg-white text-gray-600 border-gray-300 hover:border-[#1a6b2f]"
+                                )}>
+                                {f}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="label-field">Urgência</label>
+                          <select className="input-field" value={formMatC.urgencia}
+                            onChange={e => setFormMatC(f => ({ ...f, urgencia: e.target.value as MatComprar["urgencia"] }))}>
+                            <option value="baixa">Baixa</option>
+                            <option value="normal">Normal</option>
+                            <option value="urgente">Urgente</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label-field">Status</label>
+                          <select className="input-field" value={formMatC.status}
+                            onChange={e => setFormMatC(f => ({ ...f, status: e.target.value as MatComprar["status"] }))}>
+                            <option value="Pendente">Pendente</option>
+                            <option value="Comprado">Comprado</option>
+                            <option value="Recebido">Recebido</option>
+                          </select>
+                        </div>
+                      </div>
+                      {/* Atendimentos vinculados */}
+                      <div>
+                        <label className="label-field">Clientes / Atendimentos vinculados</label>
+                        <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                          {atendimentos.length === 0 && <p className="p-3 text-xs text-gray-400">Nenhum atendimento disponível</p>}
+                          {atendimentos.filter(a => a.status !== "Cancelado").map(a => (
+                            <label key={a.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                              <input type="checkbox"
+                                checked={formMatC.atendSel.includes(a.id)}
+                                onChange={e => setFormMatC(f => ({
+                                  ...f,
+                                  atendSel: e.target.checked
+                                    ? [...f.atendSel, a.id]
+                                    : f.atendSel.filter(id => id !== a.id)
+                                }))}
+                                className="accent-[#1a6b2f]" />
+                              <span className="text-xs text-gray-700 flex-1 min-w-0 truncate">{a.titulo}</span>
+                              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0", CLASS_COR[a.classificacao])}>{a.classificacao}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label-field">Observações</label>
+                        <textarea className="input-field" rows={2} value={formMatC.observacoes}
+                          onChange={e => setFormMatC(f => ({ ...f, observacoes: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4 sticky bottom-0 bg-white">
+                      <button onClick={() => setModalMatC(false)} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                      <button onClick={salvarMatComprar} disabled={salvandoMatC || !formMatC.descricao.trim()}
+                        className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
+                        {salvandoMatC ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : "Salvar"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )} {/* fim subAbaCompras === "materiais" */}
 
           {/* Modal Nova/Editar Compra */}
           {modalCompra && (
