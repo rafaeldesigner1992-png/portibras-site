@@ -474,6 +474,15 @@ interface TarefaPedido {
   concluida_em: string | null;
 }
 
+interface CheckAba {
+  id: string;
+  pedido_id: string;
+  aba: "info" | "aquisicao" | "tarefas";
+  checked: boolean;
+  checked_em: string;
+  checked_por: string | null;
+}
+
 // ─── Pedidos Fechados (legado — mantido para compatibilidade) ─────────────────
 interface PedidoFechado {
   id: string;
@@ -900,7 +909,7 @@ function LogisticaPage() {
   const [pedidosLog, setPedidosLog] = useState<PedidoLogistico[]>([]);
   const [carregandoPedLog, setCarregandoPedLog] = useState(false);
   // progresso por pedido: { aquisicao: bool, tarefas: bool }
-  const [progressoCards, setProgressoCards] = useState<Record<string, { aquisicao: boolean; tarefas: boolean }>>({});
+  const [progressoCards, setProgressoCards] = useState<Record<string, { info: boolean; aquisicao: boolean; tarefas: boolean }>>({});
   const [pedidoAberto, setPedidoAberto] = useState<PedidoLogistico | null>(null);
   const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao" | "tarefas">("info");
   const [aquisicoes, setAquisicoes] = useState<ItemAquisicao[]>([]);
@@ -918,6 +927,8 @@ function LogisticaPage() {
   const [carregandoTarefas, setCarregandoTarefas] = useState(false);
   const [novaTarefa, setNovaTarefa] = useState("");
   const [salvandoTarefa, setSalvandoTarefa] = useState(false);
+  const [checksAbas, setChecksAbas] = useState<CheckAba[]>([]);
+  const [salvandoCheck, setSalvandoCheck] = useState<"info" | "aquisicao" | "tarefas" | null>(null);
 
   // ── Estoque ────────────────────────────────────────────────────────────────
   const [itens, setItens] = useState<ItemEstoque[]>([]);
@@ -1524,18 +1535,24 @@ function LogisticaPage() {
       // Carrega progresso em batch
       const ids = data.map((p: PedidoLogistico) => p.id);
       if (ids.length > 0) {
-        const [{ data: aqData }, { data: tData }] = await Promise.all([
+        const [{ data: aqData }, { data: tData }, { data: chData }] = await Promise.all([
           supabase.from("logistica_aquisicoes").select("pedido_id, status").in("pedido_id", ids),
           supabase.from("logistica_tarefas").select("pedido_id, concluida").in("pedido_id", ids),
+          supabase.from("logistica_checks").select("pedido_id, aba, checked, checked_em").in("pedido_id", ids).order("checked_em", { ascending: false }),
         ]);
-        const prog: Record<string, { aquisicao: boolean; tarefas: boolean }> = {};
+        const prog: Record<string, { info: boolean; aquisicao: boolean; tarefas: boolean }> = {};
         for (const id of ids) {
-          const aqItens = (aqData ?? []).filter((a: { pedido_id: string; status: string }) => a.pedido_id === id);
-          const tItens  = (tData  ?? []).filter((t: { pedido_id: string; concluida: boolean }) => t.pedido_id === id);
-          // Lógica de preenchimento: "tem dados?" (não "está concluído?")
+          const aqItens = (aqData ?? []).filter((a: { pedido_id: string }) => a.pedido_id === id);
+          const tItens  = (tData  ?? []).filter((t: { pedido_id: string }) => t.pedido_id === id);
+          const chItens = (chData ?? []).filter((c: { pedido_id: string }) => c.pedido_id === id);
+          // Último check de cada aba para este pedido
+          const lastInfo = chItens.find((c: { aba: string }) => c.aba === "info");
+          const lastAquis = chItens.find((c: { aba: string }) => c.aba === "aquisicao");
+          const lastTaref = chItens.find((c: { aba: string }) => c.aba === "tarefas");
           prog[id] = {
-            aquisicao: aqItens.length > 0,   // tem pelo menos 1 item de aquisição
-            tarefas:   tItens.length > 0,    // tem pelo menos 1 tarefa cadastrada
+            info:      lastInfo?.checked  === true,  // check manual clicado
+            aquisicao: lastAquis?.checked === true || aqItens.length > 0,
+            tarefas:   lastTaref?.checked === true || tItens.length > 0,
           };
         }
         setProgressoCards(prog);
@@ -1587,10 +1604,47 @@ function LogisticaPage() {
     setProgressoCards(p => ({
       ...p,
       [pedidoId]: {
-        aquisicao: aItens.length > 0,  // preenchida = tem dados
-        tarefas:   tItens.length > 0,  // preenchida = tem dados
+        info:      p[pedidoId]?.info ?? false,
+        aquisicao: aItens.length > 0,
+        tarefas:   tItens.length > 0,
       },
     }));
+  }
+
+  async function carregarChecks(pedidoId: string) {
+    const { data } = await supabase
+      .from("logistica_checks")
+      .select("*")
+      .eq("pedido_id", pedidoId)
+      .order("checked_em", { ascending: false });
+    if (data) setChecksAbas(data as CheckAba[]);
+  }
+
+  async function toggleCheckAba(aba: "info" | "aquisicao" | "tarefas") {
+    if (!pedidoAberto || salvandoCheck) return;
+    // Pega o último check desta aba
+    const ultimo = checksAbas.find(c => c.aba === aba);
+    const novoEstado = !ultimo?.checked;
+    setSalvandoCheck(aba);
+    const { data, error } = await supabase
+      .from("logistica_checks")
+      .insert({ pedido_id: pedidoAberto.id, aba, checked: novoEstado })
+      .select()
+      .single();
+    if (!error && data) {
+      const novos = [data as CheckAba, ...checksAbas];
+      setChecksAbas(novos);
+      // Atualiza bolinha do kanban card com base nos checks
+      setProgressoCards(p => ({
+        ...p,
+        [pedidoAberto.id]: {
+          info:      aba === "info"      ? novoEstado : (p[pedidoAberto.id]?.info ?? false),
+          aquisicao: aba === "aquisicao" ? novoEstado : (p[pedidoAberto.id]?.aquisicao ?? false),
+          tarefas:   aba === "tarefas"   ? novoEstado : (p[pedidoAberto.id]?.tarefas ?? false),
+        },
+      }));
+    }
+    setSalvandoCheck(null);
   }
 
   async function toggleTarefa(t: TarefaPedido) {
@@ -1614,9 +1668,11 @@ function LogisticaPage() {
     setAbaPedido("info");
     setAquisicoes([]);
     setTarefas([]);
+    setChecksAbas([]);
     setNovaTarefa("");
     carregarAquisicoes(p.id);
     carregarTarefas(p.id);
+    carregarChecks(p.id);
   }
 
   async function moverEtapa(pedido: PedidoLogistico, novaEtapa: EtapaLogistica) {
@@ -2451,10 +2507,10 @@ function LogisticaPage() {
                         }
 
                                         const prog = progressoCards[p.id];
-                        // Preenchimento de cada aba (não conclusão — apenas "tem dados?")
-                        const infoOk = !!(p.valor_venda != null && p.valor_venda > 0);
-                        const aquisOk = prog?.aquisicao ?? false;  // tem >=1 item
-                        const tarefOk = prog?.tarefas ?? false;    // tem >=1 tarefa
+                        // Bolinhas refletem o check manual clicado pelo usuário
+                        const infoOk  = prog?.info      ?? false;
+                        const aquisOk = prog?.aquisicao ?? false;
+                        const tarefOk = prog?.tarefas   ?? false;
 
                         return (
                           <div
@@ -2543,45 +2599,68 @@ function LogisticaPage() {
                   {/* Abas internas */}
                   <div className="flex border-b border-gray-100 shrink-0">
                     {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }, { key: "tarefas", label: "Tarefas" }] as const).map(t => {
-                      // Indicador de preenchimento por aba (bolinha azul = tem dados)
-                      const infoPreenchida = !!(pedidoAberto && pedidoAberto.valor_venda != null && pedidoAberto.valor_venda > 0);
-                      const aquisPreenchida = aquisicoes.length > 0;
-                      const tarefPreenchida = tarefas.length > 0;
-                      const tabPreenchida = t.key === "info" ? infoPreenchida : t.key === "aquisicao" ? aquisPreenchida : tarefPreenchida;
+                      // Último check desta aba (checked = true significa "ok, revisado")
+                      const ultimoCheck = checksAbas
+                        .filter(c => c.aba === t.key)
+                        .sort((a, b) => new Date(b.checked_em).getTime() - new Date(a.checked_em).getTime())[0];
+                      const estaChecked = ultimoCheck?.checked === true;
+                      const carregandoEsteCheck = salvandoCheck === t.key;
 
                       return (
-                      <button
-                        key={t.key}
-                        onClick={() => setAbaPedido(t.key)}
-                        className={cn(
-                          "relative flex items-center gap-1.5 px-5 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors",
-                          abaPedido === t.key ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-700"
-                        )}
-                      >
-                        {/* Bolinha de preenchimento: azul = preenchida, cinza = falta */}
-                        <span className={cn(
-                          "h-2 w-2 rounded-full flex-shrink-0 transition-colors",
-                          tabPreenchida ? "bg-blue-500" : "bg-gray-300"
-                        )} />
-                        {t.key === "aquisicao" && aquisicoes.filter(a => a.status === "pendente").length > 0 && (
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-bold text-white">
-                            {aquisicoes.filter(a => a.status === "pendente").length}
+                      <div key={t.key} className="flex items-stretch">
+                        {/* Botão de check clicável — separado do label */}
+                        <button
+                          onClick={e => { e.stopPropagation(); toggleCheckAba(t.key); }}
+                          disabled={!!carregandoEsteCheck}
+                          title={estaChecked ? "Marcar como pendente" : "Marcar aba como revisada"}
+                          className={cn(
+                            "flex items-center justify-center pl-3 pr-1 py-2.5 transition-colors group/check",
+                            abaPedido === t.key ? "text-[#1a6b2f]" : "text-gray-300 hover:text-gray-500"
+                          )}
+                        >
+                          <span className={cn(
+                            "h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center transition-all",
+                            estaChecked
+                              ? "border-blue-500 bg-blue-500"
+                              : "border-gray-300 bg-white group-hover/check:border-blue-300",
+                            carregandoEsteCheck && "opacity-50"
+                          )}>
+                            {estaChecked && (
+                              <svg className="h-2 w-2 text-white" fill="none" viewBox="0 0 8 8">
+                                <path d="M1.5 4L3.5 6L6.5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
                           </span>
-                        )}
-                        {t.key === "tarefas" && tarefas.length > 0 && (() => {
-                          const done = tarefas.filter(x => x.concluida).length;
-                          const pct = Math.round((done / tarefas.length) * 100);
-                          return (
-                            <span className={cn(
-                              "inline-flex h-4 items-center justify-center rounded-full px-1.5 text-[9px] font-bold",
-                              pct === 100 ? "bg-emerald-500 text-white" : "bg-blue-100 text-blue-700"
-                            )}>
-                              {pct}%
+                        </button>
+
+                        {/* Label da aba — abre a aba */}
+                        <button
+                          onClick={() => setAbaPedido(t.key)}
+                          className={cn(
+                            "flex items-center gap-1.5 pr-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors",
+                            abaPedido === t.key ? "border-[#1a6b2f] text-[#1a6b2f]" : "border-transparent text-gray-400 hover:text-gray-700"
+                          )}
+                        >
+                          {t.key === "aquisicao" && aquisicoes.filter(a => a.status === "pendente").length > 0 && (
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-bold text-white">
+                              {aquisicoes.filter(a => a.status === "pendente").length}
                             </span>
-                          );
-                        })()}
-                        {t.label}
-                      </button>
+                          )}
+                          {t.key === "tarefas" && tarefas.length > 0 && (() => {
+                            const done = tarefas.filter(x => x.concluida).length;
+                            const pct = Math.round((done / tarefas.length) * 100);
+                            return (
+                              <span className={cn(
+                                "inline-flex h-4 items-center justify-center rounded-full px-1.5 text-[9px] font-bold",
+                                pct === 100 ? "bg-emerald-500 text-white" : "bg-blue-100 text-blue-700"
+                              )}>
+                                {pct}%
+                              </span>
+                            );
+                          })()}
+                          {t.label}
+                        </button>
+                      </div>
                       );
                     })}
                   </div>
@@ -2849,6 +2928,37 @@ function LogisticaPage() {
                                 <FileText className="h-3.5 w-3.5" />
                                 Manual de Boas Práticas
                               </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ─ LOG DE REVISÕES ─ */}
+                        {checksAbas.length > 0 && (
+                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                            <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Histórico de revisões</p>
+                            <div className="space-y-2">
+                              {checksAbas.slice(0, 10).map(c => {
+                                const abaLabel = { info: "Informações", aquisicao: "Aquisição", tarefas: "Tarefas" }[c.aba];
+                                const data = new Date(c.checked_em);
+                                const dataFmt = data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+                                const horaFmt = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                return (
+                                  <div key={c.id} className="flex items-center gap-2.5 text-xs text-gray-600">
+                                    <span className={cn(
+                                      "h-2 w-2 rounded-full flex-shrink-0",
+                                      c.checked ? "bg-blue-500" : "bg-gray-300"
+                                    )} />
+                                    <span className="font-medium text-gray-800">{abaLabel}</span>
+                                    <span className={cn(
+                                      "text-[10px] rounded-full px-1.5 py-0.5 font-medium",
+                                      c.checked ? "bg-blue-50 text-blue-600" : "bg-gray-100 text-gray-500"
+                                    )}>
+                                      {c.checked ? "revisada" : "desmarcada"}
+                                    </span>
+                                    <span className="ml-auto text-[10px] text-gray-400 tabular-nums">{dataFmt} {horaFmt}</span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
