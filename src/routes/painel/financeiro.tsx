@@ -546,6 +546,12 @@ function FinanceiroPage() {
       supabase.from("ca_contas_pagar").select("*").order("vencimento", { ascending: true }).limit(200),
       supabase.from("crm_propostas").select("*, lead:crm_leads(nome, empresa)").eq("status", "fechado").limit(200),
     ]);
+    console.log("[CA] vendas:", v.data?.length, v.error?.message);
+    console.log("[CA] cobrancas:", c.data?.length, c.error?.message);
+    console.log("[CA] contratos:", ct.data?.length, ct.error?.message);
+    console.log("[CA] saldos:", s.data?.length, s.error?.message);
+    console.log("[CA] contas_pagar:", cp.data?.length, cp.error?.message);
+    console.log("[CA] crm_propostas:", crm.data?.length, crm.error?.message);
     if (v.data) setCaVendas(v.data as CaVenda[]);
     if (c.data) setCaCobrancas(c.data as CaCobranca[]);
     if (ct.data) setCaContratos(ct.data as CaContrato[]);
