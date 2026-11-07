@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   TrendingUp, MousePointerClick, DollarSign, Zap, RefreshCw,
-  Loader2, Eye, BarChart3, ArrowUp, ArrowDown, Minus,
+  Loader2, Eye, BarChart3, ArrowUp, ArrowDown, Minus, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,7 +42,7 @@ interface CampanhaSumarizada {
 const fmt$ = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
-const fmtN = (v: number) => new Intl.NumberFormat("pt-BR").format(v);
+const fmtN = (v: number) => new Intl.NumberFormat("pt-BR").format(Math.round(v));
 
 const fmtPct = (v: number) => `${(v * 100).toFixed(2)}%`;
 
@@ -71,16 +71,16 @@ function MarketingPage() {
   const [dados, setDados] = useState<DadoDiario[]>([]);
   const [dadosAnt, setDadosAnt] = useState<DadoDiario[]>([]);
   const [carregando, setCarregando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [semDados, setSemDados] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"campanhas" | "tendencia">("campanhas");
 
   const carregar = useCallback(async (p: Periodo = periodo) => {
     setCarregando(true);
     setErro(null);
+    setSemDados(false);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
       const dias = Number(p);
       const hoje = new Date();
       const dataFim = hoje.toISOString().slice(0, 10);
@@ -89,42 +89,51 @@ function MarketingPage() {
       const dataFimAnt = new Date(hoje.getTime() - dias * 86400000 - 86400000).toISOString().slice(0, 10);
 
       const [resAtual, resAnt] = await Promise.all([
-        fetch("https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/windsor-proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({
-            connector: "google_ads",
-            fields: ["campaign", "date", "impressions", "clicks", "spend", "conversions", "ctr", "cpc", "cpa"],
-            date_from: dataInicio,
-            date_to: dataFim,
-          }),
-        }),
-        fetch("https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/windsor-proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({
-            connector: "google_ads",
-            fields: ["campaign", "date", "impressions", "clicks", "spend", "conversions", "ctr", "cpc", "cpa"],
-            date_from: dataInicioAnt,
-            date_to: dataFimAnt,
-          }),
-        }),
+        supabase.from("mkt_google_ads").select("*")
+          .gte("date", dataInicio).lte("date", dataFim)
+          .order("date", { ascending: true }),
+        supabase.from("mkt_google_ads").select("*")
+          .gte("date", dataInicioAnt).lte("date", dataFimAnt)
+          .order("date", { ascending: true }),
       ]);
 
-      if (resAtual.ok) {
-        const j = await resAtual.json();
-        setDados(j.data ?? []);
-      }
-      if (resAnt.ok) {
-        const j = await resAnt.json();
-        setDadosAnt(j.data ?? []);
-      }
+      if (resAtual.error) throw resAtual.error;
+      if (resAnt.error) throw resAnt.error;
+
+      setDados(resAtual.data ?? []);
+      setDadosAnt(resAnt.data ?? []);
+      if ((resAtual.data ?? []).length === 0) setSemDados(true);
     } catch (e) {
-      setErro("Erro ao carregar dados do Google Ads.");
+      setErro("Erro ao carregar dados. Verifique a conexão.");
+      console.error(e);
     } finally {
       setCarregando(false);
     }
   }, [periodo]);
+
+  const sincronizar = async () => {
+    setSincronizando(true);
+    setErro(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(
+        "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/sync-google-ads",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ days: 90 }),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro na sincronização");
+      await carregar(periodo);
+    } catch (e: unknown) {
+      setErro(`Sincronização falhou: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSincronizando(false);
+    }
+  };
 
   useEffect(() => { carregar(periodo); }, [periodo]);
 
@@ -189,16 +198,24 @@ function MarketingPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Marketing</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Google Ads — dados em tempo real via Windsor.ai</p>
+          <p className="mt-0.5 text-sm text-gray-500">Google Ads — sincronizado via Windsor.ai</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => carregar(periodo)}
-            disabled={carregando}
+            disabled={carregando || sincronizando}
             className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
           >
             <RefreshCw className={cn("h-4 w-4", carregando && "animate-spin")} />
-            {carregando ? "Carregando…" : "Atualizar"}
+            Atualizar
+          </button>
+          <button
+            onClick={sincronizar}
+            disabled={sincronizando || carregando}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-4 w-4", sincronizando && "animate-spin")} />
+            {sincronizando ? "Sincronizando…" : "Sincronizar Google Ads"}
           </button>
         </div>
       </div>
@@ -222,7 +239,19 @@ function MarketingPage() {
 
       {/* ── Erro ── */}
       {erro && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</div>
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {erro}
+        </div>
+      )}
+
+      {/* ── Sem dados — orientação de primeiro uso ── */}
+      {!carregando && semDados && !erro && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <p className="font-semibold mb-1">Nenhum dado ainda</p>
+          <p>Clique em <strong>"Sincronizar Google Ads"</strong> acima para importar os dados pela primeira vez.</p>
+          <p className="mt-1 text-xs text-amber-600">Requisito: a Edge Function <code>sync-google-ads</code> precisa estar deployada no Supabase com o secret <code>WINDSOR_API_KEY</code>.</p>
+        </div>
       )}
 
       {/* ── KPIs ── */}
