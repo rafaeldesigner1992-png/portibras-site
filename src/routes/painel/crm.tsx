@@ -851,16 +851,28 @@ function CalculadoraOrcamento({ lead, onClose, onPropostaSalva }: { lead: Lead; 
       const { data } = await supabase.from("crm_orcamentos").insert(payload).select().single();
       if (data) setOrcamentoExistente(data as Orcamento);
     }
-    // Registra no histórico do lead
+    // Salva na tabela crm_propostas (aba Propostas) + histórico
     const empresa = lead.empresa || lead.nome || "Cliente";
     const valorFmt = precoFinal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    await supabase.from("crm_conversas").insert({
-      lead_id: lead.id,
-      texto: isNovo
-        ? `📋 Orçamento criado para ${empresa} — Total: ${valorFmt}`
-        : `📋 Orçamento atualizado para ${empresa} — Total: ${valorFmt}`,
-      autor: "Sistema",
-    });
+    const nomeArquivoOrc = `${numPropostaOrc.current}_${empresa.replace(/\s+/g, "_")}.pdf`;
+    try {
+      await salvarPropostaDb(lead.id, "orcamento", nomeArquivoOrc, {
+        numProposta: numPropostaOrc.current,
+        parcela: precoFinal,
+        portas: 0,
+        valorTotal: precoFinal,
+      });
+      onPropostaSalva?.();
+    } catch {
+      // fallback: só registra no histórico se crm_propostas falhar
+      await supabase.from("crm_conversas").insert({
+        lead_id: lead.id,
+        texto: isNovo
+          ? `📋 Orçamento criado para ${empresa} — Total: ${valorFmt}`
+          : `📋 Orçamento atualizado para ${empresa} — Total: ${valorFmt}`,
+        autor: "Sistema",
+      });
+    }
     setSalvando(false);
     setSalvo(true);
     setTimeout(() => setSalvo(false), 2500);
@@ -2320,8 +2332,8 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
         </div>
       )}
 
-      {/* Gerar Contrato */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+      {/* Gerar Contrato — somente para Manutenção 12× */}
+      {proposta.tipo === "manutencao" && <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gerar contrato</p>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5">
@@ -2363,7 +2375,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
             Gerar Contrato
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
