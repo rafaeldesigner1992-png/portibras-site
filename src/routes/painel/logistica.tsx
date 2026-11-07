@@ -899,6 +899,8 @@ function LogisticaPage() {
   // ── Pedidos Logísticos ─────────────────────────────────────────────────────
   const [pedidosLog, setPedidosLog] = useState<PedidoLogistico[]>([]);
   const [carregandoPedLog, setCarregandoPedLog] = useState(false);
+  // progresso por pedido: { aquisicao: bool, tarefas: bool }
+  const [progressoCards, setProgressoCards] = useState<Record<string, { aquisicao: boolean; tarefas: boolean }>>({});
   const [pedidoAberto, setPedidoAberto] = useState<PedidoLogistico | null>(null);
   const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao" | "tarefas">("info");
   const [aquisicoes, setAquisicoes] = useState<ItemAquisicao[]>([]);
@@ -1517,7 +1519,27 @@ function LogisticaPage() {
       .select("*")
       .not("etapa", "in", "(cancelado)")
       .order("criado_em", { ascending: false });
-    if (data) setPedidosLog(data as PedidoLogistico[]);
+    if (data) {
+      setPedidosLog(data as PedidoLogistico[]);
+      // Carrega progresso em batch
+      const ids = data.map((p: PedidoLogistico) => p.id);
+      if (ids.length > 0) {
+        const [{ data: aqData }, { data: tData }] = await Promise.all([
+          supabase.from("logistica_aquisicoes").select("pedido_id, status").in("pedido_id", ids),
+          supabase.from("logistica_tarefas").select("pedido_id, concluida").in("pedido_id", ids),
+        ]);
+        const prog: Record<string, { aquisicao: boolean; tarefas: boolean }> = {};
+        for (const id of ids) {
+          const aqItens = (aqData ?? []).filter((a: { pedido_id: string; status: string }) => a.pedido_id === id);
+          const tItens  = (tData  ?? []).filter((t: { pedido_id: string; concluida: boolean }) => t.pedido_id === id);
+          prog[id] = {
+            aquisicao: aqItens.length > 0 && aqItens.every((a: { status: string }) => a.status === "recebido"),
+            tarefas:   tItens.length > 0 && tItens.every((t: { concluida: boolean }) => t.concluida),
+          };
+        }
+        setProgressoCards(prog);
+      }
+    }
     setCarregandoPedLog(false);
   }
 
@@ -1558,13 +1580,27 @@ function LogisticaPage() {
     setSalvandoTarefa(false);
   }
 
+  function atualizarProgressoCard(pedidoId: string, novasTarefas?: TarefaPedido[], novasAquis?: ItemAquisicao[]) {
+    const tItens = novasTarefas ?? tarefas;
+    const aItens = novasAquis ?? aquisicoes;
+    setProgressoCards(p => ({
+      ...p,
+      [pedidoId]: {
+        aquisicao: aItens.length > 0 && aItens.every(a => a.status === "recebido"),
+        tarefas:   tItens.length > 0 && tItens.every(t => t.concluida),
+      },
+    }));
+  }
+
   async function toggleTarefa(t: TarefaPedido) {
     const concluida = !t.concluida;
     await supabase.from("logistica_tarefas").update({
       concluida,
       concluida_em: concluida ? new Date().toISOString() : null,
     }).eq("id", t.id);
-    setTarefas(ts => ts.map(x => x.id === t.id ? { ...x, concluida, concluida_em: concluida ? new Date().toISOString() : null } : x));
+    const novas = tarefas.map(x => x.id === t.id ? { ...x, concluida, concluida_em: concluida ? new Date().toISOString() : null } : x);
+    setTarefas(novas);
+    if (pedidoAberto) atualizarProgressoCard(pedidoAberto.id, novas);
   }
 
   async function excluirTarefa(id: string) {
@@ -2413,6 +2449,11 @@ function LogisticaPage() {
                           );
                         }
 
+                        const prog = progressoCards[p.id];
+                        const infoOk = !!(p.etapa && p.tipo_cobranca);
+                        const aquisOk = prog?.aquisicao ?? false;
+                        const tarefOk = prog?.tarefas ?? false;
+
                         return (
                           <div
                             key={p.id}
@@ -2420,7 +2461,7 @@ function LogisticaPage() {
                             onClick={() => abrirPedido(p)}
                           >
                             {/* Tipo + dias */}
-                            <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center justify-between mb-1.5">
                               <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-500">{tipo}</span>
                               <span className={cn("text-[9px] font-medium", dias > 7 ? "text-orange-500" : "text-gray-300")}>
                                 {dias === 0 ? "hoje" : `${dias}d`}
@@ -2432,14 +2473,35 @@ function LogisticaPage() {
 
                             {/* Valor */}
                             {p.valor_venda != null && (
-                              <p className="text-base font-bold text-[#1a6b2f] tabular-nums mb-2">{fmt(p.valor_venda)}</p>
+                              <p className="text-sm font-bold text-[#1a6b2f] tabular-nums mb-2">{fmt(p.valor_venda)}</p>
                             )}
 
-                            {/* Footer: cobrança + avançar */}
-                            <div className="flex items-center justify-between">
-                              <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold", cob.cls)}>
-                                {cob.label}
-                              </span>
+                            {/* Footer: cobrança + bolinhas + avançar */}
+                            <div className="flex items-center justify-between mt-1 pt-2 border-t border-gray-50">
+                              {/* Bolinhas de progresso das 3 abas */}
+                              <div className="flex items-center gap-1.5">
+                                {/* Informações */}
+                                <div className={cn(
+                                  "flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold transition-colors",
+                                  infoOk ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-300"
+                                )} title="Informações">
+                                  {infoOk ? "✓" : "i"}
+                                </div>
+                                {/* Aquisição */}
+                                <div className={cn(
+                                  "flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold transition-colors",
+                                  aquisOk ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-300"
+                                )} title="Aquisição">
+                                  {aquisOk ? "✓" : "a"}
+                                </div>
+                                {/* Tarefas */}
+                                <div className={cn(
+                                  "flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold transition-colors",
+                                  tarefOk ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-300"
+                                )} title="Tarefas">
+                                  {tarefOk ? "✓" : "t"}
+                                </div>
+                              </div>
                               {prox && (
                                 <button
                                   onClick={e => { e.stopPropagation(); moverEtapa(p, prox); }}
