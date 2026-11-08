@@ -566,6 +566,21 @@ function FinanceiroPage() {
     setSincronizando(false);
   }
 
+  async function debugContratos() {
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-conta-azul", {
+        body: { debug: true },
+      });
+      if (error) { alert("Erro: " + JSON.stringify(error)); return; }
+      // Pega o endpoint de contratos e mostra o 1º item
+      const chave = Object.keys(data ?? {}).find(k => k.includes("contratos") && !k.includes("recorrencia"));
+      const raw = chave ? (data as any)[chave] : data;
+      alert("JSON bruto dos contratos:\n\n" + JSON.stringify(raw, null, 2).substring(0, 3000));
+    } catch (e) {
+      alert("Erro debug: " + String(e));
+    }
+  }
+
   async function carregar() {
     setCarregando(true);
     const { data } = await supabase.from("financeiro_lancamentos").select("*").order("data", { ascending: false });
@@ -802,14 +817,23 @@ function FinanceiroPage() {
         </div>
         <div className="flex items-center gap-2">
           {abaAtiva === "conta-azul" && caConectado && (
-            <button
-              onClick={sincronizarCA}
-              disabled={sincronizando}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <RefreshCw className={cn("h-4 w-4", sincronizando && "animate-spin")} />
-              {sincronizando ? "Sincronizando…" : "Sincronizar"}
-            </button>
+            <>
+              <button
+                onClick={debugContratos}
+                className="flex items-center gap-2 rounded-lg border border-orange-200 px-3 py-2 text-sm font-medium text-orange-600 hover:bg-orange-50"
+                title="Mostra o JSON bruto de 1 contrato da API"
+              >
+                🔍 Debug
+              </button>
+              <button
+                onClick={sincronizarCA}
+                disabled={sincronizando}
+                className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-4 w-4", sincronizando && "animate-spin")} />
+                {sincronizando ? "Sincronizando…" : "Sincronizar"}
+              </button>
+            </>
           )}
           {abaAtiva === "interno" && (
             <button

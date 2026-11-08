@@ -73,8 +73,17 @@ function fmtMoeda(valor: number | null) {
 
 function fmtData(iso: string | null) {
   if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    // Usa UTC para evitar shift de fuso (datas vindas como 2026-03-01T00:00:00+00:00)
+    const dia = String(d.getUTCDate()).padStart(2, "0");
+    const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const ano = d.getUTCFullYear();
+    return `${dia}/${mes}/${ano}`;
+  } catch {
+    return "—";
+  }
 }
 
 function diasAte(iso: string | null): number | null {
