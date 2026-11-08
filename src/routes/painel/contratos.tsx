@@ -15,7 +15,22 @@ import {
   Building2,
   Pencil,
   Loader2,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react";
+
+// ─── Tipo Conta Azul ──────────────────────────────────────────────────────────
+interface CaContrato {
+  id: string;
+  nome: string;
+  cliente_nome: string;
+  valor: number;
+  periodicidade: string | null;
+  status: string;
+  data_inicio: string | null;
+  data_fim: string | null;
+  sincronizado_em: string;
+}
 
 export const Route = createFileRoute("/painel/contratos")({
   component: ContratosPage,
@@ -310,6 +325,20 @@ function ContratosPage() {
   const [modalAberto, setModalAberto] = useState(false);
   const [contratoEdicao, setContratoEdicao] = useState<Contrato | null>(null);
 
+  // Conta Azul
+  const [caContratos, setCaContratos] = useState<CaContrato[]>([]);
+  const [caCarregando, setCaCarregando] = useState(true);
+
+  const carregarContaAzul = useCallback(async () => {
+    setCaCarregando(true);
+    const { data } = await supabase
+      .from("ca_contratos")
+      .select("*")
+      .order("cliente_nome");
+    setCaContratos((data ?? []) as CaContrato[]);
+    setCaCarregando(false);
+  }, []);
+
   const carregar = useCallback(async () => {
     setCarregando(true);
     // Busca contratos com join em clientes
@@ -352,6 +381,7 @@ function ContratosPage() {
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => { carregarContaAzul(); }, [carregarContaAzul]);
 
   // ─ Stats ─
   const ativos = contratos.filter((c) => c.status === "ativo").length;
@@ -441,6 +471,140 @@ function ContratosPage() {
           </div>
         </div>
       )}
+
+      {/* ── Contratos Conta Azul ──────────────────────────────────────── */}
+      {(() => {
+        const ativos = caContratos.filter(c => c.status === "ACTIVE" || c.status === "active");
+        const totalMensal = ativos.reduce((s, c) => s + (c.valor ?? 0), 0);
+        const vencendo = ativos.filter(c => {
+          if (!c.data_fim) return false;
+          const dias = Math.round((new Date(c.data_fim).getTime() - Date.now()) / 86400000);
+          return dias >= 0 && dias <= 60;
+        });
+
+        return (
+          <div className="mb-8 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white overflow-hidden shadow-sm">
+            {/* Header Conta Azul */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-blue-100">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white text-xs font-bold shadow-sm">CA</div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Contratos Ativos — Conta Azul</p>
+                  <p className="text-xs text-gray-500">Sincronizado automaticamente</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="text-xs text-gray-400">Recorrência mensal</p>
+                  <p className="text-lg font-black text-blue-700">
+                    {totalMensal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </p>
+                </div>
+                <button
+                  onClick={carregarContaAzul}
+                  disabled={caCarregando}
+                  className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${caCarregando ? "animate-spin" : ""}`} />
+                  Atualizar
+                </button>
+              </div>
+            </div>
+
+            {/* Resumo stats */}
+            <div className="grid grid-cols-3 divide-x divide-blue-100 border-b border-blue-100">
+              <div className="px-6 py-3 text-center">
+                <p className="text-2xl font-black text-blue-700">{ativos.length}</p>
+                <p className="text-xs text-gray-500">contratos ativos</p>
+              </div>
+              <div className="px-6 py-3 text-center">
+                <p className="text-2xl font-black text-orange-500">{vencendo.length}</p>
+                <p className="text-xs text-gray-500">vencem em 60 dias</p>
+              </div>
+              <div className="px-6 py-3 text-center">
+                <p className="text-2xl font-black text-green-600">
+                  {ativos.length > 0 ? (totalMensal / ativos.length).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                </p>
+                <p className="text-xs text-gray-500">ticket médio</p>
+              </div>
+            </div>
+
+            {/* Tabela de contratos */}
+            {caCarregando ? (
+              <div className="flex items-center justify-center py-8 text-gray-400">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <span className="text-sm">Carregando do Conta Azul...</span>
+              </div>
+            ) : ativos.length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">
+                Nenhum contrato ativo encontrado no Conta Azul.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-blue-50/60 text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="px-6 py-3 text-left font-semibold">Cliente</th>
+                      <th className="px-4 py-3 text-left font-semibold">Início</th>
+                      <th className="px-4 py-3 text-left font-semibold">Término</th>
+                      <th className="px-4 py-3 text-right font-semibold">Valor/mês</th>
+                      <th className="px-6 py-3 text-left font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {ativos.map(c => {
+                      const diasFim = c.data_fim
+                        ? Math.round((new Date(c.data_fim).getTime() - Date.now()) / 86400000)
+                        : null;
+                      const alertaVencimento = diasFim !== null && diasFim >= 0 && diasFim <= 60;
+                      return (
+                        <tr key={c.id} className="hover:bg-blue-50/30 transition-colors">
+                          <td className="px-6 py-3.5">
+                            <p className="font-medium text-gray-900 truncate max-w-[260px]">{c.cliente_nome}</p>
+                            {c.nome && c.nome !== c.cliente_nome && (
+                              <p className="text-xs text-gray-400 truncate max-w-[260px]">{c.nome}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-gray-600">{fmtData(c.data_inicio)}</td>
+                          <td className="px-4 py-3.5">
+                            <span className={alertaVencimento ? "text-orange-600 font-semibold" : "text-gray-600"}>
+                              {fmtData(c.data_fim)}
+                            </span>
+                            {alertaVencimento && diasFim !== null && (
+                              <p className="text-xs text-orange-500">Restam {diasFim}d</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <span className="font-bold text-gray-900">
+                              {(c.valor ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3.5">
+                            <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                              Ativo
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-blue-50/60 border-t border-blue-100">
+                      <td colSpan={3} className="px-6 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">
+                        Total recorrente mensal
+                      </td>
+                      <td className="px-4 py-3 text-right font-black text-blue-700">
+                        {totalMensal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Stat cards */}
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
