@@ -25,6 +25,7 @@ import { Route as PainelScriptVendasRouteImport } from './routes/painel/script-v
 import { Route as PainelHunterRouteImport } from './routes/painel/hunter'
 import { Route as PainelOrganogramaRouteImport } from './routes/painel/organograma'
 import { Route as PainelMarketingRouteImport } from './routes/painel/marketing'
+import { Route as PainelMetasRouteImport } from './routes/painel/metas'
 
 const AcessoRoute = AcessoRouteImport.update({
   id: '/acesso',
@@ -122,6 +123,12 @@ const PainelMarketingRoute = PainelMarketingRouteImport.update({
   getParentRoute: () => PainelRoute,
 } as any)
 
+const PainelMetasRoute = PainelMetasRouteImport.update({
+  id: '/metas',
+  path: '/metas',
+  getParentRoute: () => PainelRoute,
+} as any)
+
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/acesso': typeof AcessoRoute
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/painel/hunter': typeof PainelHunterRoute
   '/painel/organograma': typeof PainelOrganogramaRoute
   '/painel/marketing': typeof PainelMarketingRoute
+  '/painel/metas': typeof PainelMetasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -176,6 +184,7 @@ export interface FileRoutesById {
   '/painel/hunter': typeof PainelHunterRoute
   '/painel/organograma': typeof PainelOrganogramaRoute
   '/painel/marketing': typeof PainelMarketingRoute
+  '/painel/metas': typeof PainelMetasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/painel/hunter'
     | '/painel/organograma'
     | '/painel/marketing'
+    | '/painel/metas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -214,6 +224,7 @@ export interface FileRouteTypes {
     | '/painel/hunter'
     | '/painel/organograma'
     | '/painel/marketing'
+    | '/painel/metas'
   id:
     | '__root__'
     | '/'
@@ -232,6 +243,7 @@ export interface FileRouteTypes {
     | '/painel/hunter'
     | '/painel/organograma'
     | '/painel/marketing'
+    | '/painel/metas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -355,6 +367,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PainelMarketingRouteImport
       parentRoute: typeof PainelRouteImport
     }
+    '/painel/metas': {
+      id: '/painel/metas'
+      path: '/metas'
+      fullPath: '/painel/metas'
+      preLoaderRoute: typeof PainelMetasRouteImport
+      parentRoute: typeof PainelRouteImport
+    }
   }
 }
 
@@ -371,6 +390,7 @@ interface PainelRouteChildren {
   PainelHunterRoute: typeof PainelHunterRoute
   PainelOrganogramaRoute: typeof PainelOrganogramaRoute
   PainelMarketingRoute: typeof PainelMarketingRoute
+  PainelMetasRoute: typeof PainelMetasRoute
 }
 
 const painelRouteChildren: PainelRouteChildren = {
@@ -386,6 +406,7 @@ const painelRouteChildren: PainelRouteChildren = {
   PainelHunterRoute: PainelHunterRoute,
   PainelOrganogramaRoute: PainelOrganogramaRoute,
   PainelMarketingRoute: PainelMarketingRoute,
+  PainelMetasRoute: PainelMetasRoute,
 }
 
 const PainelRouteWithChildren = PainelRoute._addFileChildren(painelRouteChildren)

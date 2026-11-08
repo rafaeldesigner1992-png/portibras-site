@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 
 const MENU = [
   { modulo: "dashboard",   label: "Dashboard",        href: "/painel",               icon: LayoutDashboard },
+  { modulo: "dashboard",   label: "Metas & KPIs",     href: "/painel/metas",         icon: Target },
   { modulo: "crm",         label: "CRM Comercial",    href: "/painel/crm",           icon: Users },
   { modulo: "hunter",      label: "Hunter",            href: "/painel/hunter",        icon: Target },
   { modulo: "crm",         label: "Clientes",          href: "/painel/clientes",      icon: Building2 },
