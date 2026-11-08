@@ -308,16 +308,29 @@ async function syncContratos(token: string) {
 
   if (contratos.length === 0) return 0;
 
+  // Log do primeiro contrato para diagnóstico de campos
+  if (contratos.length > 0) {
+    console.log("[syncContratos] Exemplo de contrato recebido:", JSON.stringify(contratos[0], null, 2));
+  }
+
   const rows = (contratos as any[]).map((c) => ({
     id: String(c.id),
     nome: c.nome ?? c.name ?? c.descricao ?? c.description ?? "—",
     cliente_nome: c.cliente?.nome ?? c.customer?.name ?? c.client?.name ?? "—",
     cliente_documento: c.cliente?.documento ?? c.customer?.document ?? c.client?.document ?? null,
-    valor: Number(c.valor ?? c.value ?? c.totalValue ?? c.amount ?? 0),
+    // Conta Azul retorna valor_mensal, valor_recorrente ou valor dependendo do tipo de contrato
+    valor: Number(
+      c.valor_mensal ?? c.valor_recorrente ?? c.valor_total_mensal ??
+      c.valorMensal ?? c.valorRecorrente ??
+      c.valor ?? c.value ?? c.totalValue ?? c.amount ?? 0
+    ),
     periodicidade: c.periodicidade ?? c.periodicity ?? c.frequencia ?? c.frequency ?? null,
     status: c.status ?? c.situacao ?? "ATIVO",
-    data_inicio: c.data_inicio ?? c.startDate ?? c.start_date ?? null,
-    data_fim: c.data_fim ?? c.endDate ?? c.end_date ?? null,
+    // Conta Azul usa data_inicio_recorrencia / data_fim_recorrencia OU data_inicio / data_fim
+    data_inicio: c.data_inicio_recorrencia ?? c.data_inicio ?? c.startDate ?? c.start_date ?? c.dataInicio ?? null,
+    data_fim: c.data_fim_recorrencia ?? c.data_fim ?? c.data_termino ?? c.endDate ?? c.end_date ?? c.dataFim ?? c.dataCancelamento ?? null,
+    // Próximo vencimento / próxima cobrança
+    proximo_vencimento: c.proximo_vencimento ?? c.data_proxima_cobranca ?? c.proxima_cobranca ?? c.proximoVencimento ?? c.nextDueDate ?? null,
     sincronizado_em: new Date().toISOString(),
   }));
 

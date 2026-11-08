@@ -29,6 +29,7 @@ interface CaContrato {
   status: string;
   data_inicio: string | null;
   data_fim: string | null;
+  proximo_vencimento: string | null;
   sincronizado_em: string;
 }
 
@@ -552,6 +553,7 @@ function ContratosPage() {
                       <th className="px-6 py-3 text-left font-semibold">Cliente</th>
                       <th className="px-4 py-3 text-left font-semibold">Início</th>
                       <th className="px-4 py-3 text-left font-semibold">Término</th>
+                      <th className="px-4 py-3 text-left font-semibold">Próx. Venc.</th>
                       <th className="px-4 py-3 text-right font-semibold">Valor/mês</th>
                       <th className="px-6 py-3 text-left font-semibold">Status</th>
                     </tr>
@@ -561,25 +563,38 @@ function ContratosPage() {
                       const diasFim = c.data_fim
                         ? Math.round((new Date(c.data_fim).getTime() - Date.now()) / 86400000)
                         : null;
-                      const alertaVencimento = diasFim !== null && diasFim >= 0 && diasFim <= 60;
+                      const alertaFim = diasFim !== null && diasFim >= 0 && diasFim <= 60;
+                      const diasProxVenc = c.proximo_vencimento
+                        ? Math.round((new Date(c.proximo_vencimento).getTime() - Date.now()) / 86400000)
+                        : null;
+                      const alertaProxVenc = diasProxVenc !== null && diasProxVenc >= 0 && diasProxVenc <= 10;
                       return (
                         <tr key={c.id} className="hover:bg-blue-50/30 transition-colors">
                           <td className="px-6 py-3.5">
-                            <p className="font-medium text-gray-900 truncate max-w-[260px]">{c.cliente_nome}</p>
+                            <p className="font-medium text-gray-900 truncate max-w-[220px]">{c.cliente_nome}</p>
                             {c.nome && c.nome !== c.cliente_nome && (
-                              <p className="text-xs text-gray-400 truncate max-w-[260px]">{c.nome}</p>
+                              <p className="text-xs text-gray-400 truncate max-w-[220px]">{c.nome}</p>
                             )}
                           </td>
-                          <td className="px-4 py-3.5 text-gray-600">{fmtData(c.data_inicio)}</td>
-                          <td className="px-4 py-3.5">
-                            <span className={alertaVencimento ? "text-orange-600 font-semibold" : "text-gray-600"}>
+                          <td className="px-4 py-3.5 text-gray-600 whitespace-nowrap">{fmtData(c.data_inicio)}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className={alertaFim ? "text-orange-600 font-semibold" : "text-gray-600"}>
                               {fmtData(c.data_fim)}
                             </span>
-                            {alertaVencimento && diasFim !== null && (
+                            {alertaFim && diasFim !== null && (
                               <p className="text-xs text-orange-500">Restam {diasFim}d</p>
                             )}
                           </td>
-                          <td className="px-4 py-3.5 text-right">
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            {c.proximo_vencimento ? (
+                              <span className={alertaProxVenc ? "text-red-600 font-semibold" : "text-gray-600"}>
+                                {fmtData(c.proximo_vencimento)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
                             <span className="font-bold text-gray-900">
                               {(c.valor ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                             </span>
@@ -595,7 +610,7 @@ function ContratosPage() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-blue-50/60 border-t border-blue-100">
-                      <td colSpan={3} className="px-6 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">
+                      <td colSpan={4} className="px-6 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">
                         Total recorrente mensal
                       </td>
                       <td className="px-4 py-3 text-right font-black text-blue-700">
