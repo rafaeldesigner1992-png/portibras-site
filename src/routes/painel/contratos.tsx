@@ -474,7 +474,9 @@ function ContratosPage() {
 
       {/* ── Contratos Conta Azul ──────────────────────────────────────── */}
       {(() => {
-        const ativos = caContratos.filter(c => c.status === "ACTIVE" || c.status === "active");
+        const ativos = caContratos.filter(c =>
+          ["ACTIVE", "active", "ATIVO", "ativo", "Ativo", "Active"].includes(c.status)
+        );
         const totalMensal = ativos.reduce((s, c) => s + (c.valor ?? 0), 0);
         const vencendo = ativos.filter(c => {
           if (!c.data_fim) return false;
@@ -537,7 +539,10 @@ function ContratosPage() {
               </div>
             ) : ativos.length === 0 ? (
               <div className="py-8 text-center text-sm text-gray-400">
-                Nenhum contrato ativo encontrado no Conta Azul.
+                {caContratos.length === 0
+                  ? "Nenhum contrato encontrado. Clique em Sincronizar em Financeiro para importar os contratos do Conta Azul."
+                  : `${caContratos.length} contrato(s) encontrado(s), mas nenhum com status ativo. Status encontrados: ${[...new Set(caContratos.map(c => c.status))].join(", ")}`
+                }
               </div>
             ) : (
               <div className="overflow-x-auto">
