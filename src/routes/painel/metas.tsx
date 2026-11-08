@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Target, TrendingUp, DollarSign, Megaphone, Package,
   Edit2, Check, X, ChevronDown, ChevronUp, RefreshCw,
-  AlertTriangle, CheckCircle, Clock,
+  AlertTriangle, CheckCircle, Clock, Compass, Sparkles,
+  Save, Users, MapPin, Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -269,10 +270,365 @@ function AreaSection({
   );
 }
 
+// ── Tipos para Estratégia ──────────────────────────────────────────────────
+interface EstrategiaRow {
+  id: string;
+  visao_5anos: string;
+  visao_2anos: string;
+  visao_1ano: string;
+  visao_6meses: string;
+  num_funcionarios: number | null;
+  segmentos_atuacao: string;
+  regioes_atuacao: string;
+  desafios_atuais: string;
+  diferenciais: string;
+}
+
+// ── Componente da aba Direcionamento Estratégico ───────────────────────────
+function DirecaoEstrategicaTab({ isAdmin }: { isAdmin: boolean }) {
+  const [estrategia, setEstrategia] = useState<EstrategiaRow | null>(null);
+  const [form, setForm] = useState({
+    visao_5anos: "", visao_2anos: "", visao_1ano: "", visao_6meses: "",
+    num_funcionarios: "", segmentos_atuacao: "", regioes_atuacao: "",
+    desafios_atuais: "", diferenciais: "",
+  });
+  const [salvando, setSalvando] = useState(false);
+  const [salvouOk, setSalvouOk] = useState(false);
+  const [gerando, setGerando] = useState(false);
+  const [plano, setPlano] = useState<string>("");
+  const [erro, setErro] = useState<string>("");
+  const planoRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    supabase.from("estrategia_empresa").select("*").order("atualizado_em", { ascending: false }).limit(1).single()
+      .then(({ data }) => {
+        if (data) {
+          setEstrategia(data as EstrategiaRow);
+          setForm({
+            visao_5anos: data.visao_5anos ?? "",
+            visao_2anos: data.visao_2anos ?? "",
+            visao_1ano: data.visao_1ano ?? "",
+            visao_6meses: data.visao_6meses ?? "",
+            num_funcionarios: data.num_funcionarios != null ? String(data.num_funcionarios) : "",
+            segmentos_atuacao: data.segmentos_atuacao ?? "",
+            regioes_atuacao: data.regioes_atuacao ?? "",
+            desafios_atuais: data.desafios_atuais ?? "",
+            diferenciais: data.diferenciais ?? "",
+          });
+        }
+      });
+  }, []);
+
+  async function salvar() {
+    setSalvando(true);
+    const payload = {
+      visao_5anos: form.visao_5anos,
+      visao_2anos: form.visao_2anos,
+      visao_1ano: form.visao_1ano,
+      visao_6meses: form.visao_6meses,
+      num_funcionarios: form.num_funcionarios ? Number(form.num_funcionarios) : null,
+      segmentos_atuacao: form.segmentos_atuacao,
+      regioes_atuacao: form.regioes_atuacao,
+      desafios_atuais: form.desafios_atuais,
+      diferenciais: form.diferenciais,
+      atualizado_em: new Date().toISOString(),
+    };
+    if (estrategia?.id) {
+      await supabase.from("estrategia_empresa").update(payload).eq("id", estrategia.id);
+    } else {
+      const { data } = await supabase.from("estrategia_empresa").insert(payload).select().single();
+      if (data) setEstrategia(data as EstrategiaRow);
+    }
+    setSalvando(false);
+    setSalvouOk(true);
+    setTimeout(() => setSalvouOk(false), 3000);
+  }
+
+  async function gerarPlano() {
+    setGerando(true);
+    setErro("");
+    setPlano("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/clevel-insights", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error ?? "Erro ao gerar plano");
+      setPlano(json.plano);
+      setTimeout(() => planoRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  // Renderiza markdown simples (negrito, títulos, listas)
+  function renderMarkdown(text: string) {
+    const lines = text.split("\n");
+    const elements: React.ReactNode[] = [];
+    let key = 0;
+    for (const line of lines) {
+      if (line.startsWith("## ")) {
+        elements.push(<h2 key={key++} className="mt-6 mb-2 text-base font-bold text-gray-800 border-b border-gray-200 pb-1">{line.slice(3)}</h2>);
+      } else if (line.startsWith("### ")) {
+        elements.push(<h3 key={key++} className="mt-4 mb-1 text-sm font-bold text-gray-700">{line.slice(4)}</h3>);
+      } else if (line.startsWith("- ") || line.startsWith("* ")) {
+        elements.push(
+          <li key={key++} className="ml-4 text-sm text-gray-700 list-disc">
+            {line.slice(2).replace(/\*\*(.*?)\*\*/g, "$1")}
+          </li>
+        );
+      } else if (/^\d+\.\s/.test(line)) {
+        elements.push(
+          <li key={key++} className="ml-4 text-sm text-gray-700 list-decimal">
+            {line.replace(/^\d+\.\s/, "").replace(/\*\*(.*?)\*\*/g, "$1")}
+          </li>
+        );
+      } else if (line.trim() === "") {
+        elements.push(<div key={key++} className="h-2" />);
+      } else {
+        const parts = line.split(/(\*\*.*?\*\*)/g);
+        elements.push(
+          <p key={key++} className="text-sm text-gray-700 leading-relaxed">
+            {parts.map((p, i) => p.startsWith("**") ? <strong key={i}>{p.slice(2,-2)}</strong> : p)}
+          </p>
+        );
+      }
+    }
+    return elements;
+  }
+
+  const campoBase = "w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:border-[#1a6b2f] focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/20 resize-none disabled:bg-gray-50 disabled:text-gray-500";
+
+  return (
+    <div className="space-y-6">
+      {/* Intro */}
+      <div className="rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 p-5 text-white">
+        <div className="flex items-center gap-3 mb-2">
+          <Compass className="h-6 w-6 text-blue-300" />
+          <h2 className="text-base font-bold">Direcionamento Estratégico</h2>
+        </div>
+        <p className="text-sm text-slate-300">
+          Defina a visão da empresa por horizonte de tempo. A IA C-Level lerá esses objetivos junto com os dados reais da empresa e gerará um plano estratégico estruturado.
+        </p>
+      </div>
+
+      {/* Formulário de visão */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
+        <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Visão por Horizonte</h3>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* 5 anos */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              🏔️ Visão 5 Anos
+            </label>
+            <textarea
+              rows={3}
+              disabled={!isAdmin}
+              value={form.visao_5anos}
+              onChange={e => setForm(f => ({ ...f, visao_5anos: e.target.value }))}
+              placeholder="Onde queremos estar daqui 5 anos? Qual legado queremos construir?"
+              className={campoBase}
+            />
+          </div>
+          {/* 2 anos */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              🎯 Visão 2 Anos
+            </label>
+            <textarea
+              rows={3}
+              disabled={!isAdmin}
+              value={form.visao_2anos}
+              onChange={e => setForm(f => ({ ...f, visao_2anos: e.target.value }))}
+              placeholder="Qual a posição de mercado desejada em 2 anos? Faturamento alvo?"
+              className={campoBase}
+            />
+          </div>
+          {/* 1 ano */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              📅 Foco 1 Ano
+            </label>
+            <textarea
+              rows={3}
+              disabled={!isAdmin}
+              value={form.visao_1ano}
+              onChange={e => setForm(f => ({ ...f, visao_1ano: e.target.value }))}
+              placeholder="Qual é o principal objetivo deste ano? O que precisamos conquistar?"
+              className={campoBase}
+            />
+          </div>
+          {/* 6 meses */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              ⚡ Prioridades 6 Meses
+            </label>
+            <textarea
+              rows={3}
+              disabled={!isAdmin}
+              value={form.visao_6meses}
+              onChange={e => setForm(f => ({ ...f, visao_6meses: e.target.value }))}
+              placeholder="Quais são as 3 prioridades mais urgentes dos próximos 6 meses?"
+              className={campoBase}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Contexto da empresa */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
+        <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Contexto da Empresa</h3>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <Users className="h-3.5 w-3.5" /> Nº Funcionários
+            </label>
+            <input
+              type="number"
+              disabled={!isAdmin}
+              value={form.num_funcionarios}
+              onChange={e => setForm(f => ({ ...f, num_funcionarios: e.target.value }))}
+              placeholder="ex: 12"
+              className={cn(campoBase, "resize-none")}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <MapPin className="h-3.5 w-3.5" /> Regiões de Atuação
+            </label>
+            <input
+              type="text"
+              disabled={!isAdmin}
+              value={form.regioes_atuacao}
+              onChange={e => setForm(f => ({ ...f, regioes_atuacao: e.target.value }))}
+              placeholder="ex: RJ, SP"
+              className={cn(campoBase, "resize-none")}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Segmentos de Atuação
+            </label>
+            <input
+              type="text"
+              disabled={!isAdmin}
+              value={form.segmentos_atuacao}
+              onChange={e => setForm(f => ({ ...f, segmentos_atuacao: e.target.value }))}
+              placeholder="ex: instalação, manutenção, laudos"
+              className={cn(campoBase, "resize-none")}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <AlertTriangle className="h-3.5 w-3.5 text-orange-400" /> Desafios Atuais
+            </label>
+            <textarea
+              rows={2}
+              disabled={!isAdmin}
+              value={form.desafios_atuais}
+              onChange={e => setForm(f => ({ ...f, desafios_atuais: e.target.value }))}
+              placeholder="Quais são os principais obstáculos que a empresa enfrenta hoje?"
+              className={campoBase}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <Lightbulb className="h-3.5 w-3.5 text-yellow-400" /> Diferenciais Competitivos
+            </label>
+            <textarea
+              rows={2}
+              disabled={!isAdmin}
+              value={form.diferenciais}
+              onChange={e => setForm(f => ({ ...f, diferenciais: e.target.value }))}
+              placeholder="O que diferencia a Portibras da concorrência?"
+              className={campoBase}
+            />
+          </div>
+        </div>
+
+        {/* Botão salvar */}
+        {isAdmin && (
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={salvar}
+              disabled={salvando}
+              className="flex items-center gap-2 rounded-xl bg-[#1a6b2f] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#155825] disabled:opacity-60 transition-colors"
+            >
+              <Save className="h-4 w-4" />
+              {salvando ? "Salvando..." : "Salvar Direcionamento"}
+            </button>
+            {salvouOk && (
+              <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                <CheckCircle className="h-4 w-4" /> Salvo com sucesso!
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Botão gerar plano C-Level */}
+      <div className="rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-5 text-center">
+        <Sparkles className="h-8 w-8 text-blue-500 mx-auto mb-2" />
+        <h3 className="text-sm font-bold text-gray-800 mb-1">IA C-Level — Plano Estratégico</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          A IA lê seus objetivos + dados reais da empresa e gera um plano com metas SMART, rotinas por área, prioridades dos próximos 90 dias e alertas.
+        </p>
+        <button
+          onClick={gerarPlano}
+          disabled={gerando}
+          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
+        >
+          <Sparkles className="h-4 w-4" />
+          {gerando ? "Analisando dados e gerando plano..." : "🤖 Gerar Plano Estratégico C-Level"}
+        </button>
+        {gerando && (
+          <p className="mt-2 text-xs text-blue-500 animate-pulse">Isso pode levar 20–30 segundos...</p>
+        )}
+        {erro && (
+          <p className="mt-3 text-sm text-red-600 font-medium">❌ {erro}</p>
+        )}
+      </div>
+
+      {/* Resultado do plano */}
+      {plano && (
+        <div ref={planoRef} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100">
+              <Sparkles className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Plano Estratégico — IA C-Level</h3>
+              <p className="text-xs text-gray-400">Gerado agora com base nos seus dados reais</p>
+            </div>
+          </div>
+          <div className="prose-sm max-w-none">
+            {renderMarkdown(plano)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Página principal ───────────────────────────────────────────────────────
 function MetasPage() {
   const { usuario } = useAuth();
   const isAdmin = usuario?.perfil === "admin";
+
+  const [abaAtiva, setAbaAtiva] = useState<"kpis" | "estrategia">("kpis");
 
   const [mesSel, setMesSel] = useState(hoje.getMonth() + 1);
   const [anoSel, setAnoSel] = useState(hoje.getFullYear());
@@ -458,37 +814,75 @@ function MetasPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Seletor de período */}
-            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm">
-              <select
-                value={mesSel}
-                onChange={e => setMesSel(Number(e.target.value))}
-                className="border-none bg-transparent text-sm font-medium text-gray-700 focus:outline-none"
-              >
-                {MESES.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
-              </select>
-              <select
-                value={anoSel}
-                onChange={e => setAnoSel(Number(e.target.value))}
-                className="border-none bg-transparent text-sm font-medium text-gray-700 focus:outline-none"
-              >
-                {[2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-
-            <button
-              onClick={() => { carregarMetas(); carregarRealizados(); }}
-              disabled={carregando}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", carregando && "animate-spin")} />
-              Atualizar
-            </button>
+            {/* Seletor de período — só na aba KPIs */}
+            {abaAtiva === "kpis" && (
+              <>
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm">
+                  <select
+                    value={mesSel}
+                    onChange={e => setMesSel(Number(e.target.value))}
+                    className="border-none bg-transparent text-sm font-medium text-gray-700 focus:outline-none"
+                  >
+                    {MESES.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
+                  </select>
+                  <select
+                    value={anoSel}
+                    onChange={e => setAnoSel(Number(e.target.value))}
+                    className="border-none bg-transparent text-sm font-medium text-gray-700 focus:outline-none"
+                  >
+                    {[2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <button
+                  onClick={() => { carregarMetas(); carregarRealizados(); }}
+                  disabled={carregando}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", carregando && "animate-spin")} />
+                  Atualizar
+                </button>
+              </>
+            )}
           </div>
+        </div>
+
+        {/* Abas */}
+        <div className="mt-3 flex gap-1">
+          <button
+            onClick={() => setAbaAtiva("kpis")}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+              abaAtiva === "kpis"
+                ? "bg-[#1a6b2f] text-white shadow-sm"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            )}
+          >
+            <Target className="h-4 w-4" />
+            KPIs do Mês
+          </button>
+          <button
+            onClick={() => setAbaAtiva("estrategia")}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+              abaAtiva === "estrategia"
+                ? "bg-slate-700 text-white shadow-sm"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            )}
+          >
+            <Compass className="h-4 w-4" />
+            🎯 Direcionamento Estratégico
+          </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        {/* Aba Estratégia */}
+        {abaAtiva === "estrategia" && (
+          <DirecaoEstrategicaTab isAdmin={isAdmin} />
+        )}
+
+        {/* Aba KPIs */}
+        {abaAtiva === "kpis" && (<>
         {/* Score Geral C-Level */}
         <div className="rounded-2xl bg-gradient-to-r from-[#1a6b2f] to-[#2d8f47] p-5 text-white shadow-md">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -586,6 +980,7 @@ function MetasPage() {
             Salvando meta...
           </div>
         )}
+        </>)}
       </div>
     </div>
   );
