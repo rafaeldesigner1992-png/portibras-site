@@ -318,19 +318,19 @@ async function syncContratos(token: string) {
     nome: c.nome ?? c.name ?? c.descricao ?? c.description ?? "—",
     cliente_nome: c.cliente?.nome ?? c.customer?.name ?? c.client?.name ?? "—",
     cliente_documento: c.cliente?.documento ?? c.customer?.document ?? c.client?.document ?? null,
-    // Conta Azul retorna valor_mensal, valor_recorrente ou valor dependendo do tipo de contrato
+    // Campo confirmado via debug: total_proximo_vencimento contém o valor do contrato
     valor: Number(
-      c.valor_mensal ?? c.valor_recorrente ?? c.valor_total_mensal ??
-      c.valorMensal ?? c.valorRecorrente ??
-      c.valor ?? c.value ?? c.totalValue ?? c.amount ?? 0
+      c.total_proximo_vencimento ?? c.valor_mensal ?? c.valor_recorrente ??
+      c.valor ?? c.value ?? c.totalValue ?? 0
     ),
     periodicidade: c.periodicidade ?? c.periodicity ?? c.frequencia ?? c.frequency ?? null,
     status: c.status ?? c.situacao ?? "ATIVO",
-    // Conta Azul usa data_inicio_recorrencia / data_fim_recorrencia OU data_inicio / data_fim
-    data_inicio: c.data_inicio_recorrencia ?? c.data_inicio ?? c.startDate ?? c.start_date ?? c.dataInicio ?? null,
-    data_fim: c.data_fim_recorrencia ?? c.data_fim ?? c.data_termino ?? c.endDate ?? c.end_date ?? c.dataFim ?? c.dataCancelamento ?? null,
-    // Próximo vencimento / próxima cobrança
-    proximo_vencimento: c.proximo_vencimento ?? c.data_proxima_cobranca ?? c.proxima_cobranca ?? c.proximoVencimento ?? c.nextDueDate ?? null,
+    // data_inicio vem como "2026-03-01" (string simples, sem timezone)
+    data_inicio: c.data_inicio ?? c.data_inicio_recorrencia ?? c.startDate ?? null,
+    // data_fim está dentro de c.termos.data_fim conforme JSON da API
+    data_fim: c.termos?.data_fim ?? c.data_fim ?? c.data_fim_recorrencia ?? c.data_termino ?? null,
+    // proximo_vencimento confirmado no JSON
+    proximo_vencimento: c.proximo_vencimento ?? c.data_proxima_cobranca ?? null,
     sincronizado_em: new Date().toISOString(),
   }));
 
