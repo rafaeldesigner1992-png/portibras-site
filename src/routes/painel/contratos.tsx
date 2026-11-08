@@ -17,6 +17,7 @@ import {
   Loader2,
   RefreshCw,
   TrendingUp,
+  Printer,
 } from "lucide-react";
 
 // ─── Tipo Conta Azul ──────────────────────────────────────────────────────────
@@ -434,6 +435,16 @@ function ContratosPage() {
   // ─ Render ─
   return (
     <div className="p-8">
+      {/* Estilos de impressão — oculta sidebar/nav e botões ao imprimir */}
+      <style>{`
+        @media print {
+          nav, aside, header, [data-sidebar], .no-print { display: none !important; }
+          body { background: white !important; }
+          .p-8 { padding: 0 !important; }
+          button { display: none !important; }
+          @page { margin: 1.5cm; }
+        }
+      `}</style>
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -441,11 +452,11 @@ function ContratosPage() {
           <p className="mt-1 text-sm text-gray-500">Emissão e gestão de contratos de manutenção</p>
         </div>
         <button
-          onClick={abrirNovo}
-          className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]"
+          onClick={() => window.print()}
+          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
         >
-          <Plus className="h-4 w-4" />
-          Novo Contrato
+          <Printer className="h-4 w-4" />
+          Exportar PDF
         </button>
       </div>
 
@@ -634,31 +645,6 @@ function ContratosPage() {
           </div>
         );
       })()}
-
-      {/* Stat cards */}
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          icon={<CheckCircle2 className="h-5 w-5" />}
-          label="Contratos Ativos"
-          valor={carregando ? "…" : String(ativos)}
-          cor="text-green-600"
-          bg="bg-green-50"
-        />
-        <StatCard
-          icon={<Clock className="h-5 w-5" />}
-          label="Aguardando Assinatura"
-          valor={carregando ? "…" : String(aguardando)}
-          cor="text-orange-600"
-          bg="bg-orange-50"
-        />
-        <StatCard
-          icon={<Calendar className="h-5 w-5" />}
-          label="Vencendo em 30 dias"
-          valor={carregando ? "…" : String(vencendo30)}
-          cor="text-red-600"
-          bg="bg-red-50"
-        />
-      </div>
 
       {/* Filtros */}
       {!tabelaMissing && (
