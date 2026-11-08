@@ -513,6 +513,12 @@ function FinanceiroPage() {
     verificarCA();
   }, []);
 
+  // Carrega CA na inicialização (para os KPIs do topo) e quando aba CA ativa
+  useEffect(() => {
+    if (caConectado) carregarDadosCA();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caConectado]);
+
   useEffect(() => {
     if (abaAtiva === "conta-azul" && caConectado) {
       carregarDadosCA();
@@ -767,10 +773,29 @@ function FinanceiroPage() {
   // CÁLCULOS FINANCEIROS
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Receitas e despesas do mês dos lançamentos
+  // Receitas e despesas do mês dos lançamentos internos (mantido para Saúde Financeira)
   const receitas = lancamentos.filter(l => l.tipo === "receita" && l.pago).reduce((s, l) => s + l.valor, 0);
   const despesas = lancamentos.filter(l => l.tipo === "despesa" && l.pago).reduce((s, l) => s + l.valor, 0);
   const saldo = receitas - despesas;
+
+  // ── KPIs cruzados (Conta Azul + sistema) ──────────────────────────────────
+  // Saldo: soma das contas ativas no Conta Azul
+  const kpiSaldo = caSaldos.filter(s => s.ativo).reduce((acc, s) => acc + s.saldo, 0);
+
+  // Receitas pagas no mês corrente: cobranças do CA pagas neste mês
+  const mesAtual = new Date().toISOString().slice(0, 7); // "2026-11"
+  const kpiReceitasPagas = caCobrancas
+    .filter(c => {
+      if (!c.pago_em) return false;
+      const pagoMes = c.pago_em.slice(0, 7);
+      return pagoMes === mesAtual;
+    })
+    .reduce((acc, c) => acc + (c.valor_pago || c.valor), 0);
+
+  // Despesas a pagar: custos fixos ativos cadastrados no sistema (recorrentes mensais)
+  const kpiDespesasRecorrentes = custosFixos
+    .filter(cf => cf.ativo)
+    .reduce((acc, cf) => acc + cf.valor_mensal, 0);
 
   // Custo/km calculado
   const precoComb = Number(precoCombInput) || 0;
@@ -1537,19 +1562,35 @@ function FinanceiroPage() {
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: "Receitas (pagas)", valor: fmt(receitas), icon: TrendingUp, cor: "bg-green-50 text-green-600" },
-          { label: "Despesas (pagas)", valor: fmt(despesas), icon: TrendingDown, cor: "bg-red-50 text-red-600" },
-          { label: "Saldo", valor: fmt(saldo), icon: DollarSign, cor: saldo >= 0 ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600" },
-        ].map((kpi) => (
-          <div key={kpi.label} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex items-center gap-4">
-            <div className={cn("rounded-lg p-3", kpi.cor)}><kpi.icon className="h-5 w-5" /></div>
-            <div>
-              <p className="text-xs text-gray-500">{kpi.label}</p>
-              <p className="text-xl font-bold text-gray-900">{kpi.valor}</p>
-            </div>
+        {/* Receitas pagas — cobranças CA pagas neste mês */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex items-center gap-4">
+          <div className="rounded-lg p-3 bg-green-50 text-green-600"><TrendingUp className="h-5 w-5" /></div>
+          <div>
+            <p className="text-xs text-gray-500">Receitas pagas</p>
+            <p className="text-xl font-bold text-gray-900">{fmt(kpiReceitasPagas)}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Cobranças recebidas este mês · Conta Azul</p>
           </div>
-        ))}
+        </div>
+
+        {/* Despesas recorrentes — custos fixos do sistema */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex items-center gap-4">
+          <div className="rounded-lg p-3 bg-red-50 text-red-600"><TrendingDown className="h-5 w-5" /></div>
+          <div>
+            <p className="text-xs text-gray-500">Despesas recorrentes</p>
+            <p className="text-xl font-bold text-gray-900">{fmt(kpiDespesasRecorrentes)}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{custosFixos.filter(cf => cf.ativo).length} custos fixos ativos · Sistema</p>
+          </div>
+        </div>
+
+        {/* Saldo — conta Azul */}
+        <div className={cn("rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex items-center gap-4")}>
+          <div className={cn("rounded-lg p-3", kpiSaldo >= 0 ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600")}><DollarSign className="h-5 w-5" /></div>
+          <div>
+            <p className="text-xs text-gray-500">Saldo</p>
+            <p className="text-xl font-bold text-gray-900">{carregandoCA && caSaldos.length === 0 ? "..." : fmt(kpiSaldo)}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Contas bancárias · Conta Azul</p>
+          </div>
+        </div>
       </div>
 
       {/* ══════════ SAÚDE FINANCEIRA ══════════ */}
