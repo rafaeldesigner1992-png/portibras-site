@@ -865,17 +865,6 @@ function FinanceiroPage() {
     .filter(cf => cf.ativo)
     .reduce((acc, cf) => acc + cf.valor_mensal, 0);
 
-  // ── Meta mensal de vendas ──────────────────────────────────────────────────
-  // Boletos lançados no mês (pagos + a receber) = receita garantida
-  const kpiBoletos = caCobrancas
-    .filter(c => c.vencimento?.slice(0, 7) === mesAtual || c.pago_em?.slice(0, 7) === mesAtual)
-    .reduce((acc, c) => acc + (c.valor_pago ?? c.valor), 0);
-  // Meta = fixos + parcelas dívidas + materiais pendentes
-  const kpiMeta = kpiDespesasRecorrentes + totalParcelasMensais + totalMateriaisComprar;
-  // Falta vender = meta - boletos já lançados (mínimo 0)
-  const kpiFaltaVender = Math.max(0, kpiMeta - kpiBoletos);
-  const kpiProgressoMeta = kpiMeta > 0 ? Math.min(100, (kpiBoletos / kpiMeta) * 100) : 0;
-
   // Custo/km calculado
   const precoComb = Number(precoCombInput) || 0;
   const consumoKm = Number(consumoKmInput) || 1;
@@ -887,6 +876,17 @@ function FinanceiroPage() {
 
   // Total comprometimento mensal com dívidas ativas
   const totalParcelasMensais = dividas.filter(d => d.ativo && d.valor_pago < d.valor_total).reduce((s, d) => s + d.parcela_mensal, 0);
+
+  // ── Meta mensal de vendas ──────────────────────────────────────────────────
+  // Boletos lançados no mês (pagos + a receber) = receita garantida
+  const kpiBoletos = caCobrancas
+    .filter(c => c.vencimento?.slice(0, 7) === mesAtual || c.pago_em?.slice(0, 7) === mesAtual)
+    .reduce((acc, c) => acc + (c.valor_pago ?? c.valor), 0);
+  // Meta = fixos + parcelas dívidas + materiais pendentes
+  const kpiMeta = kpiDespesasRecorrentes + totalParcelasMensais + totalMateriaisComprar;
+  // Falta vender = meta - boletos já lançados (mínimo 0)
+  const kpiFaltaVender = Math.max(0, kpiMeta - kpiBoletos);
+  const kpiProgressoMeta = kpiMeta > 0 ? Math.min(100, (kpiBoletos / kpiMeta) * 100) : 0;
   const totalDividaRestante = dividas.filter(d => d.ativo).reduce((s, d) => s + Math.max(0, d.valor_total - d.valor_pago), 0);
 
   // Custo total mensal estrutural (fixos + dívidas)
