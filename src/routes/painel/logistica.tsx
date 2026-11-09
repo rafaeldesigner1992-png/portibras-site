@@ -3439,7 +3439,7 @@ function LogisticaPage() {
           {/* ── Tickets em Aberto ── */}
           {/* ── Vistorias aguardando agendamento ── */}
           {(() => {
-            const vistoriasAgendar = atendimentos.filter(a => a.classificacao === "Vistoria" && !a.data_agendada && a.status === "Programado");
+            const vistoriasAgendar = atendimentos.filter(a => a.classificacao === "Vistoria" && a.status !== "Concluído" && a.status !== "Cancelado");
             if (vistoriasAgendar.length === 0) return null;
             return (
               <div className="mb-6">
@@ -3457,7 +3457,10 @@ function LogisticaPage() {
                           <span className="rounded-full bg-purple-100 border border-purple-300 px-2 py-0.5 text-[10px] font-bold text-purple-700">🔍 Vistoria</span>
                         </div>
                         {v.endereco && <p className="text-xs text-gray-600 flex items-center gap-1"><MapPin className="h-3 w-3" />{v.endereco}</p>}
-                        {v.descricao && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{v.descricao}</p>}
+                        {v.data_agendada
+                          ? <p className="text-xs text-purple-700 font-medium mt-0.5 flex items-center gap-1"><CalendarIcon className="h-3 w-3" />Agendada: {new Date(v.data_agendada + "T00:00:00").toLocaleDateString("pt-BR")}{v.hora_inicio ? ` às ${v.hora_inicio}` : ""}</p>
+                          : <p className="text-xs text-orange-600 font-medium mt-0.5">⏳ Sem data — clique em Agendar</p>
+                        }
                       </div>
                       <button
                         onClick={() => abrirModalAtend(v)}
@@ -3662,8 +3665,8 @@ function LogisticaPage() {
               {atendimentos
                 .filter(a =>
                   (filtroStatusAtend === "todos" || a.status === filtroStatusAtend) &&
-                  // Exclui vistorias sem data da lista (já aparecem na seção "Vistorias para Agendar")
-                  !(a.classificacao === "Vistoria" && !a.data_agendada && a.status === "Programado")
+                  // Exclui vistorias ativas da lista (já aparecem na seção "Vistorias para Agendar")
+                  !(a.classificacao === "Vistoria" && a.status !== "Concluído" && a.status !== "Cancelado")
                 )
                 .map(atend => (
                   <div key={atend.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
