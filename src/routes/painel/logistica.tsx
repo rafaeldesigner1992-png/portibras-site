@@ -333,6 +333,15 @@ interface ItemEstoque {
   estoque_minimo: number;
   unidade: string;
   localizacao: string;
+  suprimento_id?: string;
+  variacoes?: VariacaoEstoque[];
+}
+
+interface VariacaoEstoque {
+  id: string;
+  item_id: string;
+  nome: string;    // ex: "60x60cm", "Branco", "P"
+  quantidade: number;
 }
 
 // ─── Profissionais Terceirizados ──────────────────────────────────────────────
@@ -939,8 +948,12 @@ function LogisticaPage() {
   const [selEstoque, setSelEstoque] = useState<ItemEstoque | null>(null);
   const [formEstoque, setFormEstoque] = useState<Partial<ItemEstoque>>({
     nome: "", codigo: "", categoria: "", quantidade: 0,
-    estoque_minimo: 0, unidade: "un", localizacao: "",
+    estoque_minimo: 0, unidade: "un", localizacao: "", suprimento_id: "",
   });
+  const [variacoesForm, setVariacoesForm] = useState<VariacaoEstoque[]>([]);
+  const [novaVariacao, setNovaVariacao] = useState({ nome: "", quantidade: 0 });
+  const [buscaSupEstoque, setBuscaSupEstoque] = useState("");
+  const [dropdownSupEstoque, setDropdownSupEstoque] = useState(false);
 
   // ── Pedidos Fechados ───────────────────────────────────────────────────────
   const [pedidosFechados, setPedidosFechados] = useState<PedidoFechado[]>([]);
@@ -1397,7 +1410,7 @@ function LogisticaPage() {
     if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); }
     if (aba === "gantt") carregarAtendimentos();
     if (aba === "compras") { carregarAtendimentos().then((atends) => { carregarCompras(atends); carregarMatComprar(); }); }
-    if (aba === "estoque") carregarEstoque();
+    if (aba === "estoque") { carregarEstoque(); carregarSuprimentos(); }
     if (aba === "vistorias") carregarVistorias();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aba]);
@@ -1990,22 +2003,85 @@ function LogisticaPage() {
   async function carregarEstoque() {
     setCarregandoEstoque(true);
     const { data } = await supabase.from("logistica_estoque").select("*").order("nome");
-    if (data) setItens(data as ItemEstoque[]);
+    if (!data) { setCarregandoEstoque(false); return; }
+    // Carregar variações de todos os itens
+    const ids = data.map((i: ItemEstoque) => i.id);
+    const { data: vars } = ids.length
+      ? await supabase.from("logistica_estoque_variacoes").select("*").in("item_id", ids)
+      : { data: [] };
+    const mapaVars: Record<string, VariacaoEstoque[]> = {};
+    for (const v of (vars ?? [])) {
+      if (!mapaVars[v.item_id]) mapaVars[v.item_id] = [];
+      mapaVars[v.item_id].push(v as VariacaoEstoque);
+    }
+    const itensComVars = data.map((i: ItemEstoque) => ({
+      ...i,
+      variacoes: mapaVars[i.id] ?? [],
+    }));
+    setItens(itensComVars);
     setCarregandoEstoque(false);
   }
 
   function abrirEstoque(item?: ItemEstoque) {
-    if (item) { setSelEstoque(item); setFormEstoque({ ...item }); }
-    else { setSelEstoque(null); setFormEstoque({ nome: "", codigo: "", categoria: "", quantidade: 0, estoque_minimo: 0, unidade: "un", localizacao: "" }); }
+    if (item) {
+      setSelEstoque(item);
+      setFormEstoque({ ...item });
+      setVariacoesForm(item.variacoes ?? []);
+      // Preencher busca com nome do suprimento vinculado, se houver
+      if (item.suprimento_id) {
+        const sup = suprimentos.find(s => s.id === item.suprimento_id);
+        setBuscaSupEstoque(sup?.nome ?? "");
+      } else {
+        setBuscaSupEstoque("");
+      }
+    } else {
+      setSelEstoque(null);
+      setFormEstoque({ nome: "", codigo: "", categoria: "", quantidade: 0, estoque_minimo: 0, unidade: "un", localizacao: "", suprimento_id: "" });
+      setVariacoesForm([]);
+      setBuscaSupEstoque("");
+    }
+    setNovaVariacao({ nome: "", quantidade: 0 });
+    setDropdownSupEstoque(false);
     setModalEstoque(true);
   }
 
   async function salvarEstoque() {
     if (!formEstoque.nome?.trim()) return;
-    if (selEstoque) await supabase.from("logistica_estoque").update(formEstoque).eq("id", selEstoque.id);
-    else await supabase.from("logistica_estoque").insert(formEstoque);
+    // Quantidade total = soma das variações (se houver), caso contrário o valor manual
+    const qtdTotal = variacoesForm.length > 0
+      ? variacoesForm.reduce((acc, v) => acc + v.quantidade, 0)
+      : (formEstoque.quantidade ?? 0);
+    const payload = { ...formEstoque, variacoes: undefined, quantidade: qtdTotal };
+    let itemId: string | undefined;
+    if (selEstoque) {
+      await supabase.from("logistica_estoque").update(payload).eq("id", selEstoque.id);
+      itemId = selEstoque.id;
+    } else {
+      const { data } = await supabase.from("logistica_estoque").insert(payload).select("id").single();
+      itemId = data?.id;
+    }
+    // Salvar variações
+    if (itemId) {
+      // Remover variações antigas e reinserir
+      await supabase.from("logistica_estoque_variacoes").delete().eq("item_id", itemId);
+      if (variacoesForm.length > 0) {
+        await supabase.from("logistica_estoque_variacoes").insert(
+          variacoesForm.map(v => ({ item_id: itemId, nome: v.nome, quantidade: v.quantidade }))
+        );
+      }
+    }
     setModalEstoque(false);
     carregarEstoque();
+  }
+
+  function adicionarVariacao() {
+    if (!novaVariacao.nome.trim()) return;
+    setVariacoesForm(prev => [...prev, { id: `tmp-${Date.now()}`, item_id: "", nome: novaVariacao.nome.trim(), quantidade: novaVariacao.quantidade }]);
+    setNovaVariacao({ nome: "", quantidade: 0 });
+  }
+
+  function removerVariacao(idx: number) {
+    setVariacoesForm(prev => prev.filter((_, i) => i !== idx));
   }
 
   const abaixoMinimo = itens.filter(i => i.quantidade <= i.estoque_minimo);
@@ -5275,14 +5351,32 @@ function LogisticaPage() {
                 <tbody className="divide-y divide-gray-50">
                   {itens.map((item) => {
                     const critico = item.quantidade <= item.estoque_minimo;
+                    const temVars = (item.variacoes?.length ?? 0) > 0;
                     return (
                       <tr key={item.id} className="hover:bg-gray-50/60">
                         <td className="px-6 py-4">
                           <p className="text-sm font-medium text-gray-900">{item.nome}</p>
                           {item.codigo && <p className="text-xs text-gray-400">{item.codigo}</p>}
+                          {item.suprimento_id && (
+                            <p className="text-xs text-[#1a6b2f] mt-0.5">
+                              🔗 {suprimentos.find(s => s.id === item.suprimento_id)?.nome ?? "Suprimento vinculado"}
+                            </p>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">{item.categoria || "—"}</td>
-                        <td className="px-6 py-4 text-center text-sm font-semibold text-gray-800">{item.quantidade} {item.unidade}</td>
+                        <td className="px-6 py-4 text-center">
+                          {temVars ? (
+                            <div className="flex flex-wrap justify-center gap-1">
+                              {item.variacoes!.map(v => (
+                                <span key={v.id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                                  {v.nome}: <strong>{v.quantidade}</strong>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-sm font-semibold text-gray-800">{item.quantidade} {item.unidade}</span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 text-center text-sm text-gray-400">{item.estoque_minimo}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{item.localizacao || "—"}</td>
                         <td className="px-6 py-4">
@@ -5791,58 +5885,164 @@ function LogisticaPage() {
       )}
 
       {/* ── Modal Estoque ── */}
-      {modalEstoque && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalEstoque(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">{selEstoque ? "Editar Item" : "Novo Item"}</h2>
-              <button onClick={() => setModalEstoque(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
-            </div>
-            <div className="space-y-4">
-              {[
-                { label: "Nome *", field: "nome" },
-                { label: "Código / Referência", field: "codigo" },
-                { label: "Categoria", field: "categoria" },
-                { label: "Localização", field: "localizacao" },
-              ].map(({ label, field }) => (
-                <div key={field}>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">{label}</label>
-                  <input type="text"
-                    value={(formEstoque as Record<string, unknown>)[field] as string || ""}
-                    onChange={e => setFormEstoque({ ...formEstoque, [field]: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
-                </div>
-              ))}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Qtd</label>
-                  <input type="number" min={0} value={formEstoque.quantidade ?? 0}
-                    onChange={e => setFormEstoque({ ...formEstoque, quantidade: Number(e.target.value) })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Mínimo</label>
-                  <input type="number" min={0} value={formEstoque.estoque_minimo ?? 0}
-                    onChange={e => setFormEstoque({ ...formEstoque, estoque_minimo: Number(e.target.value) })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Unidade</label>
-                  <select value={formEstoque.unidade || "un"}
-                    onChange={e => setFormEstoque({ ...formEstoque, unidade: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
-                    {["un", "cx", "pc", "m", "kg", "l", "rolo"].map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
+      {modalEstoque && (() => {
+        const supFiltradosEstoque = suprimentos.filter(s =>
+          !buscaSupEstoque ||
+          s.nome.toLowerCase().includes(buscaSupEstoque.toLowerCase()) ||
+          s.codigo?.toLowerCase().includes(buscaSupEstoque.toLowerCase())
+        );
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => { if (e.target === e.currentTarget) { setModalEstoque(false); setDropdownSupEstoque(false); } }}>
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto" onClick={() => setDropdownSupEstoque(false)}>
+              <div className="mb-5 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">{selEstoque ? "Editar Item" : "Novo Item"}</h2>
+                <button onClick={() => setModalEstoque(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setModalEstoque(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
-                <button onClick={salvarEstoque} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
+              <div className="space-y-4">
+
+                {/* Vincular a suprimento do catálogo */}
+                <div onClick={e => e.stopPropagation()}>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Vincular ao catálogo (opcional)</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Buscar suprimento cadastrado…"
+                      value={buscaSupEstoque}
+                      onFocus={() => setDropdownSupEstoque(true)}
+                      onChange={e => { setBuscaSupEstoque(e.target.value); setDropdownSupEstoque(true); }}
+                      className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]"
+                    />
+                    {formEstoque.suprimento_id && (
+                      <button
+                        onClick={() => { setFormEstoque({ ...formEstoque, suprimento_id: "" }); setBuscaSupEstoque(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-600"
+                      ><X className="h-3.5 w-3.5" /></button>
+                    )}
+                    {dropdownSupEstoque && supFiltradosEstoque.length > 0 && (
+                      <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                        {supFiltradosEstoque.map(s => (
+                          <button key={s.id} onMouseDown={e => e.preventDefault()} onClick={() => {
+                            setFormEstoque({
+                              ...formEstoque,
+                              suprimento_id: s.id,
+                              nome: formEstoque.nome || s.nome,
+                              codigo: formEstoque.codigo || s.codigo || "",
+                              categoria: formEstoque.categoria || s.categoria || "",
+                              unidade: s.unidade || formEstoque.unidade || "un",
+                            });
+                            setBuscaSupEstoque(s.nome);
+                            setDropdownSupEstoque(false);
+                          }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50">
+                            <div>
+                              <p className="font-medium text-gray-900">{s.nome}</p>
+                              {s.categoria && <p className="text-xs text-gray-400">{s.categoria} · {s.unidade}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {formEstoque.suprimento_id && (
+                    <p className="mt-1 text-xs text-[#1a6b2f]">🔗 Vinculado ao catálogo — nome/código preenchidos automaticamente</p>
+                  )}
+                </div>
+
+                {/* Nome, Código, Categoria, Localização */}
+                {[
+                  { label: "Nome *", field: "nome" },
+                  { label: "Código / Referência", field: "codigo" },
+                  { label: "Categoria", field: "categoria" },
+                  { label: "Localização", field: "localizacao" },
+                ].map(({ label, field }) => (
+                  <div key={field}>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">{label}</label>
+                    <input type="text"
+                      value={(formEstoque as Record<string, unknown>)[field] as string || ""}
+                      onChange={e => setFormEstoque({ ...formEstoque, [field]: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                  </div>
+                ))}
+
+                {/* Qtd (só aparece se não tiver variações) */}
+                <div className="grid grid-cols-3 gap-3">
+                  {variacoesForm.length === 0 && (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700">Qtd</label>
+                      <input type="number" min={0} value={formEstoque.quantidade ?? 0}
+                        onChange={e => setFormEstoque({ ...formEstoque, quantidade: Number(e.target.value) })}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                    </div>
+                  )}
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Mínimo</label>
+                    <input type="number" min={0} value={formEstoque.estoque_minimo ?? 0}
+                      onChange={e => setFormEstoque({ ...formEstoque, estoque_minimo: Number(e.target.value) })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Unidade</label>
+                    <select value={formEstoque.unidade || "un"}
+                      onChange={e => setFormEstoque({ ...formEstoque, unidade: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
+                      {["un", "cx", "pc", "m", "kg", "l", "rolo"].map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Variações */}
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">Variações</label>
+                    <span className="text-xs text-gray-400">ex: 60x60cm, Branco, Tamanho P…</span>
+                  </div>
+                  {variacoesForm.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {variacoesForm.map((v, idx) => (
+                        <span key={idx} className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 pl-3 pr-1.5 py-1 text-xs font-medium text-gray-700">
+                          {v.nome}: <strong>{v.quantidade}</strong> {formEstoque.unidade}
+                          <button onClick={() => removerVariacao(idx)} className="rounded-full p-0.5 hover:bg-gray-200">
+                            <X className="h-3 w-3 text-gray-500" />
+                          </button>
+                        </span>
+                      ))}
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                        Total: {variacoesForm.reduce((a, v) => a + v.quantidade, 0)} {formEstoque.unidade}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nome da variação"
+                      value={novaVariacao.nome}
+                      onChange={e => setNovaVariacao({ ...novaVariacao, nome: e.target.value })}
+                      onKeyDown={e => e.key === "Enter" && adicionarVariacao()}
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Qtd"
+                      value={novaVariacao.quantidade || ""}
+                      onChange={e => setNovaVariacao({ ...novaVariacao, quantidade: Number(e.target.value) })}
+                      onKeyDown={e => e.key === "Enter" && adicionarVariacao()}
+                      className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]"
+                    />
+                    <button onClick={adicionarVariacao} className="rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#155824]">
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setModalEstoque(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                  <button onClick={salvarEstoque} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══════ ABA EQUIPE ═══════ */}
       {aba === "equipe" && (
