@@ -1045,6 +1045,7 @@ function LogisticaPage() {
   const [formMatC, setFormMatC] = useState({ ...EMPTY_MATC });
   const [salvandoMatC, setSalvandoMatC] = useState(false);
   const [subAbaCompras, setSubAbaCompras] = useState<"pedidos" | "materiais">("pedidos");
+  const [filtroMaterial, setFiltroMaterial] = useState("");
 
   async function carregarMatComprar() {
     setCarregandoMatC(true);
@@ -4651,14 +4652,52 @@ function LogisticaPage() {
           {subAbaCompras === "materiais" && (
             <>
               {/* Cabeçalho */}
-              <div className="mb-4 flex items-center justify-between">
-                <p className="text-sm text-gray-500">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm text-gray-500 shrink-0">
                   {matComprar.filter(m => m.status === "Pendente").length} pendente{matComprar.filter(m => m.status === "Pendente").length !== 1 ? "s" : ""} · {matComprar.length} total
                 </p>
                 <button onClick={abrirNovaMatC}
-                  className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824]">
+                  className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#155824] shrink-0">
                   <Plus className="h-4 w-4" /> Novo Material
                 </button>
+              </div>
+
+              {/* Filtro por material */}
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por material… ex: Fechadura, Pintura de porta"
+                    value={filtroMaterial}
+                    onChange={e => setFiltroMaterial(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 pl-9 pr-9 py-2.5 text-sm outline-none focus:border-[#1a6b2f]"
+                  />
+                  {filtroMaterial && (
+                    <button onClick={() => setFiltroMaterial("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                {filtroMaterial && (() => {
+                  const termo = filtroMaterial.toLowerCase();
+                  const clientesComMaterial = [...new Set(
+                    matComprar
+                      .filter(m => m.descricao.toLowerCase().includes(termo))
+                      .map(m => m._origem === "pedido" && m._pedido_nome ? m._pedido_nome : (m.vinculados?.[0]?.titulo ?? null))
+                      .filter(Boolean)
+                  )];
+                  return clientesComMaterial.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5 items-center">
+                      <span className="text-xs text-gray-500">{clientesComMaterial.length} cliente{clientesComMaterial.length !== 1 ? "s" : ""} precisam deste material:</span>
+                      {clientesComMaterial.map(c => (
+                        <span key={c} className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">{c}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-xs text-gray-400">Nenhum cliente com esse material nos pendentes.</p>
+                  );
+                })()}
               </div>
 
               {carregandoMatC ? (
@@ -4691,7 +4730,12 @@ function LogisticaPage() {
                   }
 
                   return (["Pendente", "Comprado", "Recebido"] as MatComprar["status"][]).map(status => {
-                    const grupo = matComprar.filter(m => m.status === status);
+                    // Aplicar filtro de material: só mostrar itens que batem com o filtro
+                    const termo = filtroMaterial.toLowerCase();
+                    const grupo = matComprar.filter(m =>
+                      m.status === status &&
+                      (!filtroMaterial || m.descricao.toLowerCase().includes(termo))
+                    );
                     if (grupo.length === 0) return null;
 
                     // Agrupar por cliente
@@ -4832,37 +4876,120 @@ function LogisticaPage() {
 
                           {/* Card de totais abaixo da tabela */}
                         <div className={cn("px-4 py-3 border-t", statusCor[status])}>
-                          <div className="flex flex-wrap gap-x-6 gap-y-2 items-start">
-                            <div className="flex-1 min-w-[200px]">
+                          <div className="flex flex-wrap gap-x-6 gap-y-4 items-start">
+
+                            {/* Resumo de quantidades com subtração do estoque */}
+                            <div className="flex-1 min-w-[220px]">
                               <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">Resumo de quantidades</p>
                               <div className="flex flex-wrap gap-1.5">
-                                {Object.entries(totais).map(([desc, { qtd, unidade }]) => (
-                                  <span key={desc} className="rounded-full bg-white border border-gray-200 px-2.5 py-0.5 text-xs font-medium text-gray-700 shadow-sm">
-                                    {desc}: <span className="font-bold text-[#1a6b2f]">{qtd}</span> <span className="text-gray-400">{unidade}</span>
-                                  </span>
-                                ))}
+                                {Object.entries(totais).map(([desc, { qtd, unidade }]) => {
+                                  // Buscar item no estoque pelo nome (match parcial, case-insensitive)
+                                  const itemEstoque = itens.find(i =>
+                                    i.nome.toLowerCase() === desc.toLowerCase() ||
+                                    i.nome.toLowerCase().includes(desc.toLowerCase()) ||
+                                    desc.toLowerCase().includes(i.nome.toLowerCase())
+                                  );
+                                  const qtdEstoque = itemEstoque ? itemEstoque.quantidade : 0;
+                                  const temEstoque = qtdEstoque > 0;
+                                  return (
+                                    <span key={desc} className={cn(
+                                      "rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-sm",
+                                      temEstoque ? "bg-green-50 border-green-200 text-green-800" : "bg-white border-gray-200 text-gray-700"
+                                    )}>
+                                      {desc}: <span className={cn("font-bold", temEstoque ? "text-green-700" : "text-[#1a6b2f]")}>{qtd}</span>{" "}
+                                      <span className="text-gray-400">{unidade}</span>
+                                      {temEstoque && (
+                                        <span className="ml-1 text-[10px] text-green-600">
+                                          (estoque: {qtdEstoque})
+                                        </span>
+                                      )}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </div>
+
+                            {/* Total a adquirir com subtração */}
                             <div className="text-right shrink-0">
                               <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">Total a adquirir</p>
                               <div className="flex flex-col items-end gap-1">
-                                {Object.entries(totais).map(([desc, { qtd, unidade, valor, temPreco }]) => (
-                                  <div key={desc} className="flex items-center gap-2 text-xs text-gray-600">
-                                    <span className="text-gray-400">{desc} ({qtd} {unidade}) =</span>
-                                    {temPreco
-                                      ? <span className="font-semibold text-gray-800">
-                                          R$ {valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {Object.entries(totais).map(([desc, { qtd, unidade, valor, temPreco }]) => {
+                                  const itemEstoque = itens.find(i =>
+                                    i.nome.toLowerCase() === desc.toLowerCase() ||
+                                    i.nome.toLowerCase().includes(desc.toLowerCase()) ||
+                                    desc.toLowerCase().includes(i.nome.toLowerCase())
+                                  );
+                                  const qtdEstoque = itemEstoque ? itemEstoque.quantidade : 0;
+                                  const qtdComprar = Math.max(0, qtd - qtdEstoque);
+                                  const valorComprar = temPreco && qtdComprar > 0 && valor > 0
+                                    ? qtdComprar * (valor / qtd) : 0;
+                                  return (
+                                    <div key={desc} className="flex items-center gap-2 text-xs text-gray-600">
+                                      <span className="text-gray-400">{desc} ({qtd} {unidade})</span>
+                                      {qtdEstoque > 0 && (
+                                        <span className="text-green-600 font-medium">
+                                          − {Math.min(qtdEstoque, qtd)} estoque
+                                          {" "}= <strong className={qtdComprar === 0 ? "text-green-700" : "text-orange-600"}>
+                                            {qtdComprar === 0 ? "coberto ✓" : `${qtdComprar} a comprar`}
+                                          </strong>
                                         </span>
-                                      : <span className="text-gray-400 italic text-[11px]">sem preço cadastrado</span>
-                                    }
-                                  </div>
-                                ))}
+                                      )}
+                                      {qtdEstoque === 0 && (
+                                        temPreco
+                                          ? <span className="font-semibold text-gray-800">
+                                              R$ {valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                          : <span className="text-gray-400 italic text-[11px]">sem preço cadastrado</span>
+                                      )}
+                                      {qtdEstoque > 0 && qtdComprar > 0 && temPreco && (
+                                        <span className="font-semibold text-gray-800">
+                                          R$ {valorComprar.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                                 {totalGrupo > 0 && (
                                   <div className="mt-1 pt-1.5 border-t border-gray-200 w-full text-right">
-                                    <span className="text-xs text-gray-500 mr-2">Total do grupo:</span>
-                                    <span className="text-sm font-bold text-[#1a6b2f]">
-                                      R$ {totalGrupo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </span>
+                                    {/* Total recalculado descontando estoque */}
+                                    {(() => {
+                                      const totalDescEstoque = Object.entries(totais).reduce((acc, [desc, { qtd, valor, temPreco }]) => {
+                                        if (!temPreco || valor <= 0) return acc;
+                                        const itemEstoque = itens.find(i =>
+                                          i.nome.toLowerCase() === desc.toLowerCase() ||
+                                          i.nome.toLowerCase().includes(desc.toLowerCase()) ||
+                                          desc.toLowerCase().includes(i.nome.toLowerCase())
+                                        );
+                                        const qtdEstoque = itemEstoque ? itemEstoque.quantidade : 0;
+                                        const qtdComprar = Math.max(0, qtd - qtdEstoque);
+                                        return acc + qtdComprar * (valor / qtd);
+                                      }, 0);
+                                      const temDesconto = itens.some(i =>
+                                        Object.keys(totais).some(d =>
+                                          i.nome.toLowerCase() === d.toLowerCase() ||
+                                          i.nome.toLowerCase().includes(d.toLowerCase()) ||
+                                          d.toLowerCase().includes(i.nome.toLowerCase())
+                                        ) && i.quantidade > 0
+                                      );
+                                      return (
+                                        <>
+                                          {temDesconto && totalDescEstoque < totalGrupo && (
+                                            <div className="mb-1">
+                                              <span className="text-[10px] text-gray-400 mr-1 line-through">
+                                                R$ {totalGrupo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                              </span>
+                                              <span className="text-[10px] text-green-600 mr-1">com estoque:</span>
+                                            </div>
+                                          )}
+                                          <div>
+                                            <span className="text-xs text-gray-500 mr-2">Total real a comprar:</span>
+                                            <span className="text-sm font-bold text-[#1a6b2f]">
+                                              R$ {(temDesconto ? totalDescEstoque : totalGrupo).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                          </div>
+                                        </>
+                                      );
+                                    })()}
                                     {algumSemPreco && (
                                       <p className="text-[10px] text-orange-500 mt-0.5">* alguns itens sem preço cadastrado não estão incluídos</p>
                                     )}
@@ -4870,6 +4997,7 @@ function LogisticaPage() {
                                 )}
                               </div>
                             </div>
+
                           </div>
                         </div>
                       </div>
