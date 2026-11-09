@@ -119,6 +119,12 @@ interface Divida {
   vencimento_dia: number;         // dia do mês (1–28)
   data_inicio: string;            // ISO date
   ativo: boolean;
+  // campos expandidos
+  status: "em_dia" | "em_atraso" | "quitada" | "negociando";
+  parcelas_pagas: number;
+  total_parcelas: number | null;
+  sinal: number;
+  observacoes: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -131,7 +137,23 @@ function pct(v: number) {
 }
 
 const CATS_CUSTO = ["Administrativo", "Veículo", "Pessoal", "Tecnologia", "Instalações", "Marketing", "Outros"];
-const CATS_DIVIDA = ["Empréstimo bancário", "Financiamento veículo", "Cartão de crédito", "Fornecedor", "Sócio", "Outros"];
+const CATS_DIVIDA = [
+  "🏦 Banco / Financeira",
+  "📦 Fornecedor",
+  "💼 Imposto / Governo",
+  "👥 Pessoal",
+  "💳 Cartão",
+  "📱 Serviço",
+  "👨‍⚖️ Jurídico",
+  "🔧 Outro",
+];
+
+const STATUS_DIVIDA: Record<string, { label: string; cor: string; bg: string }> = {
+  em_dia:      { label: "🟡 Em dia",      cor: "text-yellow-700", bg: "bg-yellow-50 border-yellow-200" },
+  em_atraso:   { label: "🔴 Em atraso",   cor: "text-red-700",    bg: "bg-red-50 border-red-200" },
+  quitada:     { label: "✅ Quitada",     cor: "text-green-700",  bg: "bg-green-50 border-green-200" },
+  negociando:  { label: "⏸️ Negociando",  cor: "text-gray-700",   bg: "bg-gray-50 border-gray-200" },
+};
 
 // ─── Componente principal ────────────────────────────────────────────────────
 function FinanceiroPage() {
@@ -198,9 +220,10 @@ function FinanceiroPage() {
   const [modalDiv, setModalDiv] = useState(false);
   const [selDiv, setSelDiv] = useState<Divida | null>(null);
   const [formDiv, setFormDiv] = useState<Partial<Divida>>({
-    credor: "", descricao: "", categoria: "Empréstimo bancário",
+    credor: "", descricao: "", categoria: "🏦 Banco / Financeira",
     valor_total: 0, valor_pago: 0, parcela_mensal: 0,
     vencimento_dia: 10, data_inicio: new Date().toISOString().slice(0, 10), ativo: true,
+    status: "em_dia", parcelas_pagas: 0, total_parcelas: null, sinal: 0, observacoes: "",
   });
 
   // ── UI state ──
@@ -742,7 +765,12 @@ function FinanceiroPage() {
     if (d) { setSelDiv(d); setFormDiv({ ...d }); }
     else {
       setSelDiv(null);
-      setFormDiv({ credor: "", descricao: "", categoria: "Empréstimo bancário", valor_total: 0, valor_pago: 0, parcela_mensal: 0, vencimento_dia: 10, data_inicio: new Date().toISOString().slice(0, 10), ativo: true });
+      setFormDiv({
+        credor: "", descricao: "", categoria: "🏦 Banco / Financeira",
+        valor_total: 0, valor_pago: 0, parcela_mensal: 0,
+        vencimento_dia: 10, data_inicio: new Date().toISOString().slice(0, 10), ativo: true,
+        status: "em_dia", parcelas_pagas: 0, total_parcelas: null, sinal: 0, observacoes: "",
+      });
     }
     setModalDiv(true);
   }
@@ -1712,7 +1740,7 @@ function FinanceiroPage() {
       <Secao
         icone={CreditCard} titulo="Dívidas e Financiamentos" cor="text-red-600"
         aberta={secaoAberta === "dividas"} toggle={() => setSecaoAberta(s => s === "dividas" ? null : "dividas")}
-        badge={totalDividaRestante > 0 ? `Saldo: ${fmt(totalDividaRestante)}` : undefined}
+        badge={totalDividaRestante > 0 ? `Saldo devedor: ${fmt(totalDividaRestante)}` : undefined}
         acao={<button onClick={() => abrirDiv()} className="flex items-center gap-1.5 rounded-lg bg-[#1a6b2f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#155824]"><Plus className="h-3.5 w-3.5" /> Nova dívida</button>}
       >
         {carregandoDiv ? (
@@ -1725,50 +1753,98 @@ function FinanceiroPage() {
         ) : (
           <div className="space-y-3">
             {dividas.map(d => {
-              const restante = Math.max(0, d.valor_total - d.valor_pago);
-              const progresso = d.valor_total > 0 ? (d.valor_pago / d.valor_total) * 100 : 0;
-              const quitada = restante === 0;
+              const statusD = STATUS_DIVIDA[d.status ?? "em_dia"] ?? STATUS_DIVIDA.em_dia;
+              // Calcula parcelas restantes e previsão de quitação
+              const parcelasTotal = d.total_parcelas ?? (d.parcela_mensal > 0 && d.valor_total > 0
+                ? Math.ceil((d.valor_total - (d.sinal ?? 0)) / d.parcela_mensal)
+                : null);
+              const parcelasRestantes = parcelasTotal != null
+                ? Math.max(0, parcelasTotal - (d.parcelas_pagas ?? 0))
+                : null;
+              // Previsão de quitação
+              let previsaoQuitacao: string | null = null;
+              if (parcelasRestantes != null && parcelasRestantes > 0 && d.vencimento_dia) {
+                const hoje = new Date();
+                const mes = hoje.getMonth() + parcelasRestantes;
+                const previsao = new Date(hoje.getFullYear(), mes, d.vencimento_dia);
+                previsaoQuitacao = previsao.toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
+              }
+              // Valor pago computado (sinal + parcelas pagas × parcela)
+              const valorPagoCalc = (d.sinal ?? 0) + (d.parcelas_pagas ?? 0) * d.parcela_mensal;
+              const valorRestante = Math.max(0, d.valor_total - valorPagoCalc);
+              const progresso = d.valor_total > 0 ? Math.min(100, (valorPagoCalc / d.valor_total) * 100) : 0;
+              const quitada = d.status === "quitada" || valorRestante === 0;
+
               return (
-                <div key={d.id} className={cn("rounded-xl border p-4", quitada ? "border-green-100 bg-green-50/40" : d.ativo ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50 opacity-60")}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-gray-900">{d.credor}</span>
-                        {quitada && <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">QUITADA</span>}
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">{d.categoria}</span>
+                <div key={d.id} className={cn("rounded-xl border p-4 transition-all", statusD.bg, !d.ativo && "opacity-60")}>
+                  {/* Cabeçalho */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-sm font-bold text-gray-900">{d.credor}</span>
+                        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold border", statusD.bg, statusD.cor)}>
+                          {statusD.label}
+                        </span>
+                        <span className="rounded-full bg-white/70 border border-gray-200 px-2 py-0.5 text-[10px] text-gray-500">{d.categoria}</span>
                       </div>
-                      {d.descricao && <p className="text-xs text-gray-400 mt-0.5">{d.descricao}</p>}
+                      {d.descricao && <p className="text-xs text-gray-500 leading-snug">{d.descricao}</p>}
+                      {d.observacoes && <p className="text-xs text-gray-400 mt-0.5 italic">{d.observacoes}</p>}
                     </div>
                     <div className="flex gap-1 ml-2 flex-shrink-0">
-                      <button onClick={() => abrirDiv(d)} className="rounded p-1 text-gray-300 hover:text-gray-600 hover:bg-gray-100"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => excluirDiv(d.id)} className="rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => abrirDiv(d)} className="rounded p-1.5 text-gray-300 hover:text-gray-600 hover:bg-white/60 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => excluirDiv(d.id)} className="rounded p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
 
                   {/* Barra de progresso */}
                   <div className="mb-3">
-                    <div className="flex justify-between text-xs text-gray-400 mb-1">
-                      <span>Pago: {fmt(d.valor_pago)}</span>
-                      <span>Total: {fmt(d.valor_total)}</span>
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>Pago: <strong>{fmt(valorPagoCalc)}</strong>{(d.sinal ?? 0) > 0 && <span className="text-gray-400"> (sinal {fmt(d.sinal)})</span>}</span>
+                      <span>Total: <strong>{fmt(d.valor_total)}</strong></span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-2.5 w-full rounded-full bg-white/60 overflow-hidden border border-white/40">
                       <div
-                        className={cn("h-2 rounded-full transition-all", quitada ? "bg-green-400" : "bg-[#1a6b2f]")}
-                        style={{ width: `${Math.min(progresso, 100)}%` }}
+                        className={cn("h-2.5 rounded-full transition-all", quitada ? "bg-green-500" : d.status === "em_atraso" ? "bg-red-400" : "bg-[#1a6b2f]")}
+                        style={{ width: `${progresso}%` }}
                       />
                     </div>
                     <p className="text-right text-[10px] text-gray-400 mt-0.5">{progresso.toFixed(0)}% quitado</p>
                   </div>
 
-                  <div className="flex items-center gap-4 text-xs text-gray-500">
-                    {!quitada && (
-                      <>
-                        <span>Parcela: <strong className="text-red-600">{fmt(d.parcela_mensal)}/mês</strong></span>
-                        <span>Vence dia <strong>{d.vencimento_dia}</strong></span>
-                        <span>Restante: <strong className="text-gray-700">{fmt(restante)}</strong></span>
-                      </>
+                  {/* Info rodapé em grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="rounded-lg bg-white/60 px-2.5 py-1.5 border border-white/50">
+                      <p className="text-gray-400 text-[10px] uppercase tracking-wide mb-0.5">Parcela</p>
+                      <p className="font-bold text-red-600">{fmt(d.parcela_mensal)}<span className="font-normal text-gray-400">/mês</span></p>
+                    </div>
+                    <div className="rounded-lg bg-white/60 px-2.5 py-1.5 border border-white/50">
+                      <p className="text-gray-400 text-[10px] uppercase tracking-wide mb-0.5">Vencimento</p>
+                      <p className="font-semibold text-gray-700">Dia {d.vencimento_dia}</p>
+                    </div>
+                    {parcelasTotal != null && (
+                      <div className="rounded-lg bg-white/60 px-2.5 py-1.5 border border-white/50">
+                        <p className="text-gray-400 text-[10px] uppercase tracking-wide mb-0.5">Parcelas</p>
+                        <p className="font-semibold text-gray-700">
+                          {d.parcelas_pagas ?? 0}/{parcelasTotal}
+                          {parcelasRestantes != null && <span className="text-gray-400 font-normal"> ({parcelasRestantes} rest.)</span>}
+                        </p>
+                      </div>
                     )}
-                    {quitada && <span className="text-green-600 font-medium">✓ Dívida quitada</span>}
+                    <div className="rounded-lg bg-white/60 px-2.5 py-1.5 border border-white/50">
+                      <p className="text-gray-400 text-[10px] uppercase tracking-wide mb-0.5">
+                        {quitada ? "Quitada" : "Restante"}
+                      </p>
+                      {quitada
+                        ? <p className="font-bold text-green-600">✓ Paga</p>
+                        : <p className="font-bold text-gray-800">{fmt(valorRestante)}</p>
+                      }
+                    </div>
+                    {previsaoQuitacao && !quitada && (
+                      <div className="col-span-2 sm:col-span-4 rounded-lg bg-white/60 px-2.5 py-1.5 border border-white/50 flex items-center gap-1.5">
+                        <span className="text-gray-400 text-[10px] uppercase tracking-wide">Previsão de quitação:</span>
+                        <span className="font-semibold text-gray-700 text-xs">{previsaoQuitacao}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -2137,31 +2213,53 @@ function FinanceiroPage() {
       {/* ══ Modal Dívida ══ */}
       {modalDiv && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalDiv(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-5 flex items-center justify-between">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl flex flex-col max-h-[90vh]">
+            {/* Header fixo */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-lg font-semibold text-gray-900">{selDiv ? "Editar Dívida" : "Nova Dívida"}</h2>
               <button onClick={() => setModalDiv(false)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Credor *</label>
-                <input type="text" value={formDiv.credor || ""} onChange={e => setFormDiv({ ...formDiv, credor: e.target.value })}
-                  placeholder="Ex: Banco Itaú, Fornecedor X…"
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+
+            {/* Corpo scrollável */}
+            <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+
+              {/* Credor + Status */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Credor *</label>
+                  <input type="text" value={formDiv.credor || ""} onChange={e => setFormDiv({ ...formDiv, credor: e.target.value })}
+                    placeholder="Ex: Banco Itaú, Fornecedor X…"
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Status</label>
+                  <select value={formDiv.status || "em_dia"} onChange={e => setFormDiv({ ...formDiv, status: e.target.value as Divida["status"] })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
+                    {Object.entries(STATUS_DIVIDA).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
+              {/* Descrição */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Descrição</label>
                 <input type="text" value={formDiv.descricao || ""} onChange={e => setFormDiv({ ...formDiv, descricao: e.target.value })}
                   placeholder="Ex: Financiamento caminhonete, Empréstimo capital…"
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
               </div>
+
+              {/* Categoria */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Categoria</label>
-                <select value={formDiv.categoria || "Empréstimo bancário"} onChange={e => setFormDiv({ ...formDiv, categoria: e.target.value })}
+                <select value={formDiv.categoria || "🏦 Banco / Financeira"} onChange={e => setFormDiv({ ...formDiv, categoria: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
                   {CATS_DIVIDA.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+
+              {/* Valores */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">Valor total (R$)</label>
@@ -2169,36 +2267,81 @@ function FinanceiroPage() {
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Já pago (R$)</label>
-                  <input type="number" min={0} step={100} value={formDiv.valor_pago ?? 0} onChange={e => setFormDiv({ ...formDiv, valor_pago: Number(e.target.value) })}
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Sinal / Entrada (R$)</label>
+                  <input type="number" min={0} step={100} value={formDiv.sinal ?? 0} onChange={e => setFormDiv({ ...formDiv, sinal: Number(e.target.value) })}
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
               </div>
+
+              {/* Parcelas */}
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Parcelas</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-600">Valor/mês (R$)</label>
+                    <input type="number" min={0} step={10} value={formDiv.parcela_mensal ?? 0} onChange={e => setFormDiv({ ...formDiv, parcela_mensal: Number(e.target.value) })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-600">Pagas</label>
+                    <input type="number" min={0} step={1} value={formDiv.parcelas_pagas ?? 0} onChange={e => setFormDiv({ ...formDiv, parcelas_pagas: Number(e.target.value) })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-600">Total (opcional)</label>
+                    <input type="number" min={0} step={1}
+                      value={formDiv.total_parcelas ?? ""}
+                      onChange={e => setFormDiv({ ...formDiv, total_parcelas: e.target.value ? Number(e.target.value) : null })}
+                      placeholder="—"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#1a6b2f]" />
+                  </div>
+                </div>
+                {/* Preview previsão */}
+                {(formDiv.total_parcelas ?? 0) > 0 && (formDiv.parcelas_pagas ?? 0) >= 0 && (formDiv.vencimento_dia ?? 0) > 0 && (() => {
+                  const restantes = (formDiv.total_parcelas ?? 0) - (formDiv.parcelas_pagas ?? 0);
+                  if (restantes > 0) {
+                    const hoje = new Date();
+                    const previsao = new Date(hoje.getFullYear(), hoje.getMonth() + restantes, formDiv.vencimento_dia ?? 10);
+                    return <p className="text-xs text-gray-500">📅 Previsão de quitação: <strong>{previsao.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong></p>;
+                  }
+                  return null;
+                })()}
+              </div>
+
+              {/* Vencimento + Data início */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Parcela mensal (R$)</label>
-                  <input type="number" min={0} step={10} value={formDiv.parcela_mensal ?? 0} onChange={e => setFormDiv({ ...formDiv, parcela_mensal: Number(e.target.value) })}
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Vence dia</label>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Vence dia do mês</label>
                   <input type="number" min={1} max={28} value={formDiv.vencimento_dia ?? 10} onChange={e => setFormDiv({ ...formDiv, vencimento_dia: Number(e.target.value) })}
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Data de início</label>
+                  <input type="date" value={formDiv.data_inicio || ""} onChange={e => setFormDiv({ ...formDiv, data_inicio: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                </div>
               </div>
+
+              {/* Observações */}
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Data de início</label>
-                <input type="date" value={formDiv.data_inicio || ""} onChange={e => setFormDiv({ ...formDiv, data_inicio: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Observações</label>
+                <textarea value={formDiv.observacoes || ""} onChange={e => setFormDiv({ ...formDiv, observacoes: e.target.value })}
+                  placeholder="Notas sobre negociação, histórico, contato…"
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] resize-none" />
               </div>
+
+              {/* Ativo */}
               <div className="flex items-center gap-3">
                 <input type="checkbox" id="ativo-div" checked={formDiv.ativo ?? true} onChange={e => setFormDiv({ ...formDiv, ativo: e.target.checked })} className="rounded border-gray-300 text-[#1a6b2f]" />
                 <label htmlFor="ativo-div" className="text-sm text-gray-700">Ativa (entra nos cálculos)</label>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setModalDiv(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
-                <button onClick={salvarDiv} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
-              </div>
+            </div>
+
+            {/* Footer fixo */}
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
+              <button onClick={() => setModalDiv(false)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+              <button onClick={salvarDiv} className="flex-1 rounded-lg bg-[#1a6b2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">Salvar</button>
             </div>
           </div>
         </div>
