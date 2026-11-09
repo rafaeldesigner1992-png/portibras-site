@@ -33,6 +33,7 @@ interface Cliente {
   tipo_edificio: string | null;
   qtd_andares: number | null;
   qtd_portas_cf: number | null;
+  perfil_tecnico: string | null;
   status: "ativo" | "inativo" | "prospect";
   data_ultima_vistoria: string | null;
   observacoes: string | null;
@@ -89,7 +90,7 @@ const EMPTY_FORM = {
   nome: "", cnpj: "", endereco: "", bairro: "", cidade: "Rio de Janeiro", uf: "RJ",
   cep: "", sindico: "", telefone: "", whatsapp: "", email: "",
   email_financeiro: "", telefone_financeiro: "", tipo_edificio: "",
-  qtd_andares: "", qtd_portas_cf: "", status: "ativo" as const, data_ultima_vistoria: "", observacoes: "",
+  qtd_andares: "", qtd_portas_cf: "", perfil_tecnico: "", status: "ativo" as const, data_ultima_vistoria: "", observacoes: "",
 };
 
 type FormData = typeof EMPTY_FORM;
@@ -266,6 +267,12 @@ function FormCliente({
             <input className="input-field" type="email" value={form.email_financeiro} onChange={e => set("email_financeiro", e.target.value)} placeholder="financeiro@..." />
           </div>
         </div>
+      </div>
+
+      {/* Perfil técnico */}
+      <div>
+        <label className="label-field">Perfil Técnico</label>
+        <input className="input-field" value={form.perfil_tecnico} onChange={e => set("perfil_tecnico", e.target.value)} placeholder="Ex: Alta pressão, hidrante, sprinkler..." />
       </div>
 
       {/* Status e última vistoria */}
@@ -468,10 +475,11 @@ function PainelDetalhe({ cliente, onClose, onEdit }: {
               </section>
             )}
             {/* Técnico */}
-            {(cliente.qtd_andares || cliente.qtd_portas_cf || cliente.data_ultima_vistoria) && (
+            {(cliente.qtd_andares || cliente.qtd_portas_cf || cliente.data_ultima_vistoria || cliente.perfil_tecnico) && (
               <section>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Dados Técnicos</p>
                 <div className="space-y-1.5">
+                  {cliente.perfil_tecnico && <Row icon={<Wrench className="h-3.5 w-3.5" />} label="Perfil Técnico" value={cliente.perfil_tecnico} />}
                   {cliente.qtd_andares && <Row icon={<Building2 className="h-3.5 w-3.5" />} label="Andares" value={String(cliente.qtd_andares)} />}
                   {cliente.qtd_portas_cf && <Row icon={<Wrench className="h-3.5 w-3.5" />} label="Portas CF" value={String(cliente.qtd_portas_cf)} />}
                   {cliente.data_ultima_vistoria && <Row icon={<History className="h-3.5 w-3.5" />} label="Última Vistoria" value={new Date(cliente.data_ultima_vistoria).toLocaleDateString("pt-BR")} />}
@@ -946,6 +954,7 @@ function ClientesPage() {
       tipo_edificio: form.tipo_edificio || null,
       qtd_andares: form.qtd_andares ? parseInt(form.qtd_andares) : null,
       qtd_portas_cf: form.qtd_portas_cf ? parseInt(form.qtd_portas_cf) : null,
+      perfil_tecnico: form.perfil_tecnico || null,
       status: form.status,
       data_ultima_vistoria: form.data_ultima_vistoria || null,
       observacoes: form.observacoes || null,
@@ -1108,6 +1117,7 @@ function ClientesPage() {
                   tipo_edificio: editando.tipo_edificio || "",
                   qtd_andares: editando.qtd_andares ? String(editando.qtd_andares) : "",
                   qtd_portas_cf: editando.qtd_portas_cf ? String(editando.qtd_portas_cf) : "",
+                  perfil_tecnico: editando.perfil_tecnico || "",
                   status: editando.status,
                   data_ultima_vistoria: editando.data_ultima_vistoria || "",
                   observacoes: editando.observacoes || "",
