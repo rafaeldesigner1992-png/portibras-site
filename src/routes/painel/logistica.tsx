@@ -3960,43 +3960,92 @@ function LogisticaPage() {
                                   ))}
                                   {clientes.length > 5 && <span className="text-[10px] text-gray-400">+{clientes.length - 5}</span>}
                                 </div>
-                                {/* Comparativo */}
-                                <div className="flex gap-4 flex-wrap">
-                                  <div className={cn(
-                                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
-                                    !melhorAirbnb ? "bg-green-50 border border-green-200 text-green-700" : "bg-gray-100 text-gray-500"
-                                  )}>
-                                    🚗 Deslocamento diário
-                                    <span className="font-bold">R$ {custoDeslocamento.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                                    <span className="text-[10px] opacity-70">{diasComAtend}× {configCusto.kmBase}km × R$ {configCusto.custoPorKm.toFixed(2)}/km</span>
-                                  </div>
-                                  {noitesNecessarias > 0 && (
-                                    <div className={cn(
-                                      "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
-                                      melhorAirbnb ? "bg-blue-50 border border-blue-200 text-blue-700" : "bg-gray-100 text-gray-500"
-                                    )}>
-                                      🏠 Airbnb {noitesNecessarias} noite{noitesNecessarias !== 1 ? "s" : ""}
-                                      <span className="font-bold">R$ {custoAirbnb.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                                      <span className="text-[10px] opacity-70">{noitesNecessarias}× R${configCusto.airbnbPorNoite} + refeições</span>
+                                {/* Comparativo em tabela unitário + total */}
+                                {(() => {
+                                  const fmtR = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                  const custoKmUn = configCusto.kmBase * configCusto.custoPorKm;
+                                  const custoAirbnbNoiteUn = configCusto.airbnbPorNoite;
+                                  const custoRefeicaoUn = configCusto.refeicaoFora;
+                                  return (
+                                    <div className="w-full mt-1 overflow-x-auto">
+                                      <table className="w-full text-[11px] border-collapse">
+                                        <thead>
+                                          <tr className="text-gray-400 text-left">
+                                            <th className="pb-1 pr-3 font-medium w-[160px]">Item</th>
+                                            <th className="pb-1 pr-3 font-medium text-right">Qtd</th>
+                                            <th className="pb-1 pr-3 font-medium text-right">Unitário</th>
+                                            <th className="pb-1 font-medium text-right">Total</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                          {/* Bloco deslocamento */}
+                                          <tr className="text-gray-600">
+                                            <td className="py-1 pr-3 font-medium text-gray-700" colSpan={4}>
+                                              <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">🚗 Opção 1 — Deslocamento diário</span>
+                                            </td>
+                                          </tr>
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3">Combustível/km ({configCusto.kmBase} km/dia)</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * custoKmUn)}</td>
+                                          </tr>
+                                          <tr className="text-gray-500 font-semibold border-t border-gray-200">
+                                            <td className="pt-1 pr-3" colSpan={3}>Total opção 1</td>
+                                            <td className={cn("pt-1 text-right tabular-nums", !melhorAirbnb ? "text-green-700" : "text-gray-700")}>{fmtR(custoDeslocamento)}</td>
+                                          </tr>
+                                          {/* Bloco Airbnb */}
+                                          {noitesNecessarias > 0 && (<>
+                                          <tr className="text-gray-600">
+                                            <td className="pt-3 pr-3 font-medium text-gray-700" colSpan={4}>
+                                              <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">🏠 Opção 2 — Airbnb na região</span>
+                                            </td>
+                                          </tr>
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3">Hospedagem</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{noitesNecessarias} noite{noitesNecessarias !== 1 ? "s" : ""}</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoAirbnbNoiteUn)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(noitesNecessarias * custoAirbnbNoiteUn)}</td>
+                                          </tr>
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3">Refeições fora</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend} dia{diasComAtend !== 1 ? "s" : ""}</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoRefeicaoUn)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * custoRefeicaoUn)}</td>
+                                          </tr>
+                                          <tr className="text-gray-500 font-semibold border-t border-gray-200">
+                                            <td className="pt-1 pr-3" colSpan={3}>Total opção 2</td>
+                                            <td className={cn("pt-1 text-right tabular-nums", melhorAirbnb ? "text-blue-700" : "text-gray-700")}>{fmtR(custoAirbnb)}</td>
+                                          </tr>
+                                          {/* Recomendação */}
+                                          <tr>
+                                            <td colSpan={4} className="pt-2">
+                                              <div className={cn(
+                                                "rounded-lg px-3 py-1.5 text-xs font-bold text-center",
+                                                melhorAirbnb ? "bg-blue-50 text-blue-800 border border-blue-200" : "bg-green-50 text-green-800 border border-green-200"
+                                              )}>
+                                                {melhorAirbnb
+                                                  ? `💡 Airbnb economiza ${fmtR(economiaSeDormir)} essa semana`
+                                                  : `✅ Ir e voltar todo dia é R$ ${fmtR(Math.abs(economiaSeDormir))} mais barato`
+                                                }
+                                              </div>
+                                            </td>
+                                          </tr>
+                                          </>)}
+                                          {noitesNecessarias === 0 && (
+                                          <tr>
+                                            <td colSpan={4} className="pt-2">
+                                              <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-xs font-bold text-center text-green-800">
+                                                ✅ Apenas 1 dia — ir e voltar sem necessidade de hospedagem
+                                              </div>
+                                            </td>
+                                          </tr>
+                                          )}
+                                        </tbody>
+                                      </table>
                                     </div>
-                                  )}
-                                  {noitesNecessarias > 0 && (
-                                    <div className={cn(
-                                      "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold",
-                                      melhorAirbnb ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
-                                    )}>
-                                      {melhorAirbnb
-                                        ? `💡 Airbnb economiza R$ ${economiaSeDormir.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-                                        : `✅ Ir/voltar é mais barato (R$ ${Math.abs(economiaSeDormir).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} de diferença)`
-                                      }
-                                    </div>
-                                  )}
-                                  {noitesNecessarias === 0 && (
-                                    <div className="flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700">
-                                      ✅ 1 dia — ir e voltar
-                                    </div>
-                                  )}
-                                </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
