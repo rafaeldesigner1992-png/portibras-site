@@ -997,6 +997,63 @@ function LogisticaPage() {
     temAtendBarra: false,    // flag: semana tem cliente na Barra?
   });
   const [modalConfigCusto, setModalConfigCusto] = useState(false);
+  // Cache de km calculados por semana: chave → km total real
+  const [kmPorSemana, setKmPorSemana] = useState<Record<string, number>>({});
+  const [calculandoKm, setCalculandoKm] = useState<Record<string, boolean>>({});
+
+  const GMAPS_KEY = "AIzaSyBFAgV8Sz31uMReMajxQEJuqJFbXmlcF8E";
+  const ORIGEM_BASE = "São Pedro da Aldeia, RJ, Brasil";
+
+  // Calcula km real de uma semana usando Google Maps Distance Matrix API
+  async function calcularKmSemana(chaveSem: string, atends: Atendimento[]) {
+    // Extrai endereços únicos com data
+    const endsPorDia: Record<string, string[]> = {};
+    atends.forEach(a => {
+      if (a.data_agendada && a.endereco) {
+        if (!endsPorDia[a.data_agendada]) endsPorDia[a.data_agendada] = [];
+        endsPorDia[a.data_agendada].push(a.endereco);
+      }
+    });
+    const dias = Object.keys(endsPorDia);
+    if (dias.length === 0) return;
+
+    setCalculandoKm(prev => ({ ...prev, [chaveSem]: true }));
+    let kmTotal = 0;
+
+    for (const dia of dias) {
+      const endsDia = [...new Set(endsPorDia[dia])];
+      // Rota: origem → destinos → origem
+      const waypoints = endsDia.map(e => encodeURIComponent(e)).join("|");
+      const origemEnc = encodeURIComponent(ORIGEM_BASE);
+      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origemEnc}|${waypoints}&destinations=${waypoints}|${origemEnc}&key=${GMAPS_KEY}&language=pt-BR`;
+      try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.status === "OK" && data.rows?.length > 0) {
+          // Soma km: origem→1º destino + (cada destino→próximo) + último→origem
+          const n = endsDia.length;
+          // Linha 0 (origem): destino 0
+          const idaKm = (data.rows[0]?.elements[0]?.distance?.value || 0) / 1000;
+          // Última linha (último destino): última coluna (origem)
+          const voltaKm = (data.rows[n]?.elements[n]?.distance?.value || 0) / 1000;
+          // Trajetos entre destinos
+          let entreKm = 0;
+          for (let i = 0; i < n - 1; i++) {
+            entreKm += (data.rows[i + 1]?.elements[i + 1]?.distance?.value || 0) / 1000;
+          }
+          kmTotal += idaKm + entreKm + voltaKm;
+        } else {
+          // Fallback: usa kmBase se API falhar
+          kmTotal += configCusto.kmBase;
+        }
+      } catch {
+        kmTotal += configCusto.kmBase;
+      }
+    }
+
+    setKmPorSemana(prev => ({ ...prev, [chaveSem]: Math.round(kmTotal) }));
+    setCalculandoKm(prev => ({ ...prev, [chaveSem]: false }));
+  }
 
   // Calcula a "chave de semana" ISO (YYYY-WNN) de uma data
   function chaveSemanaDaData(d: Date): string {
@@ -3958,7 +4015,10 @@ function LogisticaPage() {
                           + configCusto.pedagioManilha       // Manilha só na ida
                           + configCusto.pedagogioPonte       // Ponte só na volta
                           + (configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0);
-                        const custoCombustivel = diasComAtend * configCusto.kmBase * configCusto.custoPorKm;
+                        // Usa km real calculado pela API (se disponível) ou fallback fixo
+                        const kmSemana = kmPorSemana[chaveSem] ?? (diasComAtend * configCusto.kmBase);
+                        const estaCalculandoKm = calculandoKm[chaveSem] ?? false;
+                        const custoCombustivel = kmSemana * configCusto.custoPorKm;
                         const custoPedagios = diasComAtend * pedagioDiario;
                         const custoDeslocamento = custoCombustivel + custoPedagios;
                         const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
@@ -3987,7 +4047,9 @@ function LogisticaPage() {
                                 {/* Comparativo em tabela unitário + total */}
                                 {(() => {
                                   const fmtR = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                  const custoKmUn = configCusto.kmBase * configCusto.custoPorKm;
+                                  const kmReal = kmPorSemana[chaveSem];
+                                  const kmExibido = kmReal ?? (diasComAtend * configCusto.kmBase);
+                                  const custoKmUn = kmExibido * configCusto.custoPorKm / Math.max(diasComAtend, 1);
                                   const custoAirbnbNoiteUn = configCusto.airbnbPorNoite;
                                   const custoRefeicaoUn = configCusto.refeicaoFora;
                                   return (
@@ -4009,10 +4071,23 @@ function LogisticaPage() {
                                             </td>
                                           </tr>
                                           <tr className="text-gray-600">
-                                            <td className="py-0.5 pr-3">Combustível ({configCusto.kmBase} km/dia)</td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn)}</td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * custoKmUn)}</td>
+                                            <td className="py-0.5 pr-3">
+                                              Combustível
+                                              {kmReal
+                                                ? <span className="ml-1 text-[9px] text-green-600 font-medium">📍 {kmReal} km reais</span>
+                                                : <span className="ml-1 text-[9px] text-gray-400">({diasComAtend}×{configCusto.kmBase} km est.)</span>
+                                              }
+                                            </td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">
+                                              {estaCalculandoKm
+                                                ? <span className="text-[9px] text-blue-500 animate-pulse">calc…</span>
+                                                : kmReal
+                                                  ? <span className="text-[9px] text-green-600">{kmReal} km</span>
+                                                  : <button onClick={() => calcularKmSemana(chaveSem, atends)} className="text-[9px] text-blue-500 hover:underline">📍 calc</button>
+                                              }
+                                            </td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn)}/dia</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(kmExibido * configCusto.custoPorKm)}</td>
                                           </tr>
                                           <tr className="text-gray-600">
                                             <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Via Lagos (ida + volta)</td>
