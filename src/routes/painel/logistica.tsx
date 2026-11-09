@@ -956,6 +956,7 @@ function LogisticaPage() {
   const [formAtend, setFormAtend] = useState<typeof EMPTY_ATEND>({ ...EMPTY_ATEND });
   const [salvandoAtend, setSalvandoAtend] = useState(false);
   const [filtroStatusAtend, setFiltroStatusAtend] = useState<string>("todos");
+  const [filtroClassAtend, setFiltroClassAtend] = useState<string>("todos");
   const [buscaVinculo, setBuscaVinculo] = useState("");
   const [atendAberto, setAtendAberto] = useState<string | null>(null);
   const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("lista");
@@ -3502,9 +3503,20 @@ function LogisticaPage() {
                 📅 Calendário
               </button>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {subAbaAtend === "lista" && (
                 <div className="flex gap-1.5 flex-wrap">
+                  {/* Filtro por classificação */}
+                  {["todos", "Vistoria", "Serviço", "Retorno", "Operacional"].map(c => (
+                    <button key={c} onClick={() => setFiltroClassAtend(c)}
+                      className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors border",
+                        filtroClassAtend === c
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
+                      {c === "todos" ? "🔀 Todos" : c === "Vistoria" ? "🔍 Vistorias" : c}
+                    </button>
+                  ))}
+                  <span className="text-gray-300 mx-1">|</span>
                   {["todos", "Programado", "Em andamento", "Concluído", "Cancelado"].map(s => (
                     <button key={s} onClick={() => setFiltroStatusAtend(s)}
                       className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors",
@@ -3624,9 +3636,24 @@ function LogisticaPage() {
           ) : (
             <div className="space-y-3">
               {atendimentos
-                .filter(a => filtroStatusAtend === "todos" || a.status === filtroStatusAtend)
+                .filter(a =>
+                  (filtroStatusAtend === "todos" || a.status === filtroStatusAtend) &&
+                  (filtroClassAtend === "todos" || a.classificacao === filtroClassAtend)
+                )
+                .sort((a, b) => {
+                  // Sem data agendada (precisam de atenção) → topo
+                  if (!a.data_agendada && b.data_agendada) return -1;
+                  if (a.data_agendada && !b.data_agendada) return 1;
+                  if (!a.data_agendada && !b.data_agendada) return 0;
+                  return new Date(b.data_agendada!).getTime() - new Date(a.data_agendada!).getTime();
+                })
                 .map(atend => (
-                  <div key={atend.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div key={atend.id} className={cn("rounded-xl border bg-white shadow-sm", !atend.data_agendada && atend.status === "Programado" ? "border-orange-300" : "border-gray-200")}>
+                    {!atend.data_agendada && atend.status === "Programado" && (
+                      <div className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-50 rounded-t-xl border-b border-orange-200 text-xs font-medium text-orange-700">
+                        <CalendarIcon className="h-3 w-3" /> Aguardando agendamento
+                      </div>
+                    )}
                     <div className="flex items-center justify-between p-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <div>
