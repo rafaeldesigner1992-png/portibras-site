@@ -1260,10 +1260,11 @@ function LogisticaPage() {
 
   async function carregarCompras(atendimentosParam?: Atendimento[]) {
     setCarregandoCompras(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("logistica_compras")
       .select("*")
       .order("criado_em", { ascending: false });
+    if (error) { console.error("[carregarCompras] erro:", error); setCarregandoCompras(false); return; }
     if (!data) { setCarregandoCompras(false); return; }
     // Buscar vínculos
     const ids = data.map((c: Compra) => c.id);
@@ -1310,7 +1311,8 @@ function LogisticaPage() {
       // Remover vínculos antigos
       await supabase.from("logistica_compras_atendimentos").delete().eq("compra_id", compraEditando);
     } else {
-      const { data } = await supabase.from("logistica_compras").insert(payload).select().single();
+      const { data, error } = await supabase.from("logistica_compras").insert(payload).select().single();
+      console.log("[salvarCompra] insert result:", { data, error });
       compraId = data?.id ?? null;
     }
     // Inserir novos vínculos de atendimento (legado)
