@@ -969,6 +969,8 @@ function LogisticaPage() {
   const [selAtend, setSelAtend] = useState<Atendimento | null>(null);
   const [formAtend, setFormAtend] = useState<typeof EMPTY_ATEND>({ ...EMPTY_ATEND });
   const [salvandoAtend, setSalvandoAtend] = useState(false);
+  const [gerandoAppSheet, setGerandoAppSheet] = useState<"servico" | "vistoria" | null>(null);
+  const [appSheetStatus, setAppSheetStatus] = useState<{ tipo: "servico" | "vistoria"; ok: boolean; msg: string } | null>(null);
   const [filtroStatusAtend, setFiltroStatusAtend] = useState<string>("todos");
   const [filtroClassAtend, setFiltroClassAtend] = useState<string>("todos");
   const [buscaVinculo, setBuscaVinculo] = useState("");
@@ -1947,6 +1949,7 @@ function LogisticaPage() {
 
   function abrirModalAtend(atend?: Atendimento) {
     setBuscaVinculo("");
+    setAppSheetStatus(null);
     if (atend) {
       setSelAtend(atend);
       setFormAtend({
@@ -2041,6 +2044,66 @@ function LogisticaPage() {
     setModalAtend(false);
     await carregarAtendimentos();
     setSalvandoAtend(false);
+  }
+
+  async function gerarAppSheet(tipo: "servico" | "vistoria") {
+    setGerandoAppSheet(tipo);
+    setAppSheetStatus(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      // Tenta encontrar o cliente_id pelo título/nome
+      const nomeCliente = formAtend.titulo || formAtend.cliente_nome || "";
+      let idCliente: string | null = null;
+      if (nomeCliente) {
+        const { data: clienteMatch } = await supabase
+          .from("clientes")
+          .select("id")
+          .ilike("nome", `%${nomeCliente.split("—")[0].trim()}%`)
+          .limit(1)
+          .maybeSingle();
+        idCliente = clienteMatch?.id ?? null;
+      }
+
+      const payload = {
+        tipo,
+        data        : formAtend.data_agendada || null,
+        hora_inicio : formAtend.hora_inicio || null,
+        endereco    : formAtend.endereco || null,
+        titulo      : formAtend.titulo,
+        id_cliente  : idCliente,
+        tecnico     : formAtend.responsaveis[0] ?? null,
+        descricao   : formAtend.atividade || formAtend.descricao || null,
+        atendimento_id: selAtend?.id ?? "novo",
+      };
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/appsheet-criar-atividade`,
+        {
+          method : "POST",
+          headers: {
+            "Content-Type" : "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro desconhecido");
+
+      setAppSheetStatus({
+        tipo,
+        ok : true,
+        msg: tipo === "servico"
+          ? `Serviço criado no AppSheet (ID: ${json.id_gerado})`
+          : `Vistoria criada no AppSheet (ID: ${json.id_gerado})`,
+      });
+    } catch (err) {
+      setAppSheetStatus({ tipo, ok: false, msg: String(err) });
+    } finally {
+      setGerandoAppSheet(null);
+    }
   }
 
   function enviarEmailStatusAtend(
@@ -5118,8 +5181,37 @@ function LogisticaPage() {
                     </div>
                   )}
                 </div>
+                {/* ── Gerar no AppSheet ── */}
+                <div className="border-t border-gray-100 px-6 pt-4 pb-2">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Gerar no AppSheet</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => gerarAppSheet("servico")}
+                      disabled={!!gerandoAppSheet || !formAtend.titulo.trim()}
+                      className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+                    >
+                      {gerandoAppSheet === "servico" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span>🔧</span>}
+                      Gerar Serviço (DTE)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => gerarAppSheet("vistoria")}
+                      disabled={!!gerandoAppSheet || !formAtend.titulo.trim()}
+                      className="flex items-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50 transition-colors"
+                    >
+                      {gerandoAppSheet === "vistoria" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span>🔍</span>}
+                      Gerar Vistoria (DTS)
+                    </button>
+                  </div>
+                  {appSheetStatus && (
+                    <p className={cn("mt-2 text-xs font-medium", appSheetStatus.ok ? "text-emerald-700" : "text-red-600")}>
+                      {appSheetStatus.ok ? "✓" : "✗"} {appSheetStatus.msg}
+                    </p>
+                  )}
+                </div>
                 <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
-                  <button onClick={() => setModalAtend(false)} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+                  <button onClick={() => { setModalAtend(false); setAppSheetStatus(null); }} className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
                   <button onClick={salvarAtend} disabled={salvandoAtend || !formAtend.titulo.trim()}
                     className="flex items-center gap-2 rounded-lg bg-[#1a6b2f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155824] disabled:opacity-50">
                     {salvandoAtend ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : "Salvar"}
