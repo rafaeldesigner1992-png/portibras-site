@@ -4290,12 +4290,23 @@ function CrmPage() {
   async function enviarParaVistoria(lead: Lead) {
     if (!confirm(`Enviar "${lead.nome}" para vistoria?\n\nUm atendimento de Vistoria será criado na Logística.`)) return;
     try {
+      // Resolve endereço: tenta campos do lead, senão busca no cliente vinculado
+      let enderecoFinal = lead.endereco_atendimento || lead.endereco_fiscal || null;
+      if (!enderecoFinal && lead.cliente_id) {
+        const { data: clienteData } = await supabase
+          .from("clientes")
+          .select("endereco")
+          .eq("id", lead.cliente_id)
+          .single();
+        enderecoFinal = clienteData?.endereco || null;
+      }
+
       // Cria atendimento classificado como Vistoria diretamente na tabela de atendimentos
       const { error } = await supabase.from("atendimentos").insert({
         titulo: `Vistoria — ${lead.nome}`,
         classificacao: "Vistoria",
         status: "Programado",
-        endereco: lead.endereco_atendimento || lead.endereco_fiscal || null,
+        endereco: enderecoFinal,
         cliente_nome: lead.nome,
         cliente_email: lead.email ?? null,
         responsaveis: [],
