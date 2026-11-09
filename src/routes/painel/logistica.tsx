@@ -3462,12 +3462,21 @@ function LogisticaPage() {
                           : <p className="text-xs text-orange-600 font-medium mt-0.5">⏳ Sem data — clique em Agendar</p>
                         }
                       </div>
-                      <button
-                        onClick={() => abrirModalAtend(v)}
-                        className="shrink-0 flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
-                      >
-                        <CalendarIcon className="h-3.5 w-3.5" /> Agendar
-                      </button>
+                      <div className="shrink-0 flex items-center gap-2">
+                        <button
+                          onClick={() => abrirModalAtend(v)}
+                          className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
+                        >
+                          <CalendarIcon className="h-3.5 w-3.5" /> Agendar
+                        </button>
+                        <button
+                          onClick={() => excluirAtend(v.id)}
+                          className="flex items-center justify-center rounded-lg border border-red-200 bg-white p-2 text-red-400 hover:bg-red-50 hover:text-red-600"
+                          title="Excluir vistoria"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
