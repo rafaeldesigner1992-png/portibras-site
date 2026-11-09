@@ -986,6 +986,10 @@ function LogisticaPage() {
     custoPorKm: 0.70,     // R$/km (combustível + desgaste)
     airbnbPorNoite: 150,  // R$/noite (média Airbnb região)
     refeicaoFora: 60,     // R$/dia extra em alimentação quando fora
+    // Pedágios por trecho (ida) — cobrados ida + volta = ×2
+    pedagioViaLagos: 36.80,    // 1 praça × R$ 18,40/eixo × 2 eixos (dias úteis)
+    pedagogioPonte: 6.60,       // Ponte Rio-Niterói (desde mar/2026)
+    pedagioLinhaAmarela: 7.50,  // Linha Amarela (estimativa)
   });
   const [modalConfigCusto, setModalConfigCusto] = useState(false);
 
@@ -3831,8 +3835,9 @@ function LogisticaPage() {
                           atendsSem.filter(a => a.data_agendada).map(a => a.data_agendada)
                         ).size;
                         if (atendsSem.length === 0 && !fechada) return null;
-                        // Cálculo de custo
-                        const custoDeslocamento = diasComAtend * configCusto.kmBase * configCusto.custoPorKm;
+                        // Cálculo de custo (inclui pedágios ida+volta)
+                        const pedagioDiarioFaixa = (configCusto.pedagioViaLagos + configCusto.pedagogioPonte + configCusto.pedagioLinhaAmarela) * 2;
+                        const custoDeslocamento = diasComAtend * (configCusto.kmBase * configCusto.custoPorKm + pedagioDiarioFaixa);
                         const noitesNecessarias = Math.max(0, diasComAtend - 1);
                         const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
                           + diasComAtend * configCusto.refeicaoFora;
@@ -3936,7 +3941,11 @@ function LogisticaPage() {
                         const fechada = semanasFechadas[chaveSem] ?? false;
                         const diasComAtend = new Set(atends.filter(a => a.data_agendada).map(a => a.data_agendada)).size;
                         const noitesNecessarias = Math.max(0, diasComAtend - 1);
-                        const custoDeslocamento = diasComAtend * configCusto.kmBase * configCusto.custoPorKm;
+                        // Pedágios: ida + volta por dia = ×2
+                        const pedagioDiario = (configCusto.pedagioViaLagos + configCusto.pedagogioPonte + configCusto.pedagioLinhaAmarela) * 2;
+                        const custoCombustivel = diasComAtend * configCusto.kmBase * configCusto.custoPorKm;
+                        const custoPedagios = diasComAtend * pedagioDiario;
+                        const custoDeslocamento = custoCombustivel + custoPedagios;
                         const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
                           + diasComAtend * configCusto.refeicaoFora;
                         const economiaSeDormir = custoDeslocamento - custoAirbnb;
@@ -3985,10 +3994,28 @@ function LogisticaPage() {
                                             </td>
                                           </tr>
                                           <tr className="text-gray-600">
-                                            <td className="py-0.5 pr-3">Combustível/km ({configCusto.kmBase} km/dia)</td>
+                                            <td className="py-0.5 pr-3">Combustível ({configCusto.kmBase} km/dia)</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn)}</td>
                                             <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * custoKmUn)}</td>
+                                          </tr>
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Via Lagos (ida+volta)</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagioViaLagos * 2)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagioViaLagos * 2)}</td>
+                                          </tr>
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Ponte Rio-Niterói (ida+volta)</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagogioPonte * 2)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagogioPonte * 2)}</td>
+                                          </tr>
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Linha Amarela (ida+volta)</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagioLinhaAmarela * 2)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagioLinhaAmarela * 2)}</td>
                                           </tr>
                                           <tr className="text-gray-500 font-semibold border-t border-gray-200">
                                             <td className="pt-1 pr-3" colSpan={3}>Total opção 1</td>
@@ -4087,23 +4114,29 @@ function LogisticaPage() {
                     </div>
                     <div className="space-y-3">
                       {[
-                        { label: "Km por dia (ida + volta)", field: "kmBase", suffix: "km" },
-                        { label: "Custo por km (R$)", field: "custoPorKm", suffix: "R$/km" },
-                        { label: "Airbnb por noite (R$)", field: "airbnbPorNoite", suffix: "R$/noite" },
-                        { label: "Extra em refeições por dia (R$)", field: "refeicaoFora", suffix: "R$/dia" },
-                      ].map(({ label, field, suffix }) => (
-                        <div key={field} className="flex items-center justify-between gap-3">
-                          <label className="text-sm text-gray-700 flex-1">{label}</label>
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step={field === "custoPorKm" ? 0.05 : 10}
-                              value={(configCusto as Record<string, number>)[field]}
-                              onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
-                              className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
-                            />
-                            <span className="text-xs text-gray-400 w-14">{suffix}</span>
+                        { label: "Km por dia (ida + volta)", field: "kmBase", suffix: "km", group: "Deslocamento" },
+                        { label: "Custo por km", field: "custoPorKm", suffix: "R$/km", group: "" },
+                        { label: "Via Lagos (1 praça, por trecho)", field: "pedagioViaLagos", suffix: "R$", group: "Pedágios (por trecho — cobrado ×2)" },
+                        { label: "Ponte Rio-Niterói", field: "pedagogioPonte", suffix: "R$", group: "" },
+                        { label: "Linha Amarela", field: "pedagioLinhaAmarela", suffix: "R$", group: "" },
+                        { label: "Airbnb por noite", field: "airbnbPorNoite", suffix: "R$/noite", group: "Hospedagem" },
+                        { label: "Extra em refeições por dia", field: "refeicaoFora", suffix: "R$/dia", group: "" },
+                      ].map(({ label, field, suffix, group }) => (
+                        <div key={field}>
+                          {group ? <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-3 mb-1">{group}</p> : null}
+                          <div className="flex items-center justify-between gap-3">
+                            <label className="text-sm text-gray-700 flex-1">{label}</label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min={0}
+                                step={field === "custoPorKm" ? 0.05 : 1}
+                                value={(configCusto as Record<string, number>)[field]}
+                                onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
+                                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
+                              />
+                              <span className="text-xs text-gray-400 w-14">{suffix}</span>
+                            </div>
                           </div>
                         </div>
                       ))}
