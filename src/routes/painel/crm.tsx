@@ -4289,7 +4289,18 @@ function CrmPage() {
 
   async function excluir(id: string) {
     if (!confirm("Excluir este lead?")) return;
+    // Busca o nome do lead para remover atendimentos de vistoria vinculados
+    const lead = leads.find(l => l.id === id);
     await supabase.from("crm_leads").delete().eq("id", id);
+    // Remove atendimentos de Vistoria não concluídos/cancelados com esse cliente
+    if (lead?.nome) {
+      await supabase
+        .from("atendimentos")
+        .delete()
+        .eq("classificacao", "Vistoria")
+        .eq("cliente_nome", lead.nome)
+        .not("status", "in", '("Concluído","Cancelado")');
+    }
     if (cardAberto?.id === id) setCardAberto(null);
     carregar();
   }
