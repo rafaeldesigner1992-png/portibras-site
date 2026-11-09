@@ -1254,7 +1254,7 @@ function LogisticaPage() {
   const [salvandoCompra, setSalvandoCompra] = useState(false);
   const [compraAberta, setCompraAberta] = useState<string | null>(null);
 
-  async function carregarCompras() {
+  async function carregarCompras(atendimentosParam?: Atendimento[]) {
     setCarregandoCompras(true);
     const { data } = await supabase
       .from("logistica_compras")
@@ -1272,11 +1272,13 @@ function LogisticaPage() {
       if (!mapaVinculos[v.compra_id]) mapaVinculos[v.compra_id] = [];
       mapaVinculos[v.compra_id].push(v.pedido_id);
     }
+    // Usar atendimentos passados como parâmetro (frescos) ou fallback para o estado
+    const listaAtend = atendimentosParam ?? atendimentos;
     // Enriquecer com atendimentos
     const comprasEnriquecidas = data.map((c: Compra) => ({
       ...c,
       pedidos: (mapaVinculos[c.id] ?? [])
-        .map(pid => atendimentos.find(a => a.id === pid))
+        .map(pid => listaAtend.find(a => a.id === pid))
         .filter(Boolean)
         .map(a => ({ id: a!.id, titulo: a!.titulo, classificacao: a!.classificacao })),
     }));
@@ -1358,7 +1360,7 @@ function LogisticaPage() {
     if (aba === "pedidos") carregarPedidosLog();
     if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); }
     if (aba === "gantt") carregarAtendimentos();
-    if (aba === "compras") { carregarAtendimentos().then(() => { carregarCompras(); carregarMatComprar(); }); }
+    if (aba === "compras") { carregarAtendimentos().then((atends) => { carregarCompras(atends); carregarMatComprar(); }); }
     if (aba === "estoque") carregarEstoque();
     if (aba === "vistorias") carregarVistorias();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1477,7 +1479,7 @@ function LogisticaPage() {
     }
   }
 
-  async function carregarAtendimentos() {
+  async function carregarAtendimentos(): Promise<Atendimento[]> {
     setCarregandoAtend(true);
     const [{ data }, { data: tickets }] = await Promise.all([
       supabase.from("atendimentos").select("*").order("data_agendada", { ascending: false }),
@@ -1490,6 +1492,7 @@ function LogisticaPage() {
     if (data) setAtendimentos(data as Atendimento[]);
     if (tickets) setTicketsAbertos(tickets as PedidoLogistico[]);
     setCarregandoAtend(false);
+    return (data as Atendimento[]) ?? [];
   }
 
   function gerarIcal(atend: Atendimento): void {
