@@ -197,8 +197,9 @@ function DashboardPage() {
         metaContratosRes,
         caDespesasRes,
       ] = await Promise.all([
-        // Clientes: status e data_ultima_vistoria para calcular ativo/inativo
-        supabase.from("clientes").select("id, status, data_ultima_vistoria"),
+        // Clientes: status e data_ultima_vistoria
+        // O cron fn_atualizar_status_clientes() mantém o campo status atualizado diariamente
+        supabase.from("clientes").select("id, status, nome, data_ultima_vistoria"),
 
         // Leads do CRM — apenas abertos (não fechados/perdidos)
         supabase.from("crm_leads")
@@ -226,55 +227,42 @@ function DashboardPage() {
           .select("status")
           .eq("status", "Pendente"),
 
-        // CA — faturamento do mês (vendas emitidas)
+        // CA — faturamento do mês (vendas emitidas no mês)
         supabase.from("ca_vendas")
-          .select("valor_total")
+          .select("valor_total, status")
           .gte("data_emissao", mesAtual),
 
         // CA — a receber (cobranças pendentes, tipo receita)
         supabase.from("ca_cobrancas")
-          .select("valor")
-          .eq("status", "pending")
-          .eq("tipo", "receita"),
+          .select("valor, status, tipo")
+          .eq("status", "pending"),
 
         // CA — contratos ativos
         supabase.from("ca_contratos")
-          .select("id")
+          .select("id, valor, status")
           .eq("status", "active"),
 
-        // Meta de contratos da tabela configuracoes
-        supabase.from("configuracoes")
-          .select("valor")
-          .eq("chave", "meta_contratos_ativos")
+        // Meta de contratos da tabela metas_kpis
+        supabase.from("metas_kpis")
+          .select("meta_valor")
+          .eq("indicador", "novos_contratos")
           .maybeSingle(),
 
-        // CA — despesas do mês (tipo despesa ou saida)
+        // CA — despesas do mês (tipo despesa — cobrancas pagas ou pendentes no mês)
         supabase.from("ca_cobrancas")
-          .select("valor")
-          .in("tipo", ["despesa", "saida"])
+          .select("valor, tipo, vencimento")
+          .in("tipo", ["despesa", "saida", "expense"])
           .gte("vencimento", mesAtual),
       ]);
 
-      // ── Clientes: ativo = tem fechamento nos últimos 6 meses
-      // Usamos ca_vendas para calcular clientes com faturamento recente
+      // ── Clientes: o campo status é atualizado automaticamente pelo cron diário
+      // fn_atualizar_status_clientes() compara com ca_vendas dos últimos 6 meses
       const clientesTotais = clientesRes.data ?? [];
-      const totalClientes = clientesTotais.length;
-
-      // Ativos: status 'ativo' E última vistoria nos últimos 6 meses
-      // Inativos: status 'inativo' OU última vistoria > 6 meses atrás
-      const clientesAtivos = clientesTotais.filter(c => {
-        if (c.status === "inativo") return false;
-        if (c.status === "prospect") return false;
-        if (!c.data_ultima_vistoria) return c.status === "ativo";
-        return c.data_ultima_vistoria >= seisAno;
-      }).length;
-
-      const clientesInativos = clientesTotais.filter(c => {
-        if (c.status === "inativo") return true;
-        if (c.status === "prospect") return false;
-        if (!c.data_ultima_vistoria) return false;
-        return c.data_ultima_vistoria < seisAno;
-      }).length;
+      // Exclui prospects da contagem (são leads, não clientes ativos)
+      const clientesSemProspects = clientesTotais.filter(c => c.status !== "prospect");
+      const totalClientes = clientesSemProspects.length;
+      const clientesAtivos = clientesSemProspects.filter(c => c.status === "ativo").length;
+      const clientesInativos = clientesSemProspects.filter(c => c.status === "inativo").length;
 
       // ── CRM — leads por etapa (somente abertos)
       const leads = leadsRes.data ?? [];
@@ -313,15 +301,19 @@ function DashboardPage() {
 
       // ── Conta Azul
       const caVendas = caVendasRes.data ?? [];
+      // Faturamento: soma todas as vendas do mês (emitidas, independente do status)
       const caFaturamento = caVendas.reduce((s, v) => s + (v.valor_total ?? 0), 0);
 
       const caCobrancas = caCobrancasRes.data ?? [];
-      const caReceber = caCobrancas.reduce((s, c) => s + (c.valor ?? 0), 0);
+      // A receber: apenas cobranças do tipo receita pendentes
+      const caReceber = caCobrancas
+        .filter(c => c.tipo === "receita" || c.tipo === "income" || !c.tipo)
+        .reduce((s, c) => s + (c.valor ?? 0), 0);
 
       const caContratos = caContratosRes.data?.length ?? 0;
 
-      const metaContratosValor = metaContratosRes.data?.valor
-        ? parseInt(metaContratosRes.data.valor, 10)
+      const metaContratosValor = metaContratosRes.data?.meta_valor
+        ? Number(metaContratosRes.data.meta_valor)
         : 20; // padrão 20 se não configurado
 
       const caDespesas = caDespesasRes.data ?? [];
