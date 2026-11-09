@@ -1004,7 +1004,7 @@ function LogisticaPage() {
   const GMAPS_KEY = "AIzaSyBFAgV8Sz31uMReMajxQEJuqJFbXmlcF8E";
   const ORIGEM_BASE = "São Pedro da Aldeia, RJ, Brasil";
 
-  // Calcula km real de uma semana usando Google Maps Distance Matrix API
+  // Calcula km real de uma semana usando Google Routes API (substituta da Distance Matrix)
   async function calcularKmSemana(chaveSem: string, atends: Atendimento[]) {
     // Extrai endereços únicos com data
     const endsPorDia: Record<string, string[]> = {};
@@ -1022,32 +1022,53 @@ function LogisticaPage() {
 
     for (const dia of dias) {
       const endsDia = [...new Set(endsPorDia[dia])];
-      // Rota: origem → destinos → origem
-      const waypoints = endsDia.map(e => encodeURIComponent(e)).join("|");
-      const origemEnc = encodeURIComponent(ORIGEM_BASE);
-      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origemEnc}|${waypoints}&destinations=${waypoints}|${origemEnc}&key=${GMAPS_KEY}&language=pt-BR`;
-      try {
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (data.status === "OK" && data.rows?.length > 0) {
-          // Soma km: origem→1º destino + (cada destino→próximo) + último→origem
-          const n = endsDia.length;
-          // Linha 0 (origem): destino 0
-          const idaKm = (data.rows[0]?.elements[0]?.distance?.value || 0) / 1000;
-          // Última linha (último destino): última coluna (origem)
-          const voltaKm = (data.rows[n]?.elements[n]?.distance?.value || 0) / 1000;
-          // Trajetos entre destinos
-          let entreKm = 0;
-          for (let i = 0; i < n - 1; i++) {
-            entreKm += (data.rows[i + 1]?.elements[i + 1]?.distance?.value || 0) / 1000;
+      // Monta waypoints intermediários (exceto origem e destino final)
+      const intermediarios = endsDia.slice(0, -1).map(e => ({
+        location: { address: e }
+      }));
+      const body = {
+        origin: { address: ORIGEM_BASE },
+        destination: { address: ORIGEM_BASE },
+        intermediates: [
+          ...endsDia.map(e => ({ location: { address: e } }))
+        ],
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_UNAWARE",
+        computeAlternativeRoutes: false,
+      };
+      // Se há só 1 destino, vai direto origem→destino→origem com 2 chamadas simples
+      if (endsDia.length === 1) {
+        // Routes API: origem → destino
+        const r1 = await fetch(
+          `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
+            body: JSON.stringify({ origin: { address: ORIGEM_BASE }, destination: { address: endsDia[0] }, travelMode: "DRIVE" }),
           }
-          kmTotal += idaKm + entreKm + voltaKm;
-        } else {
-          // Fallback: usa kmBase se API falhar
+        );
+        const d1 = await r1.json();
+        const kmIda = (d1.routes?.[0]?.distanceMeters || 0) / 1000;
+        kmTotal += kmIda * 2; // ida + volta (mesma distância)
+      } else {
+        try {
+          const resp = await fetch(
+            `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
+              body: JSON.stringify(body),
+            }
+          );
+          const data = await resp.json();
+          if (data.routes?.[0]?.distanceMeters) {
+            kmTotal += data.routes[0].distanceMeters / 1000;
+          } else {
+            kmTotal += configCusto.kmBase;
+          }
+        } catch {
           kmTotal += configCusto.kmBase;
         }
-      } catch {
-        kmTotal += configCusto.kmBase;
       }
     }
 
