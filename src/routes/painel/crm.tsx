@@ -4303,9 +4303,8 @@ function CrmPage() {
 
       if (error) throw error;
 
-      // Atualiza etapa do lead para "vistoria"
-      await supabase.from("crm_leads").update({ etapa: "vistoria" as any }).eq("id", lead.id);
-      setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, etapa: "vistoria" as any } : l));
+      // Marca o lead com selo de vistoria pendente (sem mudar etapa — "vistoria" não é uma etapa válida)
+      setLeadsEmVistoria(prev => new Set([...prev, lead.id]));
 
       // Registra no histórico do lead
       await supabase.from("crm_conversas").insert({
