@@ -226,6 +226,27 @@ function FinanceiroPage() {
     status: "em_dia", parcelas_pagas: 0, total_parcelas: null, sinal: 0, observacoes: "",
   });
 
+  // ── Materiais a Comprar (para KPI de meta) ──
+  const [totalMateriaisComprar, setTotalMateriaisComprar] = useState(0);
+
+  async function carregarMateriaisComprar() {
+    // Soma materiais manuais pendentes
+    const { data: manuais } = await supabase
+      .from("logistica_materiais_comprar")
+      .select("custo_unitario, quantidade")
+      .eq("status", "Pendente");
+    const totalManuais = (manuais ?? []).reduce((s, m) => s + ((m.custo_unitario ?? 0) * (m.quantidade ?? 1)), 0);
+
+    // Soma itens de aquisições de pedidos pendentes/pedido
+    const { data: aquis } = await supabase
+      .from("logistica_aquisicoes")
+      .select("custo_unitario, quantidade")
+      .in("status", ["pendente", "pedido"]);
+    const totalAquis = (aquis ?? []).reduce((s, a) => s + ((a.custo_unitario ?? 0) * (a.quantidade ?? 1)), 0);
+
+    setTotalMateriaisComprar(totalManuais + totalAquis);
+  }
+
   // ── UI state ──
   const [secaoAberta, setSecaoAberta] = useState<"config" | "custos" | "dividas" | "saude" | null>("saude");
   const [abaAtiva, setAbaAtiva] = useState<"interno" | "conta-azul" | "vendas" | "compras">("interno");
@@ -534,6 +555,7 @@ function FinanceiroPage() {
     carregarCustosFixos();
     carregarDividas();
     verificarCA();
+    carregarMateriaisComprar();
   }, []);
 
   // Carrega CA na inicialização (para os KPIs do topo) e quando aba CA ativa
@@ -842,6 +864,17 @@ function FinanceiroPage() {
   const kpiDespesasRecorrentes = custosFixos
     .filter(cf => cf.ativo)
     .reduce((acc, cf) => acc + cf.valor_mensal, 0);
+
+  // ── Meta mensal de vendas ──────────────────────────────────────────────────
+  // Boletos lançados no mês (pagos + a receber) = receita garantida
+  const kpiBoletos = caCobrancas
+    .filter(c => c.vencimento?.slice(0, 7) === mesAtual || c.pago_em?.slice(0, 7) === mesAtual)
+    .reduce((acc, c) => acc + (c.valor_pago ?? c.valor), 0);
+  // Meta = fixos + parcelas dívidas + materiais pendentes
+  const kpiMeta = kpiDespesasRecorrentes + totalParcelasMensais + totalMateriaisComprar;
+  // Falta vender = meta - boletos já lançados (mínimo 0)
+  const kpiFaltaVender = Math.max(0, kpiMeta - kpiBoletos);
+  const kpiProgressoMeta = kpiMeta > 0 ? Math.min(100, (kpiBoletos / kpiMeta) * 100) : 0;
 
   // Custo/km calculado
   const precoComb = Number(precoCombInput) || 0;
@@ -1635,6 +1668,64 @@ function FinanceiroPage() {
             <p className="text-xs text-gray-500">Saldo</p>
             <p className="text-xl font-bold text-gray-900">{carregandoCA && caSaldos.length === 0 ? "..." : fmt(kpiSaldo)}</p>
             <p className="text-[11px] text-gray-400 mt-0.5">Contas bancárias · Conta Azul</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ Meta Mensal de Vendas ══ */}
+      <div className={cn(
+        "rounded-xl border p-5 shadow-sm",
+        kpiFaltaVender === 0
+          ? "border-green-200 bg-green-50"
+          : kpiProgressoMeta >= 60
+            ? "border-yellow-200 bg-yellow-50"
+            : "border-red-200 bg-red-50"
+      )}>
+        {/* Título + valor falta */}
+        <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <p className="text-sm font-bold text-gray-800">🎯 Meta mensal de vendas</p>
+            <p className="text-xs text-gray-500 mt-0.5">Quanto precisamos faturar para cobrir todas as obrigações</p>
+          </div>
+          <div className="text-right">
+            {kpiFaltaVender === 0
+              ? <p className="text-lg font-bold text-green-700">✅ Meta atingida!</p>
+              : <>
+                  <p className="text-xs text-gray-500">Falta vender</p>
+                  <p className="text-2xl font-bold text-red-600">{fmt(kpiFaltaVender)}</p>
+                </>
+            }
+          </div>
+        </div>
+
+        {/* Barra de progresso */}
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <span>Boletos lançados: <strong className="text-gray-700">{fmt(kpiBoletos)}</strong></span>
+            <span>Meta: <strong className="text-gray-700">{fmt(kpiMeta)}</strong></span>
+          </div>
+          <div className="h-3 w-full rounded-full bg-white/70 overflow-hidden border border-white/50">
+            <div
+              className={cn("h-3 rounded-full transition-all", kpiFaltaVender === 0 ? "bg-green-500" : kpiProgressoMeta >= 60 ? "bg-yellow-400" : "bg-red-400")}
+              style={{ width: `${kpiProgressoMeta}%` }}
+            />
+          </div>
+          <p className="text-right text-[10px] text-gray-400 mt-1">{kpiProgressoMeta.toFixed(0)}% da meta coberta pelos boletos lançados</p>
+        </div>
+
+        {/* Composição da meta */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg bg-white/70 border border-white/50 px-3 py-2.5 text-center">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Custos fixos</p>
+            <p className="text-sm font-bold text-gray-800">{fmt(kpiDespesasRecorrentes)}</p>
+          </div>
+          <div className="rounded-lg bg-white/70 border border-white/50 px-3 py-2.5 text-center">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Parcelas dívidas</p>
+            <p className="text-sm font-bold text-gray-800">{fmt(totalParcelasMensais)}</p>
+          </div>
+          <div className="rounded-lg bg-white/70 border border-white/50 px-3 py-2.5 text-center">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Materiais pendentes</p>
+            <p className="text-sm font-bold text-gray-800">{fmt(totalMateriaisComprar)}</p>
           </div>
         </div>
       </div>
