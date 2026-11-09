@@ -117,20 +117,48 @@ async function fetchAllPages(baseUrl: string, token: string, pageSize = 200): Pr
   return all;
 }
 
-// ─── Sync: Vendas ─────────────────────────────────────────────────────────────
-// Endpoint correto: GET /v1/venda/busca (não /v1/vendas)
+// ─── Sync: Vendas de Serviço ──────────────────────────────────────────────────
+// Busca Vendas de Serviço do Conta Azul (tipo_negociacao=Venda, tipo_item=Servico)
+// Período: 2 anos para trás (cobre histórico para cálculo de 6 meses sem venda)
 async function syncVendas(token: string) {
   let vendas: unknown[] = [];
   try {
     const hoje = new Date();
-    const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1).toISOString().slice(0, 10);
+    // Busca 2 anos de histórico para cobrir regra dos 6 meses + margem
+    const inicio = new Date(hoje.getFullYear() - 2, 0, 1).toISOString().slice(0, 10);
     const fim = hoje.toISOString().slice(0, 10);
 
-    const data = await apiCA(
-      `/v1/venda/busca?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=200`,
-      token
-    );
-    vendas = Array.isArray(data) ? data : data?.content ?? data?.items ?? data?.vendas ?? data?.data ?? [];
+    // Tenta com filtro de tipo de item (Servico) — reduz o volume e é mais preciso
+    // Se a API não suportar o filtro, cai para busca geral
+    let data: unknown;
+    try {
+      data = await apiCA(
+        `/v1/venda/busca?data_inicio=${inicio}&data_fim=${fim}&tipo_negociacao=Venda&pagina=1&tamanho_pagina=500`,
+        token
+      );
+    } catch {
+      data = await apiCA(
+        `/v1/venda/busca?data_inicio=${inicio}&data_fim=${fim}&pagina=1&tamanho_pagina=500`,
+        token
+      );
+    }
+    vendas = Array.isArray(data) ? data : (data as any)?.content ?? (data as any)?.items ?? (data as any)?.vendas ?? (data as any)?.data ?? [];
+
+    // Pagina se necessário (mais de 500 registros)
+    const totalItens: number = (data as any)?.itens_totais ?? (data as any)?.total ?? vendas.length;
+    if (totalItens > 500) {
+      let pagina = 2;
+      while (vendas.length < totalItens && pagina <= 20) {
+        const extra = await apiCA(
+          `/v1/venda/busca?data_inicio=${inicio}&data_fim=${fim}&tipo_negociacao=Venda&pagina=${pagina}&tamanho_pagina=500`,
+          token
+        );
+        const items: unknown[] = Array.isArray(extra) ? extra : (extra as any)?.content ?? (extra as any)?.items ?? (extra as any)?.data ?? [];
+        if (items.length === 0) break;
+        vendas.push(...items);
+        pagina++;
+      }
+    }
   } catch (e) {
     console.error("Erro ao buscar vendas:", e);
     return 0;
@@ -143,6 +171,8 @@ async function syncVendas(token: string) {
     numero: v.numero ?? v.number ?? v.id,
     cliente_nome: v.cliente?.nome ?? v.customer?.name ?? v.cliente_nome ?? "—",
     cliente_documento: v.cliente?.documento ?? v.customer?.document ?? null,
+    // Guarda o ID do cliente no Conta Azul para cruzamento mais preciso
+    ca_cliente_id: String(v.cliente?.id ?? v.customer?.id ?? v.clienteId ?? ""),
     valor_total: Number(v.valor_total ?? v.total ?? v.totalValue ?? 0),
     status: v.situacao ?? v.status ?? "unknown",
     data_emissao: v.data_emissao ?? v.emission ?? v.emissionDate ?? v.data ?? null,
@@ -153,6 +183,15 @@ async function syncVendas(token: string) {
 
   const { error } = await supabase.from("ca_vendas").upsert(rows, { onConflict: "id" });
   if (error) console.error("Erro ao salvar vendas:", error);
+
+  // Após salvar vendas, dispara atualização de status de clientes
+  try {
+    await supabase.rpc("fn_atualizar_status_clientes");
+    console.log("Status de clientes atualizado após sync de vendas");
+  } catch (e) {
+    console.error("Erro ao atualizar status de clientes:", e);
+  }
+
   return rows.length;
 }
 
