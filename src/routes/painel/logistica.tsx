@@ -4129,13 +4129,13 @@ function LogisticaPage() {
                         classificacao: "Serviço" as const,
                         descricao: p.tipo_cobranca ? `Contrato ${p.tipo_cobranca}` : undefined,
                       })),
-                      ...vistorias.filter(v => v.status === "pendente" || v.status === "agendada").map(v => ({
-                        label: "Vistoria", tipo: "vistoria", id: v.id,
-                        cliente: v.cliente_nome || "—",
-                        cliente_email: v.cliente_email ?? null,
-                        endereco: v.cliente_endereco ?? null,
+                      ...atendimentos.filter(a => a.classificacao === "Vistoria" && (a.status === "Programado" || a.status === "Em andamento")).map(a => ({
+                        label: "Vistoria", tipo: "vistoria", id: a.id,
+                        cliente: a.cliente_nome || a.titulo || "—",
+                        cliente_email: a.cliente_email ?? null,
+                        endereco: a.endereco ?? null,
                         classificacao: "Vistoria" as const,
-                        descricao: `Vistoria — ${v.status}`,
+                        descricao: a.data_agendada ? `Agendada: ${new Date(a.data_agendada + "T00:00:00").toLocaleDateString("pt-BR")}` : "Aguardando agendamento",
                       })),
                       ...ticketsAbertos.map(t => ({
                         label: "Ticket", tipo: "ticket", id: t.id,
@@ -4146,7 +4146,7 @@ function LogisticaPage() {
                         descricao: t.ticket_motivo ?? undefined,
                       })),
                     ];
-                    const filtrados = q.length >= 2 ? fontes.filter(f => f.cliente.toLowerCase().includes(q) || (f.descricao ?? "").toLowerCase().includes(q)) : [];
+                    const filtrados = q.length >= 2 ? fontes.filter(f => f.cliente.toLowerCase().includes(q) || (f.descricao ?? "").toLowerCase().includes(q) || f.label.toLowerCase().includes(q)) : fontes.filter(f => f.tipo === "vistoria");
                     return (
                       <div>
                         <label className="label-field">Vincular a pedido / vistoria / ticket</label>
