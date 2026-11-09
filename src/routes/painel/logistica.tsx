@@ -894,7 +894,7 @@ function GanttView({ atendimentos, carregando }: { atendimentos: Atendimento[]; 
 }
 
 function LogisticaPage() {
-  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras" | "gantt" | "vistorias" | "pedidos">("pedidos");
+  const [aba, setAba] = useState<"estoque" | "suprimentos" | "equipe" | "tecnico" | "atendimentos" | "compras" | "gantt" | "pedidos">("pedidos");
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -2303,7 +2303,6 @@ function LogisticaPage() {
             { key: "pedidos",      label: "Pedidos",      icon: FileCheck },
             { key: "compras",      label: "Compras",      icon: ShoppingBag },
             { key: "atendimentos", label: "Atendimentos", icon: ClipboardList },
-            { key: "vistorias",    label: "Vistorias",    icon: ClipboardCheck },
             { key: "gantt",        label: "Gantt",        icon: BarChart2 },
             { key: "estoque",      label: "Estoque",      icon: Package },
             { key: "equipe",       label: "Equipe",       icon: HardHat },
@@ -2320,7 +2319,6 @@ function LogisticaPage() {
             }
             if (key === "estoque" && abaixoMinimo.length > 0) badges.push({ count: abaixoMinimo.length, cor: "bg-orange-500" });
 
-            if (key === "vistorias") { const n = vistorias.filter(v => v.status === "pendente" || v.status === "agendada").length; if (n > 0) badges.push({ count: n, cor: "bg-orange-500" }); }
             if (key === "atendimentos") {
               const ativos = atendimentos.filter(a => a.status === "Programado" || a.status === "Em andamento").length;
               if (ativos > 0) badges.push({ count: ativos, cor: "bg-emerald-500" });
@@ -4341,254 +4339,6 @@ function LogisticaPage() {
       )}
 
       {/* ═══════ ABA GANTT ═══════ */}
-      {/* ═══════ ABA VISTORIAS ═══════ */}
-      {aba === "vistorias" && (
-        <>
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex gap-2">
-              {[
-                { key: "ativas",    label: "Ativas" },
-                { key: "pendente",  label: "Pendentes" },
-                { key: "agendada",  label: "Agendadas" },
-                { key: "concluida", label: "Concluídas" },
-                { key: "todas",     label: "Todas" },
-              ].map(f => (
-                <button key={f.key} onClick={() => setFiltroVistoria(f.key)}
-                  className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                    filtroVistoria === f.key ? "bg-[#1a6b2f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <button onClick={carregarVistorias} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
-              <Loader2 className={cn("h-3.5 w-3.5", carregandoVistorias && "animate-spin")} /> Atualizar
-            </button>
-          </div>
-
-          {carregandoVistorias ? (
-            <div className="flex items-center gap-2 text-gray-400 py-8 justify-center">
-              <Loader2 className="h-5 w-5 animate-spin" /> Carregando vistorias...
-            </div>
-          ) : (() => {
-            const lista = vistorias.filter(v => {
-              if (filtroVistoria === "ativas") return v.status === "pendente" || v.status === "agendada" || v.status === "em_andamento";
-              if (filtroVistoria === "todas") return true;
-              return v.status === filtroVistoria;
-            });
-            if (lista.length === 0) return (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                <ClipboardCheck className="h-12 w-12 mb-3 opacity-30" />
-                <p className="text-sm font-medium">Nenhuma vistoria encontrada</p>
-                <p className="text-xs mt-1">As vistorias enviadas pelo CRM aparecerão aqui</p>
-              </div>
-            );
-            return (
-              <div className="space-y-3">
-                {lista.map(v => {
-                  const aberto = vistoriaAberta === v.id;
-                  const agendando = agendandoId === v.id;
-                  return (
-                    <div key={v.id} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                      {/* Cabeçalho do card */}
-                      <div
-                        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                        onClick={() => setVistoriaAberta(aberto ? null : v.id)}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-gray-900 text-sm">{v.cliente_nome}</span>
-                            <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", STATUS_VISTORIA_COR[v.status])}>
-                              {STATUS_VISTORIA_LABEL[v.status]}
-                            </span>
-                            {v.dts_url && (
-                              <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-medium text-emerald-700 flex items-center gap-1">
-                                <FileText className="h-3 w-3" /> DTS
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                            {v.cliente_endereco && (
-                              <span className="flex items-center gap-1 text-xs text-gray-500">
-                                <MapPin className="h-3 w-3" /> {v.cliente_endereco}
-                              </span>
-                            )}
-                            {v.data_agendada && (
-                              <span className="flex items-center gap-1 text-xs text-blue-600">
-                                <CalendarIcon className="h-3 w-3" />
-                                {new Date(v.data_agendada).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                            )}
-                            {v.enviado_por && (
-                              <span className="text-xs text-gray-400">Enviado por {v.enviado_por}</span>
-                            )}
-                          </div>
-                        </div>
-                        {aberto ? <ChevronUp className="h-4 w-4 text-gray-400 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />}
-                      </div>
-
-                      {/* Detalhes expandidos */}
-                      {aberto && (
-                        <div className="border-t border-gray-100 px-4 py-4 space-y-4">
-                          {/* Dados do cliente */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {v.cliente_telefone && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <Phone className="h-4 w-4 text-gray-400" />
-                                <a href={`tel:${v.cliente_telefone}`} className="text-blue-600 hover:underline">{v.cliente_telefone}</a>
-                              </div>
-                            )}
-                            {v.cliente_email && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <Mail className="h-4 w-4 text-gray-400" />
-                                <span className="text-gray-700">{v.cliente_email}</span>
-                              </div>
-                            )}
-                            {v.tecnico_nome && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <User className="h-4 w-4 text-gray-400" />
-                                <span className="text-gray-700">Técnico: {v.tecnico_nome}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {v.observacoes && (
-                            <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{v.observacoes}</p>
-                          )}
-
-                          {/* Formulário de agendamento */}
-                          {v.status === "pendente" && (
-                            <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
-                              {!agendando ? (
-                                <button
-                                  onClick={() => { setAgendandoId(v.id); setDataAgendada(""); setTecnicoNome(""); setObservacoes(""); }}
-                                  className="flex items-center gap-2 text-sm font-medium text-orange-700 hover:text-orange-800"
-                                >
-                                  <CalendarIcon className="h-4 w-4" /> Agendar vistoria
-                                </button>
-                              ) : (
-                                <div className="space-y-2">
-                                  <p className="text-xs font-semibold text-orange-800 mb-2">Agendar vistoria</p>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <div>
-                                      <label className="text-xs text-gray-600">Data e hora *</label>
-                                      <input type="datetime-local" value={dataAgendada} onChange={e => setDataAgendada(e.target.value)}
-                                        className="input-field w-full mt-0.5" />
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-600">Técnico responsável</label>
-                                      <select value={tecnicoNome} onChange={e => setTecnicoNome(e.target.value)}
-                                        className="input-field w-full mt-0.5">
-                                        <option value="">Selecione...</option>
-                                        {RESPONSAVEIS_OPCOES.map(r => <option key={r} value={r}>{r}</option>)}
-                                      </select>
-                                    </div>
-                                  </div>
-                                  <textarea rows={2} placeholder="Observações (opcional)"
-                                    value={observacoes} onChange={e => setObservacoes(e.target.value)}
-                                    className="input-field w-full resize-none" />
-                                  <div className="flex gap-2 pt-1">
-                                    <button onClick={() => setAgendandoId(null)}
-                                      className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                                      Cancelar
-                                    </button>
-                                    <button onClick={() => agendarVistoria(v.id)}
-                                      className="flex-1 rounded-lg bg-[#1a6b2f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#155824]">
-                                      Confirmar agendamento
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Upload DTS */}
-                          {(v.status === "agendada" || v.status === "em_andamento") && (
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                              <p className="text-xs font-semibold text-blue-800 mb-2 flex items-center gap-1.5">
-                                <FileText className="h-4 w-4" /> Documento Técnico de Segurança (DTS)
-                              </p>
-                              {v.dts_url ? (
-                                <div className="space-y-2">
-                                  <a href={v.dts_url} target="_blank" rel="noopener noreferrer"
-                                    className="flex items-center gap-2 text-sm text-blue-700 hover:underline">
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                    {v.dts_nome ?? "Ver DTS"}
-                                  </a>
-                                  {v.dts_resumo_ia && (
-                                    <div className="rounded-md bg-white border border-blue-100 px-3 py-2">
-                                      <p className="text-[11px] font-semibold text-blue-700 mb-1">📋 Análise IA</p>
-                                      <p className="text-xs text-gray-700 whitespace-pre-line">{v.dts_resumo_ia}</p>
-                                    </div>
-                                  )}
-                                  {!v.dts_resumo_ia && (
-                                    <p className="text-xs text-blue-600 italic">Análise IA em processamento...</p>
-                                  )}
-                                </div>
-                              ) : (
-                                <label className={cn(
-                                  "flex items-center gap-2 cursor-pointer text-sm font-medium text-blue-700 hover:text-blue-800",
-                                  uploadingDts === v.id && "opacity-50 cursor-not-allowed"
-                                )}>
-                                  {uploadingDts === v.id ? (
-                                    <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
-                                  ) : (
-                                    <><Upload className="h-4 w-4" /> Fazer upload do DTS (PDF)</>
-                                  )}
-                                  <input type="file" accept=".pdf" className="hidden"
-                                    disabled={uploadingDts === v.id}
-                                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadDts(v.id, f); }} />
-                                </label>
-                              )}
-                            </div>
-                          )}
-
-                          {/* DTS em vistorias concluídas */}
-                          {v.status === "concluida" && v.dts_url && (
-                            <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-                              <p className="text-xs font-semibold text-green-800 mb-2">📋 DTS Anexado</p>
-                              <a href={v.dts_url} target="_blank" rel="noopener noreferrer"
-                                className="flex items-center gap-2 text-sm text-green-700 hover:underline">
-                                <ExternalLink className="h-3.5 w-3.5" /> {v.dts_nome ?? "Ver DTS"}
-                              </a>
-                              {v.dts_resumo_ia && (
-                                <p className="mt-2 text-xs text-gray-600 whitespace-pre-line">{v.dts_resumo_ia}</p>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Botão Concluir */}
-                          {(v.status === "agendada" || v.status === "em_andamento") && v.dts_url && (
-                            <div className="flex justify-end">
-                              <button
-                                onClick={() => concluirVistoria(v)}
-                                disabled={concluindoId === v.id}
-                                className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                              >
-                                {concluindoId === v.id ? (
-                                  <><Loader2 className="h-4 w-4 animate-spin" /> Concluindo...</>
-                                ) : (
-                                  <><Check className="h-4 w-4" /> Vistoria Concluída</>
-                                )}
-                              </button>
-                            </div>
-                          )}
-
-                          {v.status === "concluida" && v.concluida_em && (
-                            <p className="text-xs text-gray-400 text-right">
-                              Concluída em {new Date(v.concluida_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-        </>
-      )}
-
       {aba === "gantt" && (
         <GanttView atendimentos={atendimentos} carregando={carregandoAtend} />
       )}

@@ -4288,51 +4288,38 @@ function CrmPage() {
   }
 
   async function enviarParaVistoria(lead: Lead) {
-    if (!confirm(`Enviar "${lead.nome}" para vistoria?\n\nUm email será enviado para Rafael agendar.`)) return;
+    if (!confirm(`Enviar "${lead.nome}" para vistoria?\n\nUm atendimento de Vistoria será criado na Logística.`)) return;
     try {
-      // Cria registro de vistoria
-      const { data: vistoria, error } = await supabase.from("vistorias").insert({
-        lead_id: lead.id,
+      // Cria atendimento classificado como Vistoria diretamente na tabela de atendimentos
+      const { error } = await supabase.from("atendimentos").insert({
+        titulo: `Vistoria — ${lead.nome}`,
+        classificacao: "Vistoria",
+        status: "Programado",
+        endereco: lead.endereco ?? null,
         cliente_nome: lead.nome,
-        cliente_endereco: lead.endereco ?? null,
-        cliente_telefone: lead.telefone ?? null,
         cliente_email: lead.email ?? null,
-        status: "pendente",
-        enviado_por: "Marilia",
-      }).select("id").single();
+        responsaveis: [],
+        agendado_com_cliente: false,
+        em_sistema: false,
+        descricao: `Lead encaminhado para vistoria técnica pelo CRM.\nTelefone: ${lead.telefone ?? "—"}\nEnviado por: Marilia`,
+      });
 
       if (error) throw error;
 
-      // Marca o lead com selo de vistoria pendente (sem mudar etapa — "vistoria" não é uma etapa válida)
+      // Marca o lead com selo de vistoria pendente
       setLeadsEmVistoria(prev => new Set([...prev, lead.id]));
 
       // Registra no histórico do lead
       await supabase.from("crm_conversas").insert({
         lead_id: lead.id,
-        texto: `🔍 **Enviado para Vistoria**\nLead encaminhado para vistoria técnica. Aguardando agendamento.`,
+        texto: `🔍 **Enviado para Vistoria**\nAtendimento de vistoria criado na Logística. Aguardando agendamento pela equipe.`,
         autor: "Sistema",
       });
 
-      // Fecha o card e volta ao kanban
+      // Fecha o card
       setCardAberto(null);
 
-      // Dispara email de notificação em background
-      supabase.functions.invoke("notify-vistoria", {
-        body: {
-          evento: "enviada",
-          vistoria: {
-            id: vistoria?.id,
-            cliente_nome: lead.nome,
-            cliente_endereco: lead.endereco ?? "",
-            cliente_telefone: lead.telefone ?? "",
-            cliente_email: lead.email ?? "",
-            enviado_por: "Marilia",
-          },
-        },
-      });
-
-      // Toast de sucesso
-      setToast({ msg: `✅ "${lead.nome}" enviado para vistoria! Rafael receberá um email.`, tipo: "sucesso" });
+      setToast({ msg: `✅ "${lead.nome}" enviado para vistoria! Aparece em Logística > Atendimentos.`, tipo: "sucesso" });
     } catch (e: any) {
       setToast({ msg: `Erro ao enviar para vistoria: ${e.message}`, tipo: "erro" });
     }
