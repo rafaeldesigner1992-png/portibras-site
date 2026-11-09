@@ -986,10 +986,15 @@ function LogisticaPage() {
     custoPorKm: 0.70,     // R$/km (combustível + desgaste)
     airbnbPorNoite: 150,  // R$/noite (média Airbnb região)
     refeicaoFora: 60,     // R$/dia extra em alimentação quando fora
-    // Pedágios por trecho (ida) — cobrados ida + volta = ×2
-    pedagioViaLagos: 36.80,    // 1 praça × R$ 18,40/eixo × 2 eixos (dias úteis)
-    pedagogioPonte: 6.60,       // Ponte Rio-Niterói (desde mar/2026)
-    pedagioLinhaAmarela: 7.50,  // Linha Amarela (estimativa)
+    // Pedágios rota padrão:
+    // IDA:   Via Lagos + Manilha (Niterói→Itaboraí)
+    // VOLTA: Ponte Rio-Niterói + Via Lagos
+    pedagioViaLagos: 36.80,  // Via Lagos RJ-124 (1 praça, 2 eixos, dias úteis, ago/2025)
+    pedagioManilha: 10.80,   // BR-101 praça São Gonçalo/Manilha (Arteris Fluminense, set/2026)
+    pedagogioPonte: 6.60,    // Ponte Rio-Niterói (mar/2026)
+    // Linha Amarela: apenas quando há atendimento na Barra da Tijuca (ida+volta)
+    pedagioLinhaAmarela: 7.50,
+    temAtendBarra: false,    // flag: semana tem cliente na Barra?
   });
   const [modalConfigCusto, setModalConfigCusto] = useState(false);
 
@@ -3835,8 +3840,13 @@ function LogisticaPage() {
                           atendsSem.filter(a => a.data_agendada).map(a => a.data_agendada)
                         ).size;
                         if (atendsSem.length === 0 && !fechada) return null;
-                        // Cálculo de custo (inclui pedágios ida+volta)
-                        const pedagioDiarioFaixa = (configCusto.pedagioViaLagos + configCusto.pedagogioPonte + configCusto.pedagioLinhaAmarela) * 2;
+                        // Pedágios: ida (Via Lagos + Manilha) + volta (Ponte + Via Lagos)
+                        // + Linha Amarela ida+volta se semana tem atend na Barra
+                        const pedagioDiarioFaixa =
+                          configCusto.pedagioViaLagos * 2   // Via Lagos ida + volta
+                          + configCusto.pedagioManilha       // Manilha só na ida
+                          + configCusto.pedagogioPonte       // Ponte só na volta
+                          + (configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0);
                         const custoDeslocamento = diasComAtend * (configCusto.kmBase * configCusto.custoPorKm + pedagioDiarioFaixa);
                         const noitesNecessarias = Math.max(0, diasComAtend - 1);
                         const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
@@ -3941,8 +3951,13 @@ function LogisticaPage() {
                         const fechada = semanasFechadas[chaveSem] ?? false;
                         const diasComAtend = new Set(atends.filter(a => a.data_agendada).map(a => a.data_agendada)).size;
                         const noitesNecessarias = Math.max(0, diasComAtend - 1);
-                        // Pedágios: ida + volta por dia = ×2
-                        const pedagioDiario = (configCusto.pedagioViaLagos + configCusto.pedagogioPonte + configCusto.pedagioLinhaAmarela) * 2;
+                        // Pedágios: ida (Via Lagos + Manilha) + volta (Ponte + Via Lagos)
+                        // + Linha Amarela ida+volta se semana tem atend na Barra
+                        const pedagioDiario =
+                          configCusto.pedagioViaLagos * 2   // Via Lagos ida + volta
+                          + configCusto.pedagioManilha       // Manilha só na ida
+                          + configCusto.pedagogioPonte       // Ponte só na volta
+                          + (configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0);
                         const custoCombustivel = diasComAtend * configCusto.kmBase * configCusto.custoPorKm;
                         const custoPedagios = diasComAtend * pedagioDiario;
                         const custoDeslocamento = custoCombustivel + custoPedagios;
@@ -4000,23 +4015,31 @@ function LogisticaPage() {
                                             <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * custoKmUn)}</td>
                                           </tr>
                                           <tr className="text-gray-600">
-                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Via Lagos (ida+volta)</td>
+                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Via Lagos (ida + volta)</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagioViaLagos * 2)}</td>
                                             <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagioViaLagos * 2)}</td>
                                           </tr>
                                           <tr className="text-gray-600">
-                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Ponte Rio-Niterói (ida+volta)</td>
+                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Manilha — só na ida</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagogioPonte * 2)}</td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagogioPonte * 2)}</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagioManilha)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagioManilha)}</td>
                                           </tr>
                                           <tr className="text-gray-600">
-                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Linha Amarela (ida+volta)</td>
+                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Ponte Rio-Niterói — só na volta</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagogioPonte)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagogioPonte)}</td>
+                                          </tr>
+                                          {configCusto.temAtendBarra && (
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Linha Amarela (Barra — ida+volta)</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend}×</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.pedagioLinhaAmarela * 2)}</td>
                                             <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * configCusto.pedagioLinhaAmarela * 2)}</td>
                                           </tr>
+                                          )}
                                           <tr className="text-gray-500 font-semibold border-t border-gray-200">
                                             <td className="pt-1 pr-3" colSpan={3}>Total opção 1</td>
                                             <td className={cn("pt-1 text-right tabular-nums", !melhorAirbnb ? "text-green-700" : "text-gray-700")}>{fmtR(custoDeslocamento)}</td>
@@ -4113,30 +4136,86 @@ function LogisticaPage() {
                       <button onClick={() => setModalConfigCusto(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
                     </div>
                     <div className="space-y-3">
+                      {/* Deslocamento */}
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Deslocamento</p>
                       {[
-                        { label: "Km por dia (ida + volta)", field: "kmBase", suffix: "km", group: "Deslocamento" },
-                        { label: "Custo por km", field: "custoPorKm", suffix: "R$/km", group: "" },
-                        { label: "Via Lagos (1 praça, por trecho)", field: "pedagioViaLagos", suffix: "R$", group: "Pedágios (por trecho — cobrado ×2)" },
-                        { label: "Ponte Rio-Niterói", field: "pedagogioPonte", suffix: "R$", group: "" },
-                        { label: "Linha Amarela", field: "pedagioLinhaAmarela", suffix: "R$", group: "" },
-                        { label: "Airbnb por noite", field: "airbnbPorNoite", suffix: "R$/noite", group: "Hospedagem" },
-                        { label: "Extra em refeições por dia", field: "refeicaoFora", suffix: "R$/dia", group: "" },
-                      ].map(({ label, field, suffix, group }) => (
-                        <div key={field}>
-                          {group ? <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-3 mb-1">{group}</p> : null}
-                          <div className="flex items-center justify-between gap-3">
-                            <label className="text-sm text-gray-700 flex-1">{label}</label>
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="number"
-                                min={0}
-                                step={field === "custoPorKm" ? 0.05 : 1}
-                                value={(configCusto as Record<string, number>)[field]}
-                                onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
-                                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
-                              />
-                              <span className="text-xs text-gray-400 w-14">{suffix}</span>
-                            </div>
+                        { label: "Km por dia (ida + volta)", field: "kmBase", suffix: "km" },
+                        { label: "Custo por km", field: "custoPorKm", suffix: "R$/km" },
+                      ].map(({ label, field, suffix }) => (
+                        <div key={field} className="flex items-center justify-between gap-3">
+                          <label className="text-sm text-gray-700 flex-1">{label}</label>
+                          <div className="flex items-center gap-1.5">
+                            <input type="number" min={0} step={field === "custoPorKm" ? 0.05 : 1}
+                              value={(configCusto as Record<string, number>)[field]}
+                              onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
+                              className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
+                            />
+                            <span className="text-xs text-gray-400 w-14">{suffix}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {/* Pedágios */}
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-3 mb-0.5">Pedágios</p>
+                      <p className="text-[10px] text-gray-400 mb-1.5">Ida: Via Lagos + Manilha · Volta: Ponte + Via Lagos</p>
+                      {[
+                        { label: "Via Lagos (por trecho × 2)", field: "pedagioViaLagos", suffix: "R$" },
+                        { label: "Manilha — só na ida", field: "pedagioManilha", suffix: "R$" },
+                        { label: "Ponte Rio-Niterói — só na volta", field: "pedagogioPonte", suffix: "R$" },
+                      ].map(({ label, field, suffix }) => (
+                        <div key={field} className="flex items-center justify-between gap-3">
+                          <label className="text-sm text-gray-700 flex-1">{label}</label>
+                          <div className="flex items-center gap-1.5">
+                            <input type="number" min={0} step={0.10}
+                              value={(configCusto as Record<string, number>)[field]}
+                              onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
+                              className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
+                            />
+                            <span className="text-xs text-gray-400 w-14">{suffix}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {/* Linha Amarela condicional */}
+                      <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Linha Amarela</p>
+                          <p className="text-[10px] text-gray-400">Ativa quando há atendimento na Barra da Tijuca</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input type="number" min={0} step={0.10}
+                            value={configCusto.pedagioLinhaAmarela}
+                            onChange={e => setConfigCusto(c => ({ ...c, pedagioLinhaAmarela: Number(e.target.value) }))}
+                            className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
+                          />
+                          <span className="text-xs text-gray-400 mr-1">R$</span>
+                          <button
+                            onClick={() => setConfigCusto(c => ({ ...c, temAtendBarra: !c.temAtendBarra }))}
+                            className={cn(
+                              "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                              configCusto.temAtendBarra ? "bg-[#1a6b2f]" : "bg-gray-300"
+                            )}
+                          >
+                            <span className={cn(
+                              "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
+                              configCusto.temAtendBarra ? "translate-x-4" : "translate-x-1"
+                            )} />
+                          </button>
+                        </div>
+                      </div>
+                      {/* Hospedagem */}
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-3 mb-1">Hospedagem</p>
+                      {[
+                        { label: "Airbnb por noite", field: "airbnbPorNoite", suffix: "R$/noite" },
+                        { label: "Extra em refeições por dia", field: "refeicaoFora", suffix: "R$/dia" },
+                      ].map(({ label, field, suffix }) => (
+                        <div key={field} className="flex items-center justify-between gap-3">
+                          <label className="text-sm text-gray-700 flex-1">{label}</label>
+                          <div className="flex items-center gap-1.5">
+                            <input type="number" min={0} step={1}
+                              value={(configCusto as Record<string, number>)[field]}
+                              onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
+                              className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
+                            />
+                            <span className="text-xs text-gray-400 w-14">{suffix}</span>
                           </div>
                         </div>
                       ))}
