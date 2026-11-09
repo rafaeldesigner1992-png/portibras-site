@@ -1245,6 +1245,8 @@ function LogisticaPage() {
     status_entrega: "Não iniciada" as Compra["status_entrega"],
     previsao_chegada: "", data_recebido: "", quem_recebeu: "",
     observacoes: "", pedidosSel: [] as string[],
+    clienteSel: "" as string, // nome do cliente selecionado no select
+    matsSel: [] as string[],  // ids de MatComprar selecionados para dar baixa
   };
   const [compras, setCompras] = useState<Compra[]>([]);
   const [carregandoCompras, setCarregandoCompras] = useState(false);
@@ -1252,6 +1254,8 @@ function LogisticaPage() {
   const [compraEditando, setCompraEditando] = useState<string | null>(null);
   const [formCompra, setFormCompra] = useState({ ...EMPTY_COMPRA });
   const [salvandoCompra, setSalvandoCompra] = useState(false);
+  const [buscaClienteCompra, setBuscaClienteCompra] = useState("");
+  const [dropdownClienteCompra, setDropdownClienteCompra] = useState(false);
   const [compraAberta, setCompraAberta] = useState<string | null>(null);
 
   async function carregarCompras(atendimentosParam?: Atendimento[]) {
@@ -1309,17 +1313,26 @@ function LogisticaPage() {
       const { data } = await supabase.from("logistica_compras").insert(payload).select().single();
       compraId = data?.id ?? null;
     }
-    // Inserir novos vínculos
+    // Inserir novos vínculos de atendimento (legado)
     if (compraId && formCompra.pedidosSel.length) {
       await supabase.from("logistica_compras_atendimentos").insert(
         formCompra.pedidosSel.map(pid => ({ compra_id: compraId, pedido_id: pid }))
       );
     }
+    // Dar baixa nos materiais selecionados (status → Comprado)
+    if (formCompra.matsSel.length) {
+      await supabase
+        .from("logistica_materiais_comprar")
+        .update({ status: "Comprado" })
+        .in("id", formCompra.matsSel);
+    }
     setSalvandoCompra(false);
     setModalCompra(false);
     setCompraEditando(null);
     setFormCompra({ ...EMPTY_COMPRA });
+    setBuscaClienteCompra("");
     carregarCompras();
+    carregarMatComprar();
   }
 
   async function excluirCompra(id: string) {
@@ -1336,6 +1349,8 @@ function LogisticaPage() {
   function abrirNovaCompra() {
     setCompraEditando(null);
     setFormCompra({ ...EMPTY_COMPRA });
+    setBuscaClienteCompra("");
+    setDropdownClienteCompra(false);
     setModalCompra(true);
   }
 
@@ -1352,7 +1367,11 @@ function LogisticaPage() {
       quem_recebeu: c.quem_recebeu ?? "",
       observacoes: c.observacoes ?? "",
       pedidosSel: c.pedidos?.map(p => p.id) ?? [],
+      clienteSel: "",
+      matsSel: [],
     });
+    setBuscaClienteCompra("");
+    setDropdownClienteCompra(false);
     setModalCompra(true);
   }
 
@@ -4963,28 +4982,160 @@ function LogisticaPage() {
                     <label className="label-field">Quem recebeu</label>
                     <input className="input-field" value={formCompra.quem_recebeu} onChange={e => setFormCompra(f => ({ ...f, quem_recebeu: e.target.value }))} placeholder="Nome do responsável" />
                   </div>
-                  {/* Atendimentos vinculados */}
-                  <div>
-                    <label className="label-field">Atendimentos vinculados</label>
-                    <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
-                      {atendimentos.length === 0 && <p className="p-3 text-xs text-gray-400">Nenhum atendimento disponível</p>}
-                      {atendimentos.map(a => (
-                        <label key={a.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
-                          <input type="checkbox"
-                            checked={formCompra.pedidosSel.includes(a.id)}
-                            onChange={e => setFormCompra(f => ({
-                              ...f,
-                              pedidosSel: e.target.checked
-                                ? [...f.pedidosSel, a.id]
-                                : f.pedidosSel.filter(id => id !== a.id)
-                            }))}
-                            className="accent-[#1a6b2f]" />
-                          <span className="text-xs text-gray-700 flex-1 min-w-0 truncate">{a.titulo}</span>
-                          <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0", CLASS_COR[a.classificacao])}>{a.classificacao}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+                  {/* Cliente vinculado — select pesquisável */}
+                  {(() => {
+                    // Lista única de clientes com materiais pendentes
+                    const clientesComMat = Array.from(new Set(
+                      matComprar
+                        .filter(m => m.status === "Pendente" && !m._origem)
+                        .map(m => m.vinculados?.[0]?.titulo ?? "")
+                        .filter(Boolean)
+                    )).sort();
+                    // Todos os clientes de atendimentos (para o select)
+                    const clientesAtend = Array.from(new Set(
+                      atendimentos.map(a => a.titulo).filter(Boolean)
+                    )).sort();
+                    const todosClientes = Array.from(new Set([...clientesComMat, ...clientesAtend])).sort();
+                    const filtrados = buscaClienteCompra.trim()
+                      ? todosClientes.filter(c => c.toLowerCase().includes(buscaClienteCompra.toLowerCase()))
+                      : todosClientes;
+                    // Materiais pendentes do cliente selecionado
+                    const matsDoCliente = formCompra.clienteSel
+                      ? matComprar.filter(m =>
+                          m.status === "Pendente" &&
+                          !m._origem &&
+                          (m.vinculados?.[0]?.titulo ?? "") === formCompra.clienteSel
+                        )
+                      : [];
+                    return (
+                      <>
+                        <div>
+                          <label className="label-field">Cliente</label>
+                          <div className="relative">
+                            <div
+                              className="input-field flex items-center justify-between cursor-pointer select-none"
+                              onClick={() => setDropdownClienteCompra(d => !d)}
+                            >
+                              <span className={formCompra.clienteSel ? "text-gray-900 text-sm" : "text-gray-400 text-sm"}>
+                                {formCompra.clienteSel || "Selecionar cliente…"}
+                              </span>
+                              <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                            </div>
+                            {dropdownClienteCompra && (
+                              <div className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
+                                <div className="p-2 border-b border-gray-100">
+                                  <input
+                                    autoFocus
+                                    className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/30"
+                                    placeholder="Buscar cliente…"
+                                    value={buscaClienteCompra}
+                                    onChange={e => setBuscaClienteCompra(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                </div>
+                                <div className="max-h-44 overflow-y-auto">
+                                  {formCompra.clienteSel && (
+                                    <button
+                                      type="button"
+                                      className="w-full px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 italic"
+                                      onClick={() => { setFormCompra(f => ({ ...f, clienteSel: "", matsSel: [] })); setBuscaClienteCompra(""); setDropdownClienteCompra(false); }}
+                                    >
+                                      Limpar seleção
+                                    </button>
+                                  )}
+                                  {filtrados.length === 0 && (
+                                    <p className="px-3 py-2 text-xs text-gray-400">Nenhum cliente encontrado</p>
+                                  )}
+                                  {filtrados.map(c => (
+                                    <button
+                                      key={c}
+                                      type="button"
+                                      className={cn("w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between gap-2",
+                                        formCompra.clienteSel === c ? "bg-[#e8f5ec] font-medium text-[#1a6b2f]" : "text-gray-800"
+                                      )}
+                                      onClick={() => {
+                                        setFormCompra(f => ({ ...f, clienteSel: c, matsSel: [] }));
+                                        setBuscaClienteCompra("");
+                                        setDropdownClienteCompra(false);
+                                      }}
+                                    >
+                                      <span className="truncate">{c}</span>
+                                      {clientesComMat.includes(c) && (
+                                        <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+                                          {matComprar.filter(m => m.status === "Pendente" && !m._origem && (m.vinculados?.[0]?.titulo ?? "") === c).length} mat.
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Materiais pendentes do cliente selecionado */}
+                        {formCompra.clienteSel && (
+                          <div>
+                            <label className="label-field">
+                              Materiais a comprar
+                              {matsDoCliente.length > 0 && (
+                                <span className="ml-2 text-[10px] font-normal text-orange-600">
+                                  ({matsDoCliente.length} pendente{matsDoCliente.length !== 1 ? "s" : ""})
+                                </span>
+                              )}
+                            </label>
+                            {matsDoCliente.length === 0 ? (
+                              <p className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3 text-xs text-gray-400">
+                                Nenhum material pendente cadastrado para este cliente
+                              </p>
+                            ) : (
+                              <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
+                                  <input
+                                    type="checkbox"
+                                    className="accent-[#1a6b2f]"
+                                    checked={formCompra.matsSel.length === matsDoCliente.length}
+                                    onChange={e => setFormCompra(f => ({
+                                      ...f,
+                                      matsSel: e.target.checked ? matsDoCliente.map(m => m.id) : []
+                                    }))}
+                                  />
+                                  <span className="text-xs font-medium text-gray-500">Selecionar todos</span>
+                                </div>
+                                {matsDoCliente.map(m => (
+                                  <label key={m.id} className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                                    <input
+                                      type="checkbox"
+                                      className="accent-[#1a6b2f] mt-0.5 shrink-0"
+                                      checked={formCompra.matsSel.includes(m.id)}
+                                      onChange={e => setFormCompra(f => ({
+                                        ...f,
+                                        matsSel: e.target.checked
+                                          ? [...f.matsSel, m.id]
+                                          : f.matsSel.filter(id => id !== m.id)
+                                      }))}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <span className="text-xs text-gray-800 font-medium">{m.descricao}</span>
+                                      <span className="ml-1.5 text-xs text-gray-400">{m.quantidade} {m.unidade}</span>
+                                      {m.fornecedor && <span className="ml-1.5 text-[10px] text-gray-400">· {m.fornecedor}</span>}
+                                    </div>
+                                    <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0", URGENCIA_COR[m.urgencia])}>
+                                      {m.urgencia}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                            {formCompra.matsSel.length > 0 && (
+                              <p className="mt-1 text-[11px] text-[#1a6b2f]">
+                                ✓ {formCompra.matsSel.length} material{formCompra.matsSel.length !== 1 ? "is" : ""} será{formCompra.matsSel.length !== 1 ? "ão" : ""} marcado{formCompra.matsSel.length !== 1 ? "s" : ""} como <strong>Comprado</strong> ao salvar
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                   <div>
                     <label className="label-field">Observações</label>
                     <textarea className="input-field" rows={2} value={formCompra.observacoes} onChange={e => setFormCompra(f => ({ ...f, observacoes: e.target.value }))} />
