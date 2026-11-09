@@ -976,6 +976,51 @@ function LogisticaPage() {
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
   const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
   const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
+  // ── Semanas fechadas + análise de custo ───────────────────────────────────
+  // chave: "YYYY-WNN" (ano + número da semana ISO)
+  const [semanasFechadas, setSemanasFechadas] = useState<Record<string, boolean>>({});
+  const [carregandoSemanas, setCarregandoSemanas] = useState(false);
+  // Parâmetros de custo logístico (configuráveis)
+  const [configCusto, setConfigCusto] = useState({
+    kmBase: 180,          // km São Pedro da Aldeia → Região Lagos (ida+volta)
+    custoPorKm: 0.70,     // R$/km (combustível + desgaste)
+    airbnbPorNoite: 150,  // R$/noite (média Airbnb região)
+    refeicaoFora: 60,     // R$/dia extra em alimentação quando fora
+  });
+  const [modalConfigCusto, setModalConfigCusto] = useState(false);
+
+  // Calcula a "chave de semana" ISO (YYYY-WNN) de uma data
+  function chaveSemanaDaData(d: Date): string {
+    const data = new Date(d); data.setHours(12,0,0,0);
+    // Número da semana ISO-8601: semana começa na segunda
+    const diaSemana = data.getDay() || 7; // 1=seg … 7=dom
+    data.setDate(data.getDate() + 4 - diaSemana);
+    const ano = data.getFullYear();
+    const inicioAno = new Date(ano, 0, 1);
+    const numSemana = Math.ceil(((data.getTime() - inicioAno.getTime()) / 86400000 + 1) / 7);
+    return `${ano}-W${String(numSemana).padStart(2, "0")}`;
+  }
+
+  async function carregarSemanasFechadas() {
+    setCarregandoSemanas(true);
+    const { data } = await supabase.from("logistica_semanas_fechadas").select("chave");
+    if (data) {
+      const mapa: Record<string, boolean> = {};
+      data.forEach((r: { chave: string }) => { mapa[r.chave] = true; });
+      setSemanasFechadas(mapa);
+    }
+    setCarregandoSemanas(false);
+  }
+
+  async function toggleSemanaFechada(chave: string) {
+    if (semanasFechadas[chave]) {
+      await supabase.from("logistica_semanas_fechadas").delete().eq("chave", chave);
+      setSemanasFechadas(prev => { const n = { ...prev }; delete n[chave]; return n; });
+    } else {
+      await supabase.from("logistica_semanas_fechadas").insert({ chave });
+      setSemanasFechadas(prev => ({ ...prev, [chave]: true }));
+    }
+  }
   const [modalFeedUrl, setModalFeedUrl] = useState(false);
   const FEED_URL = "https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/ical-feed";
   // Modais de status com email
@@ -1408,7 +1453,7 @@ function LogisticaPage() {
 
   useEffect(() => {
     if (aba === "pedidos") carregarPedidosLog();
-    if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); }
+    if (aba === "atendimentos") { carregarAtendimentos(); carregarPedidosFechados(); carregarSemanasFechadas(); }
     if (aba === "gantt") carregarAtendimentos();
     if (aba === "compras") { carregarAtendimentos().then((atends) => { carregarCompras(atends); carregarMatComprar(); }); }
     if (aba === "estoque") { carregarEstoque(); carregarSuprimentos(); }
@@ -3715,6 +3760,7 @@ function LogisticaPage() {
               return ad.toDateString() === dia.toDateString();
             });
             return (
+              <>
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                 {/* Navegação */}
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
@@ -3731,44 +3777,108 @@ function LogisticaPage() {
                   ))}
                 </div>
                 {/* Semanas */}
-                {semanas.map((sem, si) => (
-                  <div key={si} className="grid grid-cols-7 border-b border-gray-100 last:border-b-0">
-                    {sem.map((dia, di) => {
-                      const eMes = dia.getMonth() === mes;
-                      const eHoje = dia.toDateString() === hoje.toDateString();
-                      const eventos = atendPorDia(dia);
-                      return (
-                        <div key={di} className={cn(
-                          "min-h-[80px] p-1.5 border-r border-gray-100 last:border-r-0",
-                          !eMes && "bg-gray-50/60",
-                          eHoje && "bg-green-50"
-                        )}>
-                          <div className={cn(
-                            "h-6 w-6 flex items-center justify-center rounded-full text-xs font-semibold mb-1",
-                            eHoje ? "bg-[#1a6b2f] text-white" : eMes ? "text-gray-700" : "text-gray-300"
-                          )}>{dia.getDate()}</div>
-                          <div className="space-y-0.5">
-                            {eventos.slice(0, 3).map(a => (
-                              <div key={a.id} title={a.titulo}
-                                onClick={e => { e.stopPropagation(); setCalEventoPopup(a); }}
-                                className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity",
-                                  a.status === "Concluído" ? "bg-green-100 text-green-700" :
-                                  a.status === "Em andamento" ? "bg-yellow-100 text-yellow-700" :
-                                  a.status === "Cancelado" ? "bg-gray-100 text-gray-400" :
-                                  CLASS_COR[a.classificacao] ?? "bg-blue-100 text-blue-700"
-                                )}>
-                                {a.hora_inicio ? `${a.hora_inicio} ` : ""}{a.titulo}
+                {semanas.map((sem, si) => {
+                  const chaveSem = chaveSemanaDaData(sem[0]);
+                  const fechada = semanasFechadas[chaveSem] ?? false;
+                  return (
+                    <div key={si} className={cn(
+                      "border-b border-gray-100 last:border-b-0",
+                      fechada && "opacity-60 bg-gray-50/80"
+                    )}>
+                      <div className="grid grid-cols-7">
+                        {sem.map((dia, di) => {
+                          const eMes = dia.getMonth() === mes;
+                          const eHoje = dia.toDateString() === hoje.toDateString();
+                          const eventos = atendPorDia(dia);
+                          return (
+                            <div key={di} className={cn(
+                              "min-h-[80px] p-1.5 border-r border-gray-100 last:border-r-0",
+                              !eMes && "bg-gray-50/60",
+                              eHoje && "bg-green-50",
+                              fechada && "pointer-events-none"
+                            )}>
+                              <div className={cn(
+                                "h-6 w-6 flex items-center justify-center rounded-full text-xs font-semibold mb-1",
+                                eHoje ? "bg-[#1a6b2f] text-white" : eMes ? "text-gray-700" : "text-gray-300"
+                              )}>{dia.getDate()}</div>
+                              <div className="space-y-0.5">
+                                {eventos.slice(0, 3).map(a => (
+                                  <div key={a.id} title={a.titulo}
+                                    onClick={e => { e.stopPropagation(); if (!fechada) setCalEventoPopup(a); }}
+                                    className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity",
+                                      a.status === "Concluído" ? "bg-green-100 text-green-700" :
+                                      a.status === "Em andamento" ? "bg-yellow-100 text-yellow-700" :
+                                      a.status === "Cancelado" ? "bg-gray-100 text-gray-400" :
+                                      CLASS_COR[a.classificacao] ?? "bg-blue-100 text-blue-700"
+                                    )}>
+                                    {a.hora_inicio ? `${a.hora_inicio} ` : ""}{a.titulo}
+                                  </div>
+                                ))}
+                                {eventos.length > 3 && (
+                                  <div className="text-[9px] text-gray-400 pl-1">+{eventos.length - 3} mais</div>
+                                )}
                               </div>
-                            ))}
-                            {eventos.length > 3 && (
-                              <div className="text-[9px] text-gray-400 pl-1">+{eventos.length - 3} mais</div>
-                            )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Faixa de controle da semana */}
+                      {(() => {
+                        // Atendimentos da semana com endereço
+                        const atendsSem = sem.flatMap(dia => atendPorDia(dia));
+                        const comEndereco = atendsSem.filter(a => a.endereco);
+                        const diasComAtend = new Set(
+                          atendsSem.filter(a => a.data_agendada).map(a => a.data_agendada)
+                        ).size;
+                        if (atendsSem.length === 0 && !fechada) return null;
+                        // Cálculo de custo
+                        const custoDeslocamento = diasComAtend * configCusto.kmBase * configCusto.custoPorKm;
+                        const noitesNecessarias = Math.max(0, diasComAtend - 1);
+                        const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
+                          + diasComAtend * configCusto.refeicaoFora;
+                        const economiaSeDormir = custoDeslocamento - custoAirbnb;
+                        const melhorAirbnb = economiaSeDormir > 0 && noitesNecessarias > 0;
+                        return (
+                          <div className={cn(
+                            "flex items-center justify-between gap-3 px-3 py-1.5 border-t text-[10px]",
+                            fechada ? "bg-gray-100 border-gray-200" : "bg-gray-50/70 border-gray-100"
+                          )}>
+                            <div className="flex items-center gap-3 flex-wrap">
+                              {atendsSem.length > 0 && (
+                                <span className="text-gray-500">
+                                  {atendsSem.length} atend · {diasComAtend} dia{diasComAtend !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                              {diasComAtend > 0 && (
+                                <span className={cn(
+                                  "font-semibold",
+                                  melhorAirbnb ? "text-blue-600" : "text-gray-500"
+                                )}>
+                                  {melhorAirbnb
+                                    ? `💡 Airbnb economiza R$ ${economiaSeDormir.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                    : `🚗 Ir/voltar todo dia (R$ ${custoDeslocamento.toLocaleString("pt-BR", { maximumFractionDigits: 0 })})`
+                                  }
+                                </span>
+                              )}
+                              {fechada && <span className="rounded-full bg-gray-300 px-2 py-0.5 text-[10px] font-bold text-gray-600">🔒 SEMANA FECHADA</span>}
+                            </div>
+                            <button
+                              onClick={() => toggleSemanaFechada(chaveSem)}
+                              className={cn(
+                                "rounded-full px-2.5 py-0.5 text-[10px] font-semibold border transition-colors",
+                                fechada
+                                  ? "bg-white border-gray-300 text-gray-600 hover:bg-red-50 hover:border-red-300 hover:text-red-600"
+                                  : "bg-white border-[#1a6b2f] text-[#1a6b2f] hover:bg-[#1a6b2f] hover:text-white"
+                              )}
+                            >
+                              {fechada ? "Reabrir semana" : "Fechar semana"}
+                            </button>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+                        );
+                      })()}
+                    </div>
+                  );
+                })}
                 {/* Legenda */}
                 <div className="flex items-center gap-4 flex-wrap px-4 py-3 border-t border-gray-100 bg-gray-50 text-[10px] text-gray-500">
                   {Object.entries(CLASS_COR).map(([k, v]) => (
@@ -3777,6 +3887,168 @@ function LogisticaPage() {
                   <span className="ml-auto text-gray-400">{atendimentos.filter(a => a.data_agendada).length} agendados no total</span>
                 </div>
               </div>
+
+              {/* ── Painel de Análise de Custo Logístico ── */}
+              {(() => {
+                const { ano, mes } = calMes;
+                const primeiroDia2 = new Date(ano, mes, 1);
+                const ultimoDia2 = new Date(ano, mes + 1, 0);
+                const inicioGrade2 = new Date(primeiroDia2);
+                const dow2 = inicioGrade2.getDay();
+                inicioGrade2.setDate(inicioGrade2.getDate() - (dow2 === 0 ? 6 : dow2 - 1));
+                const semanas2: Date[][] = [];
+                let cur2 = new Date(inicioGrade2);
+                while (cur2 <= ultimoDia2 || semanas2.length < 4) {
+                  const sem: Date[] = [];
+                  for (let d = 0; d < 7; d++) { sem.push(new Date(cur2)); cur2.setDate(cur2.getDate() + 1); }
+                  semanas2.push(sem);
+                  if (cur2 > ultimoDia2 && semanas2.length >= 4) break;
+                }
+                // Só semanas com atendimentos
+                const semanasComAtend = semanas2.map(sem => {
+                  const atendsSem = sem.flatMap(dia =>
+                    atendimentos.filter(a => {
+                      if (!a.data_agendada) return false;
+                      const ad = new Date(a.data_agendada + "T00:00:00");
+                      return ad.toDateString() === dia.toDateString();
+                    })
+                  );
+                  return { sem, atends: atendsSem };
+                }).filter(({ atends }) => atends.length > 0);
+
+                if (semanasComAtend.length === 0) return null;
+
+                return (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-800">Análise de Custo Logístico</h4>
+                        <p className="text-[10px] text-gray-400 mt-0.5">São Pedro da Aldeia → Região Lagos · comparativo por semana</p>
+                      </div>
+                      <button
+                        onClick={() => setModalConfigCusto(true)}
+                        className="rounded-lg border border-gray-200 px-2.5 py-1 text-[10px] font-medium text-gray-500 hover:bg-gray-100"
+                      >⚙ Parâmetros</button>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {semanasComAtend.map(({ sem, atends }) => {
+                        const chaveSem = chaveSemanaDaData(sem[0]);
+                        const fechada = semanasFechadas[chaveSem] ?? false;
+                        const diasComAtend = new Set(atends.filter(a => a.data_agendada).map(a => a.data_agendada)).size;
+                        const noitesNecessarias = Math.max(0, diasComAtend - 1);
+                        const custoDeslocamento = diasComAtend * configCusto.kmBase * configCusto.custoPorKm;
+                        const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
+                          + diasComAtend * configCusto.refeicaoFora;
+                        const economiaSeDormir = custoDeslocamento - custoAirbnb;
+                        const melhorAirbnb = economiaSeDormir > 0 && noitesNecessarias > 0;
+                        const seg = sem[0]; const sex = sem[4];
+                        const labelSem = `${seg.getDate()}/${seg.getMonth()+1} – ${sex.getDate()}/${sex.getMonth()+1}`;
+                        // Clientes da semana
+                        const clientes = [...new Set(atends.map(a => a.titulo))];
+                        return (
+                          <div key={chaveSem} className={cn("px-4 py-3", fechada && "bg-gray-50")}>
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                  <span className="text-xs font-semibold text-gray-700">{labelSem}</span>
+                                  <span className="text-[10px] text-gray-400">{diasComAtend} dia{diasComAtend !== 1 ? "s" : ""} · {atends.length} atend</span>
+                                  {fechada && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold text-gray-500">🔒 Fechada</span>}
+                                </div>
+                                <div className="flex flex-wrap gap-1 mb-2">
+                                  {clientes.slice(0, 5).map(c => (
+                                    <span key={c} className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 truncate max-w-[180px]">{c}</span>
+                                  ))}
+                                  {clientes.length > 5 && <span className="text-[10px] text-gray-400">+{clientes.length - 5}</span>}
+                                </div>
+                                {/* Comparativo */}
+                                <div className="flex gap-4 flex-wrap">
+                                  <div className={cn(
+                                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                                    !melhorAirbnb ? "bg-green-50 border border-green-200 text-green-700" : "bg-gray-100 text-gray-500"
+                                  )}>
+                                    🚗 Deslocamento diário
+                                    <span className="font-bold">R$ {custoDeslocamento.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                    <span className="text-[10px] opacity-70">{diasComAtend}× {configCusto.kmBase}km × R$ {configCusto.custoPorKm.toFixed(2)}/km</span>
+                                  </div>
+                                  {noitesNecessarias > 0 && (
+                                    <div className={cn(
+                                      "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                                      melhorAirbnb ? "bg-blue-50 border border-blue-200 text-blue-700" : "bg-gray-100 text-gray-500"
+                                    )}>
+                                      🏠 Airbnb {noitesNecessarias} noite{noitesNecessarias !== 1 ? "s" : ""}
+                                      <span className="font-bold">R$ {custoAirbnb.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                      <span className="text-[10px] opacity-70">{noitesNecessarias}× R${configCusto.airbnbPorNoite} + refeições</span>
+                                    </div>
+                                  )}
+                                  {noitesNecessarias > 0 && (
+                                    <div className={cn(
+                                      "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold",
+                                      melhorAirbnb ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
+                                    )}>
+                                      {melhorAirbnb
+                                        ? `💡 Airbnb economiza R$ ${economiaSeDormir.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                                        : `✅ Ir/voltar é mais barato (R$ ${Math.abs(economiaSeDormir).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} de diferença)`
+                                      }
+                                    </div>
+                                  )}
+                                  {noitesNecessarias === 0 && (
+                                    <div className="flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-xs font-medium text-green-700">
+                                      ✅ 1 dia — ir e voltar
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-[10px] text-gray-400">
+                      * Deslocamento: {configCusto.kmBase} km/dia × R$ {configCusto.custoPorKm.toFixed(2)}/km · Airbnb: R$ {configCusto.airbnbPorNoite}/noite + R$ {configCusto.refeicaoFora}/dia em refeições
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Modal de Parâmetros de Custo */}
+              {modalConfigCusto && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => e.target === e.currentTarget && setModalConfigCusto(false)}>
+                  <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-base font-semibold text-gray-900">Parâmetros de Custo</h3>
+                      <button onClick={() => setModalConfigCusto(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+                    </div>
+                    <div className="space-y-3">
+                      {[
+                        { label: "Km por dia (ida + volta)", field: "kmBase", suffix: "km" },
+                        { label: "Custo por km (R$)", field: "custoPorKm", suffix: "R$/km" },
+                        { label: "Airbnb por noite (R$)", field: "airbnbPorNoite", suffix: "R$/noite" },
+                        { label: "Extra em refeições por dia (R$)", field: "refeicaoFora", suffix: "R$/dia" },
+                      ].map(({ label, field, suffix }) => (
+                        <div key={field} className="flex items-center justify-between gap-3">
+                          <label className="text-sm text-gray-700 flex-1">{label}</label>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={0}
+                              step={field === "custoPorKm" ? 0.05 : 10}
+                              value={(configCusto as Record<string, number>)[field]}
+                              onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
+                              className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
+                            />
+                            <span className="text-xs text-gray-400 w-14">{suffix}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-4 text-[10px] text-gray-400">Os parâmetros ficam salvos apenas nesta sessão. Em breve serão persistidos.</p>
+                    <button onClick={() => setModalConfigCusto(false)} className="mt-4 w-full rounded-lg bg-[#1a6b2f] py-2.5 text-sm font-semibold text-white hover:bg-[#155824]">
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              )}
+              </>
             );
           })()}
 
