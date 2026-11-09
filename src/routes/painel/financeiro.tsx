@@ -777,8 +777,18 @@ function FinanceiroPage() {
 
   async function salvarDiv() {
     if (!formDiv.credor?.trim()) return;
-    if (selDiv) await supabase.from("financeiro_dividas").update(formDiv).eq("id", selDiv.id);
-    else await supabase.from("financeiro_dividas").insert(formDiv);
+    let err;
+    if (selDiv) {
+      const res = await supabase.from("financeiro_dividas").update(formDiv).eq("id", selDiv.id);
+      err = res.error;
+    } else {
+      const res = await supabase.from("financeiro_dividas").insert(formDiv);
+      err = res.error;
+    }
+    if (err) {
+      alert("Erro ao salvar dívida: " + err.message + "\n\nVerifique se a migration SQL foi executada no Supabase.");
+      return;
+    }
     setModalDiv(false);
     carregarDividas();
   }
