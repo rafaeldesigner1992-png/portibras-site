@@ -4099,13 +4099,20 @@ function CrmPage() {
       setValoresPorLead(mapa);
       setLeadsEmLogistica(emLogistica);
 
-      // Carrega leads em vistoria ativa (pendente ou agendada)
-      const { data: vistorias } = await supabase
-        .from("vistorias")
-        .select("lead_id")
-        .in("status", ["pendente", "agendada"]);
-      if (vistorias) {
-        setLeadsEmVistoria(new Set(vistorias.map((v: { lead_id: string }) => v.lead_id)));
+      // Carrega leads em vistoria ativa — atendimentos com classificacao "Vistoria" não concluídos/cancelados
+      const { data: atendVistoria } = await supabase
+        .from("atendimentos")
+        .select("cliente_nome")
+        .eq("classificacao", "Vistoria")
+        .not("status", "in", '("Concluído","Cancelado")');
+      if (atendVistoria && data) {
+        const nomesAtivos = new Set(atendVistoria.map((a: { cliente_nome: string | null }) => a.cliente_nome?.toLowerCase()));
+        const idsEmVistoria = new Set(
+          (data as Lead[])
+            .filter(l => nomesAtivos.has(l.nome?.toLowerCase()))
+            .map(l => l.id)
+        );
+        setLeadsEmVistoria(idsEmVistoria);
       }
     }
     setCarregando(false);
