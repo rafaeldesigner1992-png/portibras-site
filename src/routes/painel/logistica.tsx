@@ -919,8 +919,9 @@ function LogisticaPage() {
   const [pedidosLog, setPedidosLog] = useState<PedidoLogistico[]>([]);
   const [carregandoPedLog, setCarregandoPedLog] = useState(false);
   const [viewPedidos, setViewPedidos] = useState<"kanban" | "lista">("kanban");
+  const [sortLista, setSortLista] = useState<"etapa" | "pct_asc" | "pct_desc">("etapa");
   // progresso por pedido: { aquisicao: bool, tarefas: bool }
-  const [progressoCards, setProgressoCards] = useState<Record<string, { info: boolean; aquisicao: boolean; tarefas: boolean }>>({});
+  const [progressoCards, setProgressoCards] = useState<Record<string, { info: boolean; aquisicao: boolean; tarefas: boolean; tarefasTotal: number; tarefasConcluidas: number }>>({});
   const [pedidoAberto, setPedidoAberto] = useState<PedidoLogistico | null>(null);
   const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao" | "tarefas">("info");
   const [aquisicoes, setAquisicoes] = useState<ItemAquisicao[]>([]);
@@ -1737,10 +1738,14 @@ function LogisticaPage() {
           const lastInfo = chItens.find((c: { aba: string }) => c.aba === "info");
           const lastAquis = chItens.find((c: { aba: string }) => c.aba === "aquisicao");
           const lastTaref = chItens.find((c: { aba: string }) => c.aba === "tarefas");
+          const tarefasTotal = tItens.length;
+          const tarefasConcluidas = tItens.filter((t: { concluida: boolean }) => t.concluida).length;
           prog[id] = {
             info:      lastInfo?.checked  === true,  // check manual clicado
             aquisicao: lastAquis?.checked === true || aqItens.length > 0,
             tarefas:   lastTaref?.checked === true || tItens.length > 0,
+            tarefasTotal,
+            tarefasConcluidas,
           };
         }
         setProgressoCards(prog);
@@ -2795,6 +2800,9 @@ function LogisticaPage() {
                         const infoOk  = prog?.info      ?? false;
                         const aquisOk = prog?.aquisicao ?? false;
                         const tarefOk = prog?.tarefas   ?? false;
+                        const tTotal = prog?.tarefasTotal ?? 0;
+                        const tConc  = prog?.tarefasConcluidas ?? 0;
+                        const pct = tTotal > 0 ? Math.round((tConc / tTotal) * 100) : null;
 
                         return (
                           <div
@@ -2810,8 +2818,35 @@ function LogisticaPage() {
                               </span>
                             </div>
 
-                            {/* Nome cliente */}
-                            <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2 mb-2">{cliente}</p>
+                            {/* Nome cliente + % tarefas em destaque */}
+                            <div className="flex items-start justify-between gap-1 mb-2">
+                              <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2 flex-1">{cliente}</p>
+                              {pct !== null && (
+                                <span className={cn(
+                                  "flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums leading-none",
+                                  pct === 100 ? "bg-green-100 text-green-700" :
+                                  pct >= 50   ? "bg-blue-50 text-blue-600" :
+                                               "bg-orange-50 text-orange-600"
+                                )}>
+                                  {pct}%
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Barra de progresso de tarefas */}
+                            {tTotal > 0 && (
+                              <div className="mb-2">
+                                <div className="h-1 w-full rounded-full bg-gray-100 overflow-hidden">
+                                  <div
+                                    className={cn("h-full rounded-full transition-all duration-500",
+                                      pct === 100 ? "bg-green-500" : pct! >= 50 ? "bg-blue-500" : "bg-orange-400"
+                                    )}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <p className="mt-0.5 text-[9px] text-gray-400 tabular-nums">{tConc}/{tTotal} tarefas</p>
+                              </div>
+                            )}
 
                             {/* Valor */}
                             {p.valor_venda != null && (
@@ -2860,11 +2895,25 @@ function LogisticaPage() {
             {viewPedidos === "lista" && (
               <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
                 {/* Cabeçalho da tabela */}
-                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 border-b border-gray-100 px-4 py-2.5 bg-gray-50">
+                <div className="grid grid-cols-[2fr_1fr_1fr_1fr_80px_auto] gap-4 border-b border-gray-100 px-4 py-2.5 bg-gray-50">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Cliente</span>
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Etapa</span>
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Valor</span>
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Tipo</span>
+                  {/* Coluna Tarefas % com sort */}
+                  <button
+                    onClick={() => setSortLista(s => s === "pct_desc" ? "pct_asc" : "pct_desc")}
+                    className={cn(
+                      "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest transition-colors",
+                      sortLista !== "etapa" ? "text-[#1a6b2f]" : "text-gray-400 hover:text-gray-600"
+                    )}
+                    title="Ordenar por % de tarefas concluídas"
+                  >
+                    Tarefas
+                    <span className="text-[9px]">
+                      {sortLista === "pct_asc" ? "↑" : sortLista === "pct_desc" ? "↓" : "↕"}
+                    </span>
+                  </button>
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Check</span>
                 </div>
 
@@ -2874,6 +2923,70 @@ function LogisticaPage() {
                   </div>
                 ) : pedidosLog.length === 0 ? (
                   <div className="py-12 text-center text-sm text-gray-300">Nenhum pedido ativo</div>
+                ) : sortLista !== "etapa" ? (
+                  // Modo sort por %: lista plana sem separadores de etapa
+                  (() => {
+                    const todos = [...pedidosLog].sort((a, b) => {
+                      const pA = progressoCards[a.id];
+                      const pB = progressoCards[b.id];
+                      const ratioA = (pA?.tarefasTotal ?? 0) > 0 ? (pA!.tarefasConcluidas / pA!.tarefasTotal) : -1;
+                      const ratioB = (pB?.tarefasTotal ?? 0) > 0 ? (pB!.tarefasConcluidas / pB!.tarefasTotal) : -1;
+                      return sortLista === "pct_asc" ? ratioA - ratioB : ratioB - ratioA;
+                    });
+                    return todos.map((p, i) => {
+                      const cliente = p.cliente_empresa || p.cliente_nome || "—";
+                      const tipo = p.tipo_servico === "manutencao" ? "Manut." : "Orç.";
+                      const dias = Math.floor((Date.now() - new Date(p.criado_em).getTime()) / 86_400_000);
+                      const prog = progressoCards[p.id];
+                      const infoOk  = prog?.info      ?? false;
+                      const aquisOk = prog?.aquisicao ?? false;
+                      const tarefOk = prog?.tarefas   ?? false;
+                      const tTotal = prog?.tarefasTotal ?? 0;
+                      const tConc  = prog?.tarefasConcluidas ?? 0;
+                      const pct = tTotal > 0 ? Math.round((tConc / tTotal) * 100) : null;
+                      const etapaInfo = ETAPAS.find(e => e.key === p.etapa);
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => abrirPedido(p)}
+                          className={cn(
+                            "grid grid-cols-[2fr_1fr_1fr_1fr_80px_auto] gap-4 items-center px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors",
+                            i < todos.length - 1 && "border-b border-gray-50"
+                          )}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{cliente}</p>
+                            <p className="text-[10px] text-gray-400">{dias === 0 ? "hoje" : `há ${dias}d`}</p>
+                          </div>
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium w-fit", etapaInfo?.pill ?? "bg-gray-100 text-gray-500")}>
+                            {etapaInfo?.label ?? p.etapa}
+                          </span>
+                          <span className={cn("text-sm font-semibold tabular-nums", p.valor_venda ? "text-[#1a6b2f]" : "text-gray-300")}>
+                            {fmt(p.valor_venda)}
+                          </span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 w-fit">{tipo}</span>
+                          {/* % tarefas */}
+                          <div className="flex items-center gap-1.5">
+                            {pct !== null ? (
+                              <>
+                                <div className="h-1 flex-1 rounded-full bg-gray-100 overflow-hidden">
+                                  <div className={cn("h-full rounded-full", pct === 100 ? "bg-green-500" : pct >= 50 ? "bg-blue-500" : "bg-orange-400")} style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className={cn("text-[10px] font-bold tabular-nums w-7 text-right", pct === 100 ? "text-green-600" : pct >= 50 ? "text-blue-600" : "text-orange-600")}>{pct}%</span>
+                              </>
+                            ) : (
+                              <span className="text-[10px] text-gray-300">—</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className={cn("h-2.5 w-2.5 rounded-full", infoOk  ? "bg-blue-500" : "bg-gray-200")} />
+                            <div className={cn("h-2.5 w-2.5 rounded-full", aquisOk ? "bg-blue-500" : "bg-gray-200")} />
+                            <div className={cn("h-2.5 w-2.5 rounded-full", tarefOk ? "bg-blue-500" : "bg-gray-200")} />
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()
                 ) : (
                   ETAPAS.map(etapa => {
                     const grupo = pedidosLog.filter(p => p.etapa === etapa.key);
@@ -2894,12 +3007,15 @@ function LogisticaPage() {
                           const infoOk  = prog?.info      ?? false;
                           const aquisOk = prog?.aquisicao ?? false;
                           const tarefOk = prog?.tarefas   ?? false;
+                          const tTotal = prog?.tarefasTotal ?? 0;
+                          const tConc  = prog?.tarefasConcluidas ?? 0;
+                          const pct = tTotal > 0 ? Math.round((tConc / tTotal) * 100) : null;
                           return (
                             <div
                               key={p.id}
                               onClick={() => abrirPedido(p)}
                               className={cn(
-                                "grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-center px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors",
+                                "grid grid-cols-[2fr_1fr_1fr_1fr_80px_auto] gap-4 items-center px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors",
                                 i < grupo.length - 1 && "border-b border-gray-50"
                               )}
                             >
@@ -2920,6 +3036,19 @@ function LogisticaPage() {
                               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 w-fit">
                                 {tipo}
                               </span>
+                              {/* % tarefas */}
+                              <div className="flex items-center gap-1.5">
+                                {pct !== null ? (
+                                  <>
+                                    <div className="h-1 flex-1 rounded-full bg-gray-100 overflow-hidden">
+                                      <div className={cn("h-full rounded-full", pct === 100 ? "bg-green-500" : pct >= 50 ? "bg-blue-500" : "bg-orange-400")} style={{ width: `${pct}%` }} />
+                                    </div>
+                                    <span className={cn("text-[10px] font-bold tabular-nums w-7 text-right", pct === 100 ? "text-green-600" : pct >= 50 ? "text-blue-600" : "text-orange-600")}>{pct}%</span>
+                                  </>
+                                ) : (
+                                  <span className="text-[10px] text-gray-300">—</span>
+                                )}
+                              </div>
                               {/* 3 bolinhas */}
                               <div className="flex items-center gap-1">
                                 <div className={cn("h-2.5 w-2.5 rounded-full", infoOk  ? "bg-blue-500" : "bg-gray-200")} title="Informações" />
