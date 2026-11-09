@@ -4017,17 +4017,35 @@ function LogisticaPage() {
                                             <td className="pt-1 pr-3" colSpan={3}>Total opção 2</td>
                                             <td className={cn("pt-1 text-right tabular-nums", melhorAirbnb ? "text-blue-700" : "text-gray-700")}>{fmtR(custoAirbnb)}</td>
                                           </tr>
-                                          {/* Recomendação */}
+                                          {/* Comparativo entre as duas opções */}
                                           <tr>
-                                            <td colSpan={4} className="pt-2">
-                                              <div className={cn(
-                                                "rounded-lg px-3 py-1.5 text-xs font-bold text-center",
-                                                melhorAirbnb ? "bg-blue-50 text-blue-800 border border-blue-200" : "bg-green-50 text-green-800 border border-green-200"
-                                              )}>
-                                                {melhorAirbnb
-                                                  ? `💡 Airbnb economiza ${fmtR(economiaSeDormir)} essa semana`
-                                                  : `✅ Ir e voltar todo dia é R$ ${fmtR(Math.abs(economiaSeDormir))} mais barato`
-                                                }
+                                            <td colSpan={4} className="pt-3 pb-1">
+                                              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                                                <div className="grid grid-cols-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-3 py-1.5 bg-gray-50 border-b border-gray-200">
+                                                  <span>Opção</span>
+                                                  <span className="text-right">Total</span>
+                                                  <span className="text-right">Diferença</span>
+                                                </div>
+                                                <div className={cn(
+                                                  "grid grid-cols-3 px-3 py-2 text-xs font-medium border-b border-gray-100",
+                                                  !melhorAirbnb ? "bg-green-50 text-green-800" : "text-gray-600"
+                                                )}>
+                                                  <span className="flex items-center gap-1">🚗 Deslocamento{!melhorAirbnb && <span className="text-[9px] font-bold bg-green-200 text-green-800 rounded px-1">✓ Melhor</span>}</span>
+                                                  <span className="text-right font-bold tabular-nums">{fmtR(custoDeslocamento)}</span>
+                                                  <span className={cn("text-right tabular-nums", !melhorAirbnb ? "text-green-700 font-bold" : "text-red-500")}>
+                                                    {!melhorAirbnb ? `−${fmtR(Math.abs(economiaSeDormir))}` : `+${fmtR(Math.abs(economiaSeDormir))}`}
+                                                  </span>
+                                                </div>
+                                                <div className={cn(
+                                                  "grid grid-cols-3 px-3 py-2 text-xs font-medium",
+                                                  melhorAirbnb ? "bg-blue-50 text-blue-800" : "text-gray-600"
+                                                )}>
+                                                  <span className="flex items-center gap-1">🏠 Airbnb{melhorAirbnb && <span className="text-[9px] font-bold bg-blue-200 text-blue-800 rounded px-1">✓ Melhor</span>}</span>
+                                                  <span className="text-right font-bold tabular-nums">{fmtR(custoAirbnb)}</span>
+                                                  <span className={cn("text-right tabular-nums", melhorAirbnb ? "text-blue-700 font-bold" : "text-red-500")}>
+                                                    {melhorAirbnb ? `−${fmtR(Math.abs(economiaSeDormir))}` : `+${fmtR(Math.abs(economiaSeDormir))}`}
+                                                  </span>
+                                                </div>
                                               </div>
                                             </td>
                                           </tr>
