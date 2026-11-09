@@ -1,24 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Users,
-  UserCheck,
-  UserX,
-  TrendingUp,
-  Briefcase,
-  Wrench,
-  DollarSign,
-  Package,
-  ShoppingCart,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
-  Building2,
-  ClipboardList,
-  Activity,
+  Users, UserCheck, UserX, TrendingUp, Briefcase, Wrench, DollarSign,
+  Package, ShoppingCart, Loader2, AlertCircle, RefreshCw, Building2,
+  ClipboardList, Activity, Target, Clock, ArrowRight,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/painel/")({
   component: DashboardPage,
@@ -26,165 +15,156 @@ export const Route = createFileRoute("/painel/")({
 
 // ─── Tipos ──────────────────────────────────────────────
 interface DashboardData {
-  // Clientes
+  // Clientes (calculados a partir de ca_vendas)
   totalClientes: number;
-  clientesAtivos: number;
-  clientesInativos: number;
-  clientesProspect: number;
-  // CRM Leads
-  totalLeads: number;
+  clientesAtivos: number;      // fechamento < 6 meses
+  clientesInativos: number;    // fechamento >= 6 meses
+  // CRM — Leads por etapa
+  leadsPorEtapa: Record<string, number>;
   leadsAbertos: number;
-  leadsManutenção: number;
-  leadsOrcamento: number;
+  totalLeads: number;
+  // Maturação média (leads fechados)
+  maturacaoMediaDias: number | null;
   // Funcionários
   totalFuncionarios: number;
   funcionariosAtivos: number;
   // Logística
   atendimentosEmAndamento: number;
   atendimentosProgramados: number;
-  // Materiais a comprar
-  materiaisPendentes: number;
-  valorMateriais: number;
-  // Conta Azul
+  // Contratos CA
+  caContratos: number;
+  metaContratos: number;
+  // Financeiro CA
   caFaturamento: number;
   caReceber: number;
-  caContratos: number;
+  caCustos: number;
+  // Compras
+  materiaisPendentes: number;
+  valorMateriais: number;
 }
 
-// ─── Componentes de Gráfico ──────────────────────────────
-const DonutChart = ({
+// ─── Helpers ────────────────────────────────────────────
+const fmt$ = (v: number) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+const fmtDias = (d: number) => d === 1 ? "1 dia" : `${Math.round(d)} dias`;
+
+// ─── Donut Chart (SVG) ───────────────────────────────────
+function DonutChart({
   data,
-  colors,
-  size = 120,
+  size = 140,
+  centerLabel,
+  centerSub,
 }: {
   data: { label: string; value: number; color: string }[];
-  colors?: string[];
   size?: number;
-}) => {
+  centerLabel?: string;
+  centerSub?: string;
+}) {
   const total = data.reduce((s, d) => s + d.value, 0);
-  if (total === 0) return <div className="flex items-center justify-center h-24 text-gray-400 text-sm">Sem dados</div>;
+  if (total === 0) return (
+    <div className="flex items-center justify-center text-gray-300 text-xs" style={{ width: size, height: size }}>
+      Sem dados
+    </div>
+  );
 
-  const radius = 40;
-  const cx = 50;
-  const cy = 50;
+  const radius = 38;
+  const cx = 50; const cy = 50;
   let cumulative = 0;
 
-  const slices = data.map((d, i) => {
-    const startAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
+  const slices = data.map((d) => {
+    const start = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
     cumulative += d.value;
-    const endAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
-    const x1 = cx + radius * Math.cos(startAngle);
-    const y1 = cy + radius * Math.sin(startAngle);
-    const x2 = cx + radius * Math.cos(endAngle);
-    const y2 = cy + radius * Math.sin(endAngle);
-    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
-    return { ...d, x1, y1, x2, y2, startAngle, endAngle, largeArc, color: d.color || (colors?.[i] ?? "#ccc") };
+    const end = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
+    return {
+      ...d,
+      x1: cx + radius * Math.cos(start), y1: cy + radius * Math.sin(start),
+      x2: cx + radius * Math.cos(end),   y2: cy + radius * Math.sin(end),
+      largeArc: end - start > Math.PI ? 1 : 0,
+    };
   });
 
   return (
     <svg viewBox="0 0 100 100" width={size} height={size}>
       {slices.map((s, i) => (
-        <path
-          key={i}
+        <path key={i}
           d={`M ${cx} ${cy} L ${s.x1} ${s.y1} A ${radius} ${radius} 0 ${s.largeArc} 1 ${s.x2} ${s.y2} Z`}
-          fill={s.color}
-          stroke="white"
-          strokeWidth="1"
+          fill={s.color} stroke="white" strokeWidth="1.5"
         />
       ))}
-      <circle cx={cx} cy={cy} r={24} fill="white" />
-      <text x={cx} y={cy - 4} textAnchor="middle" fontSize="12" fontWeight="bold" fill="#1f2937">
-        {total}
-      </text>
-      <text x={cx} y={cy + 10} textAnchor="middle" fontSize="7" fill="#6b7280">
-        total
-      </text>
+      <circle cx={cx} cy={cy} r={26} fill="white" />
+      {centerLabel && (
+        <>
+          <text x={cx} y={cy - 2} textAnchor="middle" fontSize="13" fontWeight="700" fill="#111827">{centerLabel}</text>
+          {centerSub && <text x={cx} y={cy + 10} textAnchor="middle" fontSize="7" fill="#6b7280">{centerSub}</text>}
+        </>
+      )}
     </svg>
   );
-};
-
-const BarChart = ({
-  data,
-  height = 80,
-}: {
-  data: { label: string; value: number; color: string }[];
-  height?: number;
-}) => {
-  const max = Math.max(...data.map((d) => d.value), 1);
-  return (
-    <div className="flex items-end gap-2" style={{ height }}>
-      {data.map((d, i) => (
-        <div key={i} className="flex flex-col items-center flex-1 gap-1">
-          <span className="text-xs font-bold text-gray-700">{d.value}</span>
-          <div
-            className="w-full rounded-t-sm transition-all"
-            style={{
-              height: `${Math.max((d.value / max) * (height - 28), 4)}px`,
-              backgroundColor: d.color,
-            }}
-          />
-          <span className="text-[10px] text-gray-500 text-center leading-tight">{d.label}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
+}
 
 // ─── KPI Card ───────────────────────────────────────────
-const KPICard = ({
-  titulo,
-  valor,
-  subtitulo,
-  icon: Icon,
-  cor,
-  loading,
+function KPICard({
+  titulo, valor, subtitulo, icon: Icon, cor, loading, destaque,
 }: {
-  titulo: string;
-  valor: string | number;
-  subtitulo?: string;
-  icon: React.ElementType;
-  cor: string;
-  loading?: boolean;
-}) => (
-  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-    <div className="flex items-start justify-between">
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{titulo}</p>
-        {loading ? (
-          <div className="mt-2 h-8 w-20 rounded bg-gray-100 animate-pulse" />
-        ) : (
-          <p className="mt-1.5 text-3xl font-bold text-gray-900">{valor}</p>
-        )}
-        {subtitulo && <p className="mt-1 text-xs text-gray-400">{subtitulo}</p>}
-      </div>
-      <div className={`rounded-lg p-3 ${cor} ml-3 flex-shrink-0`}>
-        <Icon className="h-5 w-5" />
+  titulo: string; valor: string | number; subtitulo?: React.ReactNode;
+  icon: React.ElementType; cor: string; loading?: boolean; destaque?: boolean;
+}) {
+  return (
+    <div className={cn(
+      "rounded-xl border bg-white p-4 shadow-sm",
+      destaque ? "border-blue-200" : "border-gray-200"
+    )}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{titulo}</p>
+          {loading ? (
+            <div className="mt-2 h-7 w-16 rounded bg-gray-100 animate-pulse" />
+          ) : (
+            <p className="mt-1.5 text-2xl font-bold text-gray-900">{valor}</p>
+          )}
+          {subtitulo && <p className="mt-0.5 text-xs text-gray-400">{subtitulo}</p>}
+        </div>
+        <div className={`rounded-lg p-2.5 ${cor} ml-3 flex-shrink-0`}>
+          <Icon className="h-4 w-4" />
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+}
 
-// ─── Seção de Card com Gráfico ───────────────────────────
-const ChartCard = ({
-  titulo,
-  children,
-  loading,
+// ─── Barra de progresso com meta ────────────────────────
+function BarraMeta({
+  titulo, atual, meta, cor, link,
 }: {
-  titulo: string;
-  children: React.ReactNode;
-  loading?: boolean;
-}) => (
-  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-    <h3 className="text-sm font-semibold text-gray-700 mb-4">{titulo}</h3>
-    {loading ? (
-      <div className="h-32 flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+  titulo: string; atual: number; meta: number; cor: string; link?: string;
+}) {
+  const pct = meta > 0 ? Math.min((atual / meta) * 100, 100) : 0;
+  const falta = Math.max(meta - atual, 0);
+  return (
+    <div>
+      <div className="flex justify-between items-center text-xs mb-1">
+        <span className="font-medium text-gray-700">{titulo}</span>
+        <span className="text-gray-500">
+          <span className="font-bold text-gray-900">{atual}</span>
+          <span className="text-gray-400"> / {meta}</span>
+          {falta > 0 && <span className="ml-1 text-orange-500">· faltam {falta}</span>}
+        </span>
       </div>
-    ) : (
-      children
-    )}
-  </div>
-);
+      <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-700"
+          style={{ width: `${pct}%`, backgroundColor: cor }}
+        />
+      </div>
+      {link && (
+        <div className="mt-1 text-right">
+          <Link to={link} className="text-[10px] text-blue-500 hover:underline">ver detalhes →</Link>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Página Principal ────────────────────────────────────
 function DashboardPage() {
@@ -197,117 +177,164 @@ function DashboardPage() {
   const agora = new Date();
   const hora = agora.getHours();
   const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
+  const mesAtual = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().slice(0, 10);
+  const seisAno = new Date(agora.getTime() - 180 * 86400000).toISOString().slice(0, 10);
 
   const carregarDados = async () => {
     setLoading(true);
     setErro(null);
     try {
-      // Todas as queries em paralelo
       const [
         clientesRes,
         leadsRes,
+        leadsFechadosRes,
         funcionariosRes,
         atendimentosRes,
         materiaisRes,
         caVendasRes,
         caCobrancasRes,
         caContratosRes,
+        metaContratosRes,
+        caDespesasRes,
       ] = await Promise.all([
-        // Clientes por status
-        supabase.from("clientes").select("status"),
-        // Leads do CRM
-        supabase.from("crm_leads").select("etapa, observacoes"),
-        // Funcionários (usuários)
+        // Clientes: status e data_ultima_vistoria para calcular ativo/inativo
+        supabase.from("clientes").select("id, status, data_ultima_vistoria"),
+
+        // Leads do CRM — apenas abertos (não fechados/perdidos)
+        supabase.from("crm_leads")
+          .select("etapa")
+          .not("etapa", "in", '("fechado","perdido")'),
+
+        // Leads fechados com datas para calcular maturação
+        supabase.from("crm_leads")
+          .select("data_inicio, data_fechamento")
+          .eq("etapa", "fechado")
+          .not("data_inicio", "is", null)
+          .not("data_fechamento", "is", null)
+          .limit(100),
+
+        // Funcionários ativos
         supabase.from("usuarios").select("ativo"),
-        // Atendimentos em andamento
-        supabase
-          .from("atendimentos")
+
+        // Atendimentos em andamento e programados
+        supabase.from("atendimentos")
           .select("status")
           .in("status", ["Em andamento", "Programado"]),
-        // Materiais pendentes de compra (atendimentos_materiais com status Solicitado)
-        supabase
-          .from("atendimentos_materiais")
-          .select("status, valor_total")
-          .eq("status", "Solicitado"),
-        // Conta Azul — vendas do mês
-        supabase
-          .from("ca_vendas")
-          .select("valor_total, emissao")
-          .gte(
-            "emissao",
-            new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().slice(0, 10)
-          ),
-        // Conta Azul — cobranças a receber
-        supabase.from("ca_cobrancas").select("valor, status").eq("status", "pending"),
-        // Conta Azul — contratos ativos
-        supabase.from("ca_contratos").select("id, status").eq("status", "active"),
+
+        // Materiais pendentes de compra
+        supabase.from("logistica_materiais_comprar")
+          .select("status")
+          .eq("status", "Pendente"),
+
+        // CA — faturamento do mês (vendas emitidas)
+        supabase.from("ca_vendas")
+          .select("valor_total")
+          .gte("data_emissao", mesAtual),
+
+        // CA — a receber (cobranças pendentes, tipo receita)
+        supabase.from("ca_cobrancas")
+          .select("valor")
+          .eq("status", "pending")
+          .eq("tipo", "receita"),
+
+        // CA — contratos ativos
+        supabase.from("ca_contratos")
+          .select("id")
+          .eq("status", "active"),
+
+        // Meta de contratos da tabela configuracoes
+        supabase.from("configuracoes")
+          .select("valor")
+          .eq("chave", "meta_contratos_ativos")
+          .maybeSingle(),
+
+        // CA — despesas do mês (tipo despesa ou saida)
+        supabase.from("ca_cobrancas")
+          .select("valor")
+          .in("tipo", ["despesa", "saida"])
+          .gte("vencimento", mesAtual),
       ]);
 
-      // Processar clientes
-      const clientes = clientesRes.data ?? [];
-      const totalClientes = clientes.length;
-      const clientesAtivos = clientes.filter((c) => c.status === "ativo").length;
-      const clientesInativos = clientes.filter((c) => c.status === "inativo").length;
-      const clientesProspect = clientes.filter((c) => c.status === "prospect").length;
+      // ── Clientes: ativo = tem fechamento nos últimos 6 meses
+      // Usamos ca_vendas para calcular clientes com faturamento recente
+      const clientesTotais = clientesRes.data ?? [];
+      const totalClientes = clientesTotais.length;
 
-      // Processar leads
-      const leads = leadsRes.data ?? [];
-      const leadsAbertos = leads.filter(
-        (l) => !["fechado", "perdido"].includes(l.etapa)
-      ).length;
-      const totalLeads = leads.length;
-
-      // Classificar leads por tipo (baseado em observações ou etapa)
-      // Manutenção 12x: leads que mencionam "manutenção", "12x", "mensal", "contrato"
-      const leadsManutenção = leads.filter((l) => {
-        const obs = (l.observacoes ?? "").toLowerCase();
-        return (
-          obs.includes("manuten") ||
-          obs.includes("12x") ||
-          obs.includes("mensal") ||
-          obs.includes("contrato")
-        );
+      // Ativos: status 'ativo' E última vistoria nos últimos 6 meses
+      // Inativos: status 'inativo' OU última vistoria > 6 meses atrás
+      const clientesAtivos = clientesTotais.filter(c => {
+        if (c.status === "inativo") return false;
+        if (c.status === "prospect") return false;
+        if (!c.data_ultima_vistoria) return c.status === "ativo";
+        return c.data_ultima_vistoria >= seisAno;
       }).length;
-      const leadsOrcamento = leadsAbertos - Math.min(leadsManutenção, leadsAbertos);
 
-      // Processar funcionários
+      const clientesInativos = clientesTotais.filter(c => {
+        if (c.status === "inativo") return true;
+        if (c.status === "prospect") return false;
+        if (!c.data_ultima_vistoria) return false;
+        return c.data_ultima_vistoria < seisAno;
+      }).length;
+
+      // ── CRM — leads por etapa (somente abertos)
+      const leads = leadsRes.data ?? [];
+      const leadsAbertos = leads.length;
+      const leadsPorEtapa: Record<string, number> = {};
+      leads.forEach(l => {
+        leadsPorEtapa[l.etapa] = (leadsPorEtapa[l.etapa] ?? 0) + 1;
+      });
+
+      // ── Maturação média (dias entre criação e fechamento)
+      const fechados = leadsFechadosRes.data ?? [];
+      let maturacaoMediaDias: number | null = null;
+      if (fechados.length > 0) {
+        const totalDias = fechados.reduce((acc, l) => {
+          const ini = new Date(l.data_inicio!).getTime();
+          const fim = new Date(l.data_fechamento!).getTime();
+          return acc + Math.max((fim - ini) / 86400000, 0);
+        }, 0);
+        maturacaoMediaDias = totalDias / fechados.length;
+      }
+
+      // ── Funcionários
       const funcionarios = funcionariosRes.data ?? [];
       const totalFuncionarios = funcionarios.length;
-      const funcionariosAtivos = funcionarios.filter((f) => f.ativo !== false).length;
+      const funcionariosAtivos = funcionarios.filter(f => f.ativo !== false).length;
 
-      // Processar atendimentos
+      // ── Atendimentos
       const atendimentos = atendimentosRes.data ?? [];
-      const atendimentosEmAndamento = atendimentos.filter(
-        (a) => a.status === "Em andamento"
-      ).length;
-      const atendimentosProgramados = atendimentos.filter(
-        (a) => a.status === "Programado"
-      ).length;
+      const atendimentosEmAndamento = atendimentos.filter(a => a.status === "Em andamento").length;
+      const atendimentosProgramados = atendimentos.filter(a => a.status === "Programado").length;
 
-      // Processar materiais
+      // ── Materiais
       const materiais = materiaisRes.data ?? [];
       const materiaisPendentes = materiais.length;
-      const valorMateriais = materiais.reduce(
-        (s, m) => s + (m.valor_total ?? 0),
-        0
-      );
+      const valorMateriais = 0; // logistica_materiais_comprar não tem valor_total
 
-      // Processar Conta Azul
+      // ── Conta Azul
       const caVendas = caVendasRes.data ?? [];
       const caFaturamento = caVendas.reduce((s, v) => s + (v.valor_total ?? 0), 0);
+
       const caCobrancas = caCobrancasRes.data ?? [];
       const caReceber = caCobrancas.reduce((s, c) => s + (c.valor ?? 0), 0);
+
       const caContratos = caContratosRes.data?.length ?? 0;
+
+      const metaContratosValor = metaContratosRes.data?.valor
+        ? parseInt(metaContratosRes.data.valor, 10)
+        : 20; // padrão 20 se não configurado
+
+      const caDespesas = caDespesasRes.data ?? [];
+      const caCustos = caDespesas.reduce((s, d) => s + (d.valor ?? 0), 0);
 
       setDados({
         totalClientes,
         clientesAtivos,
         clientesInativos,
-        clientesProspect,
-        totalLeads,
+        leadsPorEtapa,
         leadsAbertos,
-        leadsManutenção,
-        leadsOrcamento,
+        totalLeads: leadsAbertos,
+        maturacaoMediaDias,
         totalFuncionarios,
         funcionariosAtivos,
         atendimentosEmAndamento,
@@ -317,6 +344,8 @@ function DashboardPage() {
         caFaturamento,
         caReceber,
         caContratos,
+        metaContratos: metaContratosValor,
+        caCustos,
       });
       setUltimaAtualizacao(new Date());
     } catch (err: any) {
@@ -328,29 +357,29 @@ function DashboardPage() {
 
   useEffect(() => {
     carregarDados();
-    // Atualizar a cada 5 minutos
     const interval = setInterval(carregarDados, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const fmt = (valor: number) =>
-    valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  // ── Mapeamento etapas
+  const ETAPAS_INFO: Record<string, { label: string; color: string }> = {
+    prospecto:  { label: "Prospecto",   color: "#9ca3af" },
+    contato:    { label: "Em Contato",  color: "#60a5fa" },
+    proposta:   { label: "Proposta",    color: "#a78bfa" },
+    negociacao: { label: "Negociação",  color: "#fb923c" },
+  };
+  const ETAPA_ORDER = ["prospecto", "contato", "proposta", "negociacao"];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-5 max-w-7xl mx-auto space-y-7">
       {/* ── Cabeçalho ── */}
-      <div className="mb-6 flex items-start justify-between">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             {saudacao}, {usuario?.nome?.split(" ")[0] ?? ""}! 👋
           </h1>
           <p className="mt-0.5 text-sm text-gray-500">
-            {agora.toLocaleDateString("pt-BR", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
+            {agora.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
           {ultimaAtualizacao && (
             <p className="mt-0.5 text-xs text-gray-400">
@@ -358,34 +387,37 @@ function DashboardPage() {
             </p>
           )}
         </div>
-        <button
-          onClick={carregarDados}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        <button onClick={carregarDados} disabled={loading}
+          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Atualizar
         </button>
       </div>
 
       {/* ── Erro ── */}
       {erro && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           {erro}
         </div>
       )}
 
-      {/* ── Seção: Clientes ── */}
-      <section className="mb-6">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
-          <Building2 className="h-4 w-4" />
-          Clientes na Base
-        </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* ── Seção: Clientes na Base ── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            <Building2 className="h-3.5 w-3.5" />
+            Clientes na Base
+          </h2>
+          <Link to="/painel/clientes" className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+            Ver todos <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
           <KPICard
-            titulo="Total Clientes"
+            titulo="Total"
             valor={dados?.totalClientes ?? "—"}
+            subtitulo="Clientes cadastrados"
             icon={Users}
             cor="bg-blue-50 text-blue-600"
             loading={loading}
@@ -393,123 +425,119 @@ function DashboardPage() {
           <KPICard
             titulo="Ativos"
             valor={dados?.clientesAtivos ?? "—"}
+            subtitulo="Fechamento < 6 meses"
             icon={UserCheck}
             cor="bg-green-50 text-green-600"
             loading={loading}
+            destaque
           />
           <KPICard
             titulo="Inativos"
             valor={dados?.clientesInativos ?? "—"}
+            subtitulo="Sem fechamento + de 6 meses"
             icon={UserX}
             cor="bg-red-50 text-red-600"
             loading={loading}
           />
-          <KPICard
-            titulo="Prospects"
-            valor={dados?.clientesProspect ?? "—"}
-            icon={TrendingUp}
-            cor="bg-purple-50 text-purple-600"
-            loading={loading}
-          />
         </div>
       </section>
 
-      {/* ── Seção: CRM + Gráficos ── */}
-      <section className="mb-6">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
-          <ClipboardList className="h-4 w-4" />
-          CRM — Leads & Pipeline
-        </h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {/* KPIs de leads */}
-          <div className="space-y-3">
-            <KPICard
-              titulo="Leads Abertas"
-              valor={dados?.leadsAbertos ?? "—"}
-              subtitulo={`de ${dados?.totalLeads ?? "—"} leads totais`}
-              icon={Briefcase}
-              cor="bg-orange-50 text-orange-600"
-              loading={loading}
-            />
-            <KPICard
-              titulo="Manutenção 12x"
-              valor={dados?.leadsManutenção ?? "—"}
-              subtitulo="Contrato recorrente"
-              icon={Wrench}
-              cor="bg-emerald-50 text-emerald-600"
-              loading={loading}
-            />
-            <KPICard
-              titulo="Orçamento Avulso"
-              valor={dados?.leadsOrcamento ?? "—"}
-              subtitulo="Serviço pontual"
-              icon={DollarSign}
-              cor="bg-yellow-50 text-yellow-600"
-              loading={loading}
-            />
+      {/* ── Seção: CRM ── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            <ClipboardList className="h-3.5 w-3.5" />
+            CRM — Leads & Pipeline
+          </h2>
+          <Link to="/painel/crm" className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+            Abrir CRM <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* Funil por etapa */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-700">Distribuição do Funil</h3>
+              {!loading && dados && (
+                <span className="text-xs text-gray-400">{dados.leadsAbertos} leads em aberto</span>
+              )}
+            </div>
+            {loading ? (
+              <div className="h-28 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+              </div>
+            ) : dados ? (
+              <div className="space-y-2.5">
+                {ETAPA_ORDER.map(e => {
+                  const info = ETAPAS_INFO[e];
+                  const qtd = dados.leadsPorEtapa[e] ?? 0;
+                  const max = Math.max(...ETAPA_ORDER.map(k => dados.leadsPorEtapa[k] ?? 0), 1);
+                  return (
+                    <div key={e} className="flex items-center gap-3">
+                      <span className="w-20 shrink-0 text-xs text-gray-600">{info.label}</span>
+                      <div className="flex-1 h-6 rounded-lg bg-gray-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-lg transition-all duration-500 flex items-center px-2"
+                          style={{ width: `${Math.max((qtd / max) * 100, qtd > 0 ? 8 : 0)}%`, backgroundColor: info.color }}
+                        >
+                          {qtd > 0 && <span className="text-[10px] font-bold text-white">{qtd}</span>}
+                        </div>
+                      </div>
+                      <span className="w-6 shrink-0 text-right text-xs font-semibold text-gray-700">{qtd}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
-          {/* Gráfico de funil do CRM */}
-          <ChartCard titulo="Distribuição do Funil" loading={loading}>
-            {dados && (
-              <BarChart
-                height={120}
-                data={[
-                  { label: "Prospecto", value: 0, color: "#e5e7eb" },
-                  { label: "Contato", value: 0, color: "#93c5fd" },
-                  { label: "Proposta", value: 0, color: "#60a5fa" },
-                  { label: "Negociação", value: 0, color: "#3b82f6" },
-                  { label: "Fechado", value: 0, color: "#1d4ed8" },
-                ].map((item) => {
-                  // Isso vai ser preenchido com dados reais depois
-                  return item;
-                })}
-              />
-            )}
-            <p className="mt-2 text-xs text-gray-400 text-center">
-              Dados do funil por etapa em breve
-            </p>
-          </ChartCard>
-
-          {/* Gráfico de clientes */}
-          <ChartCard titulo="Status dos Clientes" loading={loading}>
-            {dados && (
-              <div className="flex items-center justify-center gap-6">
-                <DonutChart
-                  size={130}
-                  data={[
-                    { label: "Ativos", value: dados.clientesAtivos, color: "#22c55e" },
-                    { label: "Inativos", value: dados.clientesInativos, color: "#ef4444" },
-                    { label: "Prospects", value: dados.clientesProspect, color: "#a855f7" },
-                  ]}
-                />
-                <div className="space-y-2">
-                  {[
-                    { label: "Ativos", valor: dados.clientesAtivos, cor: "#22c55e" },
-                    { label: "Inativos", valor: dados.clientesInativos, cor: "#ef4444" },
-                    { label: "Prospects", valor: dados.clientesProspect, cor: "#a855f7" },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-2">
-                      <span
-                        className="inline-block h-3 w-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: item.cor }}
-                      />
-                      <span className="text-xs text-gray-600">
-                        {item.label}: <strong>{item.valor}</strong>
-                      </span>
-                    </div>
-                  ))}
+          {/* Maturação + KPIs leads */}
+          <div className="space-y-3">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg p-2.5 bg-purple-50 text-purple-600 flex-shrink-0">
+                  <Clock className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tempo de Maturação</p>
+                  {loading ? (
+                    <div className="mt-1.5 h-7 w-24 rounded bg-gray-100 animate-pulse" />
+                  ) : (
+                    <p className="mt-1 text-2xl font-bold text-gray-900">
+                      {dados?.maturacaoMediaDias != null
+                        ? fmtDias(dados.maturacaoMediaDias)
+                        : "—"}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-xs text-gray-400">Média entre criação e fechamento do lead</p>
                 </div>
               </div>
-            )}
-          </ChartCard>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <KPICard
+                titulo="Leads Abertas"
+                valor={dados?.leadsAbertos ?? "—"}
+                icon={Briefcase}
+                cor="bg-orange-50 text-orange-600"
+                loading={loading}
+              />
+              <KPICard
+                titulo="Em Negociação"
+                valor={dados?.leadsPorEtapa?.["negociacao"] ?? 0}
+                subtitulo="Mais próximos do fechamento"
+                icon={TrendingUp}
+                cor="bg-amber-50 text-amber-600"
+                loading={loading}
+              />
+            </div>
+          </div>
         </div>
       </section>
 
       {/* ── Seção: Operacional ── */}
-      <section className="mb-6">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
-          <Activity className="h-4 w-4" />
+      <section>
+        <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <Activity className="h-3.5 w-3.5" />
           Operacional
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -537,160 +565,237 @@ function DashboardPage() {
             cor="bg-blue-50 text-blue-600"
             loading={loading}
           />
-          <KPICard
-            titulo="Contratos CA"
-            valor={dados?.caContratos ?? "—"}
-            subtitulo="Contratos Conta Azul"
-            icon={Briefcase}
-            cor="bg-cyan-50 text-cyan-600"
-            loading={loading}
-          />
+          {/* Contratos com meta */}
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Contratos CA</p>
+                {loading ? (
+                  <div className="mt-1.5 h-7 w-16 rounded bg-gray-100 animate-pulse" />
+                ) : (
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{dados?.caContratos ?? "—"}</p>
+                )}
+                <p className="mt-0.5 text-xs text-gray-400">
+                  meta: <span className="font-semibold text-gray-600">{dados?.metaContratos ?? "—"}</span>
+                  {dados && dados.caContratos < dados.metaContratos && (
+                    <span className="text-orange-500 ml-1">· faltam {dados.metaContratos - dados.caContratos}</span>
+                  )}
+                  {dados && dados.caContratos >= dados.metaContratos && (
+                    <span className="text-green-600 ml-1">· ✓ atingida</span>
+                  )}
+                </p>
+              </div>
+              <div className="rounded-lg p-2.5 bg-cyan-50 text-cyan-600 ml-3 flex-shrink-0">
+                <Target className="h-4 w-4" />
+              </div>
+            </div>
+            {/* Barra de progresso */}
+            {!loading && dados && (
+              <div className="mt-2.5 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-700",
+                    dados.caContratos >= dados.metaContratos ? "bg-green-500" : "bg-cyan-500"
+                  )}
+                  style={{ width: `${Math.min((dados.caContratos / dados.metaContratos) * 100, 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
-      {/* ── Seção: Financeiro (Conta Azul) ── */}
-      <section className="mb-6">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
-          <DollarSign className="h-4 w-4" />
-          Financeiro — Conta Azul
-        </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* ── Seção: Financeiro ── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            <DollarSign className="h-3.5 w-3.5" />
+            Financeiro — Conta Azul
+          </h2>
+          <Link to="/painel/financeiro" className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+            Ver financeiro <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <KPICard
             titulo="Faturamento do Mês"
-            valor={dados ? fmt(dados.caFaturamento) : "—"}
-            subtitulo={`${new Date().toLocaleString("pt-BR", { month: "long", year: "numeric" })}`}
+            valor={dados ? fmt$(dados.caFaturamento) : "—"}
+            subtitulo={agora.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
             icon={TrendingUp}
             cor="bg-green-50 text-green-600"
             loading={loading}
+            destaque
           />
           <KPICard
             titulo="A Receber (Pendente)"
-            valor={dados ? fmt(dados.caReceber) : "—"}
+            valor={dados ? fmt$(dados.caReceber) : "—"}
             subtitulo="Cobranças em aberto"
             icon={DollarSign}
             cor="bg-amber-50 text-amber-600"
             loading={loading}
           />
+          <KPICard
+            titulo="Custos do Mês"
+            valor={dados ? fmt$(dados.caCustos) : "—"}
+            subtitulo="Despesas / saídas no mês"
+            icon={Package}
+            cor="bg-red-50 text-red-600"
+            loading={loading}
+          />
         </div>
-        {dados?.caFaturamento === 0 && dados?.caReceber === 0 && !loading && (
+        {dados && dados.caFaturamento === 0 && dados.caReceber === 0 && !loading && (
           <p className="mt-2 text-xs text-gray-400">
             💡 Nenhum dado do Conta Azul ainda. Sincronize em{" "}
-            <a href="/painel/financeiro" className="text-blue-500 underline">
-              Financeiro → Conta Azul
-            </a>
-            .
+            <Link to="/painel/financeiro" className="text-blue-500 underline">Financeiro → Conta Azul</Link>.
           </p>
         )}
       </section>
 
-      {/* ── Seção: Materiais / Compras ── */}
-      <section className="mb-6">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
-          <ShoppingCart className="h-4 w-4" />
-          Compras — Materiais Pendentes
-        </h2>
+      {/* ── Seção: Compras ── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            <ShoppingCart className="h-3.5 w-3.5" />
+            Compras — Materiais Pendentes
+          </h2>
+          <Link to="/painel/logistica" className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+            Ver logística <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <KPICard
             titulo="Itens a Comprar"
             valor={dados?.materiaisPendentes ?? "—"}
-            subtitulo='Status "Solicitado" em atendimentos'
+            subtitulo='Status "Pendente" em materiais'
             icon={Package}
             cor="bg-rose-50 text-rose-600"
             loading={loading}
           />
           <KPICard
             titulo="Valor Estimado"
-            valor={dados ? (dados.valorMateriais > 0 ? fmt(dados.valorMateriais) : "Sem valor") : "—"}
+            valor={dados ? (dados.valorMateriais > 0 ? fmt$(dados.valorMateriais) : "Sem valor") : "—"}
             subtitulo="Total dos itens solicitados"
             icon={ShoppingCart}
             cor="bg-rose-50 text-rose-600"
             loading={loading}
           />
         </div>
-
-        {/* Placeholder para módulo de compras futuro */}
-        <div className="mt-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-5">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-gray-200 p-2">
-              <ShoppingCart className="h-5 w-5 text-gray-500" />
-            </div>
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700">
-                Módulo de Compras — Em Configuração
-              </h4>
-              <p className="mt-1 text-xs text-gray-500">
-                Este módulo exibirá uma lista consolidada de materiais a comprar para todos os
-                atendimentos ativos, com valores, fornecedores e links de compra. Configure os
-                materiais dentro de cada atendimento na{" "}
-                <a href="/painel/logistica" className="text-blue-500 underline">
-                  Logística
-                </a>
-                .
-              </p>
-            </div>
-          </div>
-        </div>
       </section>
 
-      {/* ── Gráfico: Visão Geral ── */}
+      {/* ── Visão Geral (Donut) ── */}
       <section>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-400">
-          <TrendingUp className="h-4 w-4" />
+        <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <TrendingUp className="h-3.5 w-3.5" />
           Visão Geral
         </h2>
-        <ChartCard titulo="Resumo do Negócio" loading={loading}>
-          {dados && (
-            <div className="space-y-3">
-              {[
-                {
-                  label: "Clientes Ativos",
-                  valor: dados.clientesAtivos,
-                  total: dados.totalClientes,
-                  cor: "#22c55e",
-                },
-                {
-                  label: "Leads Abertas",
-                  valor: dados.leadsAbertos,
-                  total: dados.totalLeads,
-                  cor: "#f97316",
-                },
-                {
-                  label: "Atendimentos Ativos",
-                  valor: dados.atendimentosEmAndamento + dados.atendimentosProgramados,
-                  total: Math.max(dados.atendimentosEmAndamento + dados.atendimentosProgramados, 1),
-                  cor: "#3b82f6",
-                },
-                {
-                  label: "Funcionários Ativos",
-                  valor: dados.funcionariosAtivos,
-                  total: dados.totalFuncionarios,
-                  cor: "#8b5cf6",
-                },
-              ].map((item) => (
-                <div key={item.label}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-600">{item.label}</span>
-                    <span className="font-semibold text-gray-800">
-                      {item.valor}
-                      {item.total > 0 && item.total !== item.valor && (
-                        <span className="font-normal text-gray-400"> / {item.total}</span>
-                      )}
-                    </span>
+        {loading ? (
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex items-center justify-center h-40">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-300" />
+          </div>
+        ) : dados ? (
+          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+              {/* Clientes */}
+              <div className="flex flex-col items-center gap-3">
+                <DonutChart
+                  size={130}
+                  centerLabel={String(dados.totalClientes)}
+                  centerSub="clientes"
+                  data={[
+                    { label: "Ativos", value: dados.clientesAtivos, color: "#22c55e" },
+                    { label: "Inativos", value: dados.clientesInativos, color: "#f87171" },
+                  ]}
+                />
+                <div className="space-y-1 text-center">
+                  <p className="text-xs font-semibold text-gray-700">Clientes</p>
+                  {[
+                    { label: "Ativos", valor: dados.clientesAtivos, cor: "#22c55e" },
+                    { label: "Inativos", valor: dados.clientesInativos, cor: "#f87171" },
+                  ].map(i => (
+                    <div key={i.label} className="flex items-center gap-1.5 justify-center">
+                      <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: i.cor }} />
+                      <span className="text-[11px] text-gray-600">{i.label}: <strong>{i.valor}</strong></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* CRM Funil */}
+              <div className="flex flex-col items-center gap-3">
+                <DonutChart
+                  size={130}
+                  centerLabel={String(dados.leadsAbertos)}
+                  centerSub="leads"
+                  data={ETAPA_ORDER.map(e => ({
+                    label: ETAPAS_INFO[e].label,
+                    value: dados.leadsPorEtapa[e] ?? 0,
+                    color: ETAPAS_INFO[e].color,
+                  }))}
+                />
+                <div className="space-y-1 text-center">
+                  <p className="text-xs font-semibold text-gray-700">Pipeline CRM</p>
+                  {ETAPA_ORDER.filter(e => (dados.leadsPorEtapa[e] ?? 0) > 0).map(e => (
+                    <div key={e} className="flex items-center gap-1.5 justify-center">
+                      <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: ETAPAS_INFO[e].color }} />
+                      <span className="text-[11px] text-gray-600">{ETAPAS_INFO[e].label}: <strong>{dados.leadsPorEtapa[e]}</strong></span>
+                    </div>
+                  ))}
+                  {dados.leadsAbertos === 0 && <span className="text-[11px] text-gray-400">Sem leads em aberto</span>}
+                </div>
+              </div>
+
+              {/* Contratos */}
+              <div className="flex flex-col items-center gap-3">
+                <DonutChart
+                  size={130}
+                  centerLabel={String(dados.caContratos)}
+                  centerSub="contratos"
+                  data={[
+                    { label: "Realizados", value: dados.caContratos, color: "#06b6d4" },
+                    { label: "Faltam", value: Math.max(dados.metaContratos - dados.caContratos, 0), color: "#e5e7eb" },
+                  ]}
+                />
+                <div className="space-y-1 text-center">
+                  <p className="text-xs font-semibold text-gray-700">Contratos / Meta</p>
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <span className="h-2 w-2 rounded-full bg-cyan-500" />
+                    <span className="text-[11px] text-gray-600">Ativos: <strong>{dados.caContratos}</strong></span>
                   </div>
-                  <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: item.total > 0 ? `${Math.min((item.valor / item.total) * 100, 100)}%` : "0%",
-                        backgroundColor: item.cor,
-                      }}
-                    />
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <span className="h-2 w-2 rounded-full bg-gray-200" />
+                    <span className="text-[11px] text-gray-500">Meta: {dados.metaContratos}</span>
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* Financeiro */}
+              <div className="flex flex-col items-center gap-3">
+                <DonutChart
+                  size={130}
+                  centerLabel={dados.caFaturamento > 0 ? fmt$(dados.caFaturamento).replace("R$","") : "R$0"}
+                  centerSub="faturado"
+                  data={[
+                    { label: "Faturamento", value: dados.caFaturamento, color: "#22c55e" },
+                    { label: "A Receber", value: dados.caReceber, color: "#fbbf24" },
+                    { label: "Custos", value: dados.caCustos, color: "#f87171" },
+                  ].filter(d => d.value > 0)}
+                />
+                <div className="space-y-1 text-center">
+                  <p className="text-xs font-semibold text-gray-700">Financeiro do Mês</p>
+                  {[
+                    { label: "Faturado", valor: dados.caFaturamento, cor: "#22c55e" },
+                    { label: "A Receber", valor: dados.caReceber, cor: "#fbbf24" },
+                    { label: "Custos", valor: dados.caCustos, cor: "#f87171" },
+                  ].map(i => (
+                    <div key={i.label} className="flex items-center gap-1.5 justify-center">
+                      <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: i.cor }} />
+                      <span className="text-[11px] text-gray-600">{i.label}: <strong>{fmt$(i.valor)}</strong></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          )}
-        </ChartCard>
+          </div>
+        ) : null}
       </section>
     </div>
   );
