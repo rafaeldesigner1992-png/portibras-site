@@ -777,16 +777,24 @@ function FinanceiroPage() {
 
   async function salvarDiv() {
     if (!formDiv.credor?.trim()) return;
+    // Garante vencimento_dia entre 1 e 28 (constraint do banco)
+    const payload = {
+      ...formDiv,
+      vencimento_dia: Math.min(28, Math.max(1, formDiv.vencimento_dia ?? 10)),
+      // Remove campos novos se migration ainda não foi aplicada — o banco ignora extras,
+      // mas se coluna não existe vai dar erro de unknown column; deixamos o banco rejeitar
+      // e mostrar mensagem clara
+    };
     let err;
     if (selDiv) {
-      const res = await supabase.from("financeiro_dividas").update(formDiv).eq("id", selDiv.id);
+      const res = await supabase.from("financeiro_dividas").update(payload).eq("id", selDiv.id);
       err = res.error;
     } else {
-      const res = await supabase.from("financeiro_dividas").insert(formDiv);
+      const res = await supabase.from("financeiro_dividas").insert(payload);
       err = res.error;
     }
     if (err) {
-      alert("Erro ao salvar dívida: " + err.message + "\n\nVerifique se a migration SQL foi executada no Supabase.");
+      alert("Erro ao salvar dívida: " + err.message);
       return;
     }
     setModalDiv(false);
@@ -2322,7 +2330,8 @@ function FinanceiroPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">Vence dia do mês</label>
-                  <input type="number" min={1} max={28} value={formDiv.vencimento_dia ?? 10} onChange={e => setFormDiv({ ...formDiv, vencimento_dia: Number(e.target.value) })}
+                  <input type="number" min={1} max={28} value={formDiv.vencimento_dia ?? 10}
+                    onChange={e => { const v = parseInt(e.target.value); setFormDiv({ ...formDiv, vencimento_dia: isNaN(v) || v < 1 ? 1 : v > 28 ? 28 : v }); }}
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
                 <div>
