@@ -4295,7 +4295,7 @@ function CrmPage() {
         titulo: `Vistoria — ${lead.nome}`,
         classificacao: "Vistoria",
         status: "Programado",
-        endereco: lead.endereco ?? null,
+        endereco: lead.endereco_atendimento || lead.endereco_fiscal || null,
         cliente_nome: lead.nome,
         cliente_email: lead.email ?? null,
         responsaveis: [],
