@@ -1245,8 +1245,8 @@ function LogisticaPage() {
     status_entrega: "Não iniciada" as Compra["status_entrega"],
     previsao_chegada: "", data_recebido: "", quem_recebeu: "",
     observacoes: "", pedidosSel: [] as string[],
-    clienteSel: "" as string, // nome do cliente selecionado no select
-    matsSel: [] as string[],  // ids de MatComprar selecionados para dar baixa
+    clientesSel: [] as string[], // nomes dos clientes selecionados (multi)
+    matsSel: [] as string[],     // ids de MatComprar selecionados para dar baixa
   };
   const [compras, setCompras] = useState<Compra[]>([]);
   const [carregandoCompras, setCarregandoCompras] = useState(false);
@@ -1321,10 +1321,25 @@ function LogisticaPage() {
     }
     // Dar baixa nos materiais selecionados (status → Comprado)
     if (formCompra.matsSel.length) {
-      await supabase
-        .from("logistica_materiais_comprar")
-        .update({ status: "Comprado" })
-        .in("id", formCompra.matsSel);
+      // Separar por origem: manuais (logistica_materiais_comprar) vs pedidos (logistica_aquisicoes)
+      const idsManuais = formCompra.matsSel.filter(id =>
+        matComprar.find(m => m.id === id && !m._origem)
+      );
+      const idsPedidos = formCompra.matsSel.filter(id =>
+        matComprar.find(m => m.id === id && m._origem === "pedido")
+      );
+      if (idsManuais.length) {
+        await supabase
+          .from("logistica_materiais_comprar")
+          .update({ status: "Comprado" })
+          .in("id", idsManuais);
+      }
+      if (idsPedidos.length) {
+        await supabase
+          .from("logistica_aquisicoes")
+          .update({ status: "pedido" })
+          .in("id", idsPedidos);
+      }
     }
     setSalvandoCompra(false);
     setModalCompra(false);
@@ -1367,7 +1382,7 @@ function LogisticaPage() {
       quem_recebeu: c.quem_recebeu ?? "",
       observacoes: c.observacoes ?? "",
       pedidosSel: c.pedidos?.map(p => p.id) ?? [],
-      clienteSel: "",
+      clientesSel: [],
       matsSel: [],
     });
     setBuscaClienteCompra("");
@@ -4982,44 +4997,83 @@ function LogisticaPage() {
                     <label className="label-field">Quem recebeu</label>
                     <input className="input-field" value={formCompra.quem_recebeu} onChange={e => setFormCompra(f => ({ ...f, quem_recebeu: e.target.value }))} placeholder="Nome do responsável" />
                   </div>
-                  {/* Cliente vinculado — select pesquisável */}
+                  {/* Clientes vinculados — multi-select pesquisável */}
                   {(() => {
-                    // Lista única de clientes com materiais pendentes
+                    // Helper: nome do cliente de um MatComprar (manual ou de pedido)
+                    const nomeClienteMat = (m: MatComprar) =>
+                      m._origem === "pedido"
+                        ? (m._pedido_nome ?? "")
+                        : (m.vinculados?.[0]?.titulo ?? "");
+
+                    // Clientes que têm materiais pendentes (manuais + pedidos)
                     const clientesComMat = Array.from(new Set(
                       matComprar
-                        .filter(m => m.status === "Pendente" && !m._origem)
-                        .map(m => m.vinculados?.[0]?.titulo ?? "")
+                        .filter(m => m.status === "Pendente")
+                        .map(nomeClienteMat)
                         .filter(Boolean)
                     )).sort();
-                    // Todos os clientes de atendimentos (para o select)
+
+                    // Todos os clientes de atendimentos
                     const clientesAtend = Array.from(new Set(
                       atendimentos.map(a => a.titulo).filter(Boolean)
                     )).sort();
+
                     const todosClientes = Array.from(new Set([...clientesComMat, ...clientesAtend])).sort();
-                    const filtrados = buscaClienteCompra.trim()
-                      ? todosClientes.filter(c => c.toLowerCase().includes(buscaClienteCompra.toLowerCase()))
-                      : todosClientes;
-                    // Materiais pendentes do cliente selecionado
-                    const matsDoCliente = formCompra.clienteSel
+
+                    // Filtrar pelo texto de busca, excluindo já selecionados
+                    const filtrados = todosClientes
+                      .filter(c => !formCompra.clientesSel.includes(c))
+                      .filter(c => !buscaClienteCompra.trim() || c.toLowerCase().includes(buscaClienteCompra.toLowerCase()));
+
+                    // Materiais pendentes de TODOS os clientes selecionados
+                    const matsDosSel = formCompra.clientesSel.length
                       ? matComprar.filter(m =>
                           m.status === "Pendente" &&
-                          !m._origem &&
-                          (m.vinculados?.[0]?.titulo ?? "") === formCompra.clienteSel
+                          formCompra.clientesSel.includes(nomeClienteMat(m))
                         )
                       : [];
+
+                    // Contagem de pendentes por cliente (para badge no dropdown)
+                    const contagemMat = (nome: string) =>
+                      matComprar.filter(m => m.status === "Pendente" && nomeClienteMat(m) === nome).length;
+
                     return (
                       <>
                         <div>
-                          <label className="label-field">Cliente</label>
+                          <label className="label-field">Clientes</label>
+                          {/* Chips dos clientes já selecionados */}
+                          {formCompra.clientesSel.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {formCompra.clientesSel.map(c => (
+                                <span key={c} className="inline-flex items-center gap-1 rounded-full bg-[#e8f5ec] px-2.5 py-1 text-xs font-medium text-[#1a6b2f]">
+                                  {c}
+                                  <button
+                                    type="button"
+                                    onClick={() => setFormCompra(f => ({
+                                      ...f,
+                                      clientesSel: f.clientesSel.filter(x => x !== c),
+                                      matsSel: f.matsSel.filter(id =>
+                                        !matComprar.filter(m => nomeClienteMat(m) === c).map(m => m.id).includes(id)
+                                      ),
+                                    }))}
+                                    className="text-[#1a6b2f] hover:text-red-500 transition-colors"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {/* Input de busca / dropdown */}
                           <div className="relative">
                             <div
                               className="input-field flex items-center justify-between cursor-pointer select-none"
                               onClick={() => setDropdownClienteCompra(d => !d)}
                             >
-                              <span className={formCompra.clienteSel ? "text-gray-900 text-sm" : "text-gray-400 text-sm"}>
-                                {formCompra.clienteSel || "Selecionar cliente…"}
+                              <span className="text-gray-400 text-sm">
+                                {formCompra.clientesSel.length === 0 ? "Selecionar cliente(s)…" : "Adicionar mais clientes…"}
                               </span>
-                              <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                              <ChevronDown className={cn("h-4 w-4 text-gray-400 shrink-0 transition-transform", dropdownClienteCompra && "rotate-180")} />
                             </div>
                             {dropdownClienteCompra && (
                               <div className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
@@ -5033,97 +5087,111 @@ function LogisticaPage() {
                                     onClick={e => e.stopPropagation()}
                                   />
                                 </div>
-                                <div className="max-h-44 overflow-y-auto">
-                                  {formCompra.clienteSel && (
-                                    <button
-                                      type="button"
-                                      className="w-full px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 italic"
-                                      onClick={() => { setFormCompra(f => ({ ...f, clienteSel: "", matsSel: [] })); setBuscaClienteCompra(""); setDropdownClienteCompra(false); }}
-                                    >
-                                      Limpar seleção
-                                    </button>
-                                  )}
+                                <div className="max-h-48 overflow-y-auto">
                                   {filtrados.length === 0 && (
-                                    <p className="px-3 py-2 text-xs text-gray-400">Nenhum cliente encontrado</p>
+                                    <p className="px-3 py-2 text-xs text-gray-400">
+                                      {buscaClienteCompra ? "Nenhum resultado" : "Todos os clientes já adicionados"}
+                                    </p>
                                   )}
-                                  {filtrados.map(c => (
-                                    <button
-                                      key={c}
-                                      type="button"
-                                      className={cn("w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between gap-2",
-                                        formCompra.clienteSel === c ? "bg-[#e8f5ec] font-medium text-[#1a6b2f]" : "text-gray-800"
-                                      )}
-                                      onClick={() => {
-                                        setFormCompra(f => ({ ...f, clienteSel: c, matsSel: [] }));
-                                        setBuscaClienteCompra("");
-                                        setDropdownClienteCompra(false);
-                                      }}
-                                    >
-                                      <span className="truncate">{c}</span>
-                                      {clientesComMat.includes(c) && (
-                                        <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
-                                          {matComprar.filter(m => m.status === "Pendente" && !m._origem && (m.vinculados?.[0]?.titulo ?? "") === c).length} mat.
-                                        </span>
-                                      )}
-                                    </button>
-                                  ))}
+                                  {filtrados.map(c => {
+                                    const qtdMat = contagemMat(c);
+                                    return (
+                                      <button
+                                        key={c}
+                                        type="button"
+                                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between gap-2 text-gray-800"
+                                        onClick={() => {
+                                          setFormCompra(f => ({ ...f, clientesSel: [...f.clientesSel, c] }));
+                                          setBuscaClienteCompra("");
+                                          setDropdownClienteCompra(false);
+                                        }}
+                                      >
+                                        <span className="truncate">{c}</span>
+                                        {qtdMat > 0 && (
+                                          <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+                                            {qtdMat} mat.
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
                           </div>
                         </div>
-                        {/* Materiais pendentes do cliente selecionado */}
-                        {formCompra.clienteSel && (
+
+                        {/* Materiais pendentes dos clientes selecionados */}
+                        {formCompra.clientesSel.length > 0 && (
                           <div>
                             <label className="label-field">
                               Materiais a comprar
-                              {matsDoCliente.length > 0 && (
+                              {matsDosSel.length > 0 && (
                                 <span className="ml-2 text-[10px] font-normal text-orange-600">
-                                  ({matsDoCliente.length} pendente{matsDoCliente.length !== 1 ? "s" : ""})
+                                  ({matsDosSel.length} pendente{matsDosSel.length !== 1 ? "s" : ""})
                                 </span>
                               )}
                             </label>
-                            {matsDoCliente.length === 0 ? (
+                            {matsDosSel.length === 0 ? (
                               <p className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3 text-xs text-gray-400">
-                                Nenhum material pendente cadastrado para este cliente
+                                Nenhum material pendente para os clientes selecionados
                               </p>
                             ) : (
-                              <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                                {/* Selecionar todos */}
                                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
                                   <input
                                     type="checkbox"
                                     className="accent-[#1a6b2f]"
-                                    checked={formCompra.matsSel.length === matsDoCliente.length}
+                                    checked={matsDosSel.every(m => formCompra.matsSel.includes(m.id))}
                                     onChange={e => setFormCompra(f => ({
                                       ...f,
-                                      matsSel: e.target.checked ? matsDoCliente.map(m => m.id) : []
+                                      matsSel: e.target.checked
+                                        ? Array.from(new Set([...f.matsSel, ...matsDosSel.map(m => m.id)]))
+                                        : f.matsSel.filter(id => !matsDosSel.map(m => m.id).includes(id))
                                     }))}
                                   />
                                   <span className="text-xs font-medium text-gray-500">Selecionar todos</span>
                                 </div>
-                                {matsDoCliente.map(m => (
-                                  <label key={m.id} className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
-                                    <input
-                                      type="checkbox"
-                                      className="accent-[#1a6b2f] mt-0.5 shrink-0"
-                                      checked={formCompra.matsSel.includes(m.id)}
-                                      onChange={e => setFormCompra(f => ({
-                                        ...f,
-                                        matsSel: e.target.checked
-                                          ? [...f.matsSel, m.id]
-                                          : f.matsSel.filter(id => id !== m.id)
-                                      }))}
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <span className="text-xs text-gray-800 font-medium">{m.descricao}</span>
-                                      <span className="ml-1.5 text-xs text-gray-400">{m.quantidade} {m.unidade}</span>
-                                      {m.fornecedor && <span className="ml-1.5 text-[10px] text-gray-400">· {m.fornecedor}</span>}
+                                {/* Agrupados por cliente quando >1 cliente */}
+                                {formCompra.clientesSel.map(cliente => {
+                                  const matsCliente = matsDosSel.filter(m => nomeClienteMat(m) === cliente);
+                                  if (!matsCliente.length) return null;
+                                  return (
+                                    <div key={cliente}>
+                                      {formCompra.clientesSel.length > 1 && (
+                                        <div className="px-3 py-1.5 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                                          {cliente}
+                                        </div>
+                                      )}
+                                      {matsCliente.map(m => (
+                                        <label key={m.id} className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                          <input
+                                            type="checkbox"
+                                            className="accent-[#1a6b2f] mt-0.5 shrink-0"
+                                            checked={formCompra.matsSel.includes(m.id)}
+                                            onChange={e => setFormCompra(f => ({
+                                              ...f,
+                                              matsSel: e.target.checked
+                                                ? [...f.matsSel, m.id]
+                                                : f.matsSel.filter(id => id !== m.id)
+                                            }))}
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <span className="text-xs text-gray-800 font-medium">{m.descricao}</span>
+                                            <span className="ml-1.5 text-xs text-gray-400">{m.quantidade} {m.unidade}</span>
+                                            {m.fornecedor && <span className="ml-1.5 text-[10px] text-gray-400">· {m.fornecedor}</span>}
+                                          </div>
+                                          {!m._origem && (
+                                            <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0", URGENCIA_COR[m.urgencia])}>
+                                              {m.urgencia}
+                                            </span>
+                                          )}
+                                        </label>
+                                      ))}
                                     </div>
-                                    <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0", URGENCIA_COR[m.urgencia])}>
-                                      {m.urgencia}
-                                    </span>
-                                  </label>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                             {formCompra.matsSel.length > 0 && (
