@@ -4638,7 +4638,7 @@ function LogisticaPage() {
                                       {/* Linha separadora do cliente */}
                                       <tr key={`sep-${cliente}`} className={cidx > 0 ? "border-t border-gray-200" : ""}>
                                         <td colSpan={5} className="px-4 py-1.5 bg-gray-50">
-                                          <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
                                             {isPedido
                                               ? <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">{nomeExibido}</span>
                                               : cliente === "__sem_cliente__"
@@ -4646,6 +4646,17 @@ function LogisticaPage() {
                                                 : <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">{nomeExibido}</span>
                                             }
                                             <span className="text-[10px] text-gray-400">{itensCliente.length} {itensCliente.length === 1 ? "item" : "itens"}</span>
+                                            {isPedido && itensCliente[0]._pedido_id && (() => {
+                                              const ped = pedidosLog.find(p => p.id === itensCliente[0]._pedido_id);
+                                              return ped ? (
+                                                <button
+                                                  onClick={() => { abrirPedido(ped); setAba("pedidos"); }}
+                                                  className="ml-auto flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-indigo-700"
+                                                >
+                                                  <ExternalLink className="h-3 w-3" /> Abrir pedido
+                                                </button>
+                                              ) : null;
+                                            })()}
                                           </div>
                                         </td>
                                       </tr>
