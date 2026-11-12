@@ -4326,15 +4326,21 @@ function LogisticaPage() {
                         const kmExibido2 = kmReal2 ?? (temAirbnb ? undefined : kmExibido1);
                         const estaCalculandoKm = calculandoKm[chaveSem] ?? false;
                         const custoPedagios = diasComAtend * pedagioDiario;
-                        // Custo total opção 1: combustível (São Pedro) + pedágios
+                        // Custo total opção 1: combustível (São Pedro) + pedágios todos os dias
                         const custoDeslocamento = kmExibido1 * configCusto.custoPorKm + custoPedagios;
-                        // Custo total opção 2: combustível (Airbnb) + hospedagem + refeições (sem pedágios Via Lagos/Manilha/Ponte)
+                        // Custo total opção 2: combustível (Airbnb) + hospedagem + refeições
+                        // + pedágio só 1º dia (ida: Via Lagos + Manilha) e último dia (volta: Ponte + Via Lagos)
                         const custoCombustivel2 = (kmExibido2 ?? 0) * configCusto.custoPorKm;
                         const custoHospedagem = noitesNecessarias * configCusto.airbnbPorNoite;
                         const custoRefeicoes = diasComAtend * configCusto.refeicaoFora;
-                        const custoAirbnb = custoCombustivel2 + custoHospedagem + custoRefeicoes;
-                        // Legado: custoAirbnb sem combustível para quando não há km2 ainda
-                        const custoAirbnbSemComb = custoHospedagem + custoRefeicoes;
+                        // Pedágio opção 2: somente ida no 1º dia e volta no último dia
+                        const pedagioIda2 = configCusto.pedagioViaLagos + configCusto.pedagioManilha;
+                        const pedagioVolta2 = configCusto.pedagogioPonte + configCusto.pedagioViaLagos;
+                        const pedagioLinhaAmarela2 = configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0;
+                        const custoPedagios2 = diasComAtend > 0 ? pedagioIda2 + pedagioVolta2 + pedagioLinhaAmarela2 : 0;
+                        const custoAirbnb = custoCombustivel2 + custoHospedagem + custoRefeicoes + custoPedagios2;
+                        // Sem combustível calculado ainda (para exibição parcial)
+                        const custoAirbnbSemComb = custoHospedagem + custoRefeicoes + custoPedagios2;
                         const economiaSeDormir = custoDeslocamento - (kmExibido2 !== undefined ? custoAirbnb : custoAirbnbSemComb);
                         const melhorAirbnb = economiaSeDormir > 0 && noitesNecessarias > 0;
                         const seg = sem[0]; const sex = sem[4];
@@ -4485,6 +4491,17 @@ function LogisticaPage() {
                                             </td>
                                           </tr>
                                           )}
+                                          {/* Pedágios opção 2: ida no 1º dia + volta no último dia */}
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3 text-gray-500">
+                                              Pedágios (ida 1º dia + volta último)
+                                            </td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums text-[9px] text-gray-400">
+                                              <span title="Ida: Via Lagos + Manilha | Volta: Ponte + Via Lagos">1×ida + 1×volta</span>
+                                            </td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums text-[9px] text-gray-400">{fmtR(pedagioIda2 + pedagioVolta2 + (configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0))}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(custoPedagios2)}</td>
+                                          </tr>
                                           <tr className="text-gray-600">
                                             <td className="py-0.5 pr-3">Hospedagem</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{noitesNecessarias} noite{noitesNecessarias !== 1 ? "s" : ""}</td>
