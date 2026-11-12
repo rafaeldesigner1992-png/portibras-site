@@ -223,16 +223,17 @@ function formatarHorarioExecucao(dataIso: string | null | undefined, hora: strin
   return `${data} ${hora}:00`;
 }
 
+// ─── CORS headers (reutilizado em todas as respostas) ────────────────────────
+const CORS = {
+  "Access-Control-Allow-Origin" : "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "*",
+};
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin" : "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey",
-      },
-    });
+    return new Response(null, { headers: CORS });
   }
 
   try {
@@ -296,7 +297,7 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({ ok: true, tipo: "servico", id_gerado: id }), {
         status : 200,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { ...CORS, "Content-Type": "application/json" },
       });
 
     } else if (tipo === "vistoria") {
@@ -333,18 +334,21 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({ ok: true, tipo: "vistoria", id_gerado: id }), {
         status : 200,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { ...CORS, "Content-Type": "application/json" },
       });
 
     } else {
-      return new Response(JSON.stringify({ error: "tipo deve ser 'servico' ou 'vistoria'" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "tipo deve ser 'servico' ou 'vistoria'" }), {
+        status: 400,
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
     }
 
   } catch (err) {
     console.error("appsheet-criar-atividade error:", err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status : 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { ...CORS, "Content-Type": "application/json" },
     });
   }
 });
