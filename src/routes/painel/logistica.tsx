@@ -1007,6 +1007,7 @@ function LogisticaPage() {
   const [tarefasSelecionadas, setTarefasSelecionadas] = useState<string[]>([]);
   const [atendAberto, setAtendAberto] = useState<string | null>(null);
   const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("calendario");
+  const [kpiAtendExp, setKpiAtendExp] = useState<"todos" | "programados" | "semdata" | null>(null);
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
   const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
   const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
@@ -4181,32 +4182,110 @@ function LogisticaPage() {
             const ativosAtend = atendimentos.filter(a => a.status !== "Concluído" && a.status !== "Cancelado");
             const comData     = ativosAtend.filter(a => !!a.data_agendada);
             const semData     = ativosAtend.filter(a => !a.data_agendada);
+
+            const nomeAtend = (a: Atendimento) => a.cliente_nome || a.titulo || "—";
+
+            const kpis = [
+              {
+                key: "todos" as const,
+                label: "Atendimentos",
+                sub: "em aberto",
+                value: ativosAtend.length,
+                lista: ativosAtend,
+                border: "border-gray-100",
+                bg: "bg-white",
+                labelCor: "text-gray-400",
+                valueCor: "text-gray-900",
+                subCor: "text-gray-400",
+                arrowCor: "text-gray-400",
+                itemCor: "text-gray-700",
+                itemBg: "bg-gray-50",
+                dotCor: "bg-gray-300",
+              },
+              {
+                key: "programados" as const,
+                label: "Programados",
+                sub: "com data confirmada",
+                value: comData.length,
+                lista: comData,
+                border: "border-emerald-100",
+                bg: "bg-emerald-50",
+                labelCor: "text-emerald-500",
+                valueCor: "text-emerald-700",
+                subCor: "text-emerald-500",
+                arrowCor: "text-emerald-400",
+                itemCor: "text-emerald-800",
+                itemBg: "bg-emerald-100/60",
+                dotCor: "bg-emerald-400",
+              },
+              {
+                key: "semdata" as const,
+                label: "Sem data",
+                sub: "aguardando agendamento",
+                value: semData.length,
+                lista: semData,
+                border: semData.length > 0 ? "border-orange-100" : "border-gray-100",
+                bg: semData.length > 0 ? "bg-orange-50" : "bg-white",
+                labelCor: semData.length > 0 ? "text-orange-500" : "text-gray-400",
+                valueCor: semData.length > 0 ? "text-orange-700" : "text-gray-400",
+                subCor: semData.length > 0 ? "text-orange-400" : "text-gray-400",
+                arrowCor: semData.length > 0 ? "text-orange-400" : "text-gray-300",
+                itemCor: semData.length > 0 ? "text-orange-800" : "text-gray-500",
+                itemBg: semData.length > 0 ? "bg-orange-100/60" : "bg-gray-50",
+                dotCor: semData.length > 0 ? "bg-orange-400" : "bg-gray-300",
+              },
+            ];
+
             return (
               <div className="mb-6 grid grid-cols-3 gap-4">
-                {/* Total de atendimentos ativos */}
-                <div className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Atendimentos</p>
-                  <p className="mt-1.5 text-2xl font-bold tabular-nums text-gray-900">
-                    {carregandoAtend ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-gray-100" /> : ativosAtend.length}
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-gray-400">em aberto</p>
-                </div>
-                {/* Com data agendada */}
-                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-5 py-4 shadow-sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-500">Programados</p>
-                  <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-700">
-                    {carregandoAtend ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-emerald-100" /> : comData.length}
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-emerald-500">com data confirmada</p>
-                </div>
-                {/* Sem data */}
-                <div className={cn("rounded-2xl border px-5 py-4 shadow-sm", semData.length > 0 ? "border-orange-100 bg-orange-50" : "border-gray-100 bg-white")}>
-                  <p className={cn("text-[10px] font-semibold uppercase tracking-widest", semData.length > 0 ? "text-orange-500" : "text-gray-400")}>Sem data</p>
-                  <p className={cn("mt-1.5 text-2xl font-bold tabular-nums", semData.length > 0 ? "text-orange-700" : "text-gray-400")}>
-                    {carregandoAtend ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-gray-100" /> : semData.length}
-                  </p>
-                  <p className={cn("mt-0.5 text-[10px]", semData.length > 0 ? "text-orange-400" : "text-gray-400")}>aguardando agendamento</p>
-                </div>
+                {kpis.map(kpi => {
+                  const aberto = kpiAtendExp === kpi.key;
+                  return (
+                    <div key={kpi.key} className={cn("rounded-2xl border shadow-sm overflow-hidden", kpi.border, kpi.bg)}>
+                      {/* Cabeçalho clicável */}
+                      <button
+                        onClick={() => setKpiAtendExp(aberto ? null : kpi.key)}
+                        className="w-full px-5 py-4 flex items-start justify-between gap-2 text-left"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className={cn("text-[10px] font-semibold uppercase tracking-widest", kpi.labelCor)}>{kpi.label}</p>
+                          <p className={cn("mt-1.5 text-2xl font-bold tabular-nums", kpi.valueCor)}>
+                            {carregandoAtend ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-gray-100" /> : kpi.value}
+                          </p>
+                          <p className={cn("mt-0.5 text-[10px]", kpi.subCor)}>{kpi.sub}</p>
+                        </div>
+                        {kpi.value > 0 && (
+                          <svg className={cn("h-4 w-4 mt-1 shrink-0 transition-transform duration-200", kpi.arrowCor, aberto && "rotate-180")} fill="none" viewBox="0 0 16 16">
+                            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+
+                      {/* Lista expandida */}
+                      {aberto && kpi.lista.length > 0 && (
+                        <div className="px-3 pb-3 space-y-1 max-h-56 overflow-y-auto border-t border-black/5">
+                          {kpi.lista.map(a => (
+                            <div key={a.id} className={cn("flex items-center gap-2 rounded-lg px-3 py-2", kpi.itemBg)}>
+                              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", kpi.dotCor)} />
+                              <span className={cn("text-xs font-medium truncate flex-1", kpi.itemCor)}>{nomeAtend(a)}</span>
+                              {kpi.key === "programados" && a.data_agendada && (
+                                <span className="text-[10px] text-emerald-600 shrink-0 tabular-nums">
+                                  {new Date(a.data_agendada + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                                </span>
+                              )}
+                              {kpi.key !== "programados" && (
+                                <span className={cn("text-[10px] shrink-0 rounded-full px-1.5 py-0.5",
+                                  a.status === "Programado" ? "bg-emerald-100 text-emerald-700" :
+                                  a.status === "Em andamento" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-500"
+                                )}>{a.status}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })()}
