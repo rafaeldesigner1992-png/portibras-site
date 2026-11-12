@@ -1869,7 +1869,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 <div class="ct-clausula">
   <div class="ct-clausula-titulo">Cláusula 1ª — Objeto</div>
   <div class="ct-clausula-corpo">
-    A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de portas corta-fogo para a CONTRATANTE, em seu endereço, de acordo com as normas técnicas ABNT NBR 11.742:2018 e demais normas vigentes. Os serviços abrangem inspeção técnica periódica (Documento Técnico de Serviço — DTS) e execução de manutenção porta a porta (Documento Técnico de Execução — DTE), com emissão de laudos normativos.
+    A CONTRATADA obriga-se a prestar serviços especializados de manutenção preventiva e corretiva de portas corta-fogo para a CONTRATANTE, em seu endereço, de acordo com as normas técnicas ABNT NBR 11.742:2018 e demais normas vigentes. O escopo abrange as <strong>${portas} (${portas === 1 ? "uma" : portas + " portas"}) porta${portas === 1 ? "" : "s"} corta-fogo</strong> instaladas no imóvel da CONTRATANTE. Os serviços abrangem inspeção técnica periódica (Documento Técnico de Serviço — DTS) e execução de manutenção porta a porta (Documento Técnico de Execução — DTE), com emissão de laudos normativos.
     <p>A CONTRATADA cobrará exclusivamente a mão de obra referente aos serviços executados. Os materiais e peças de reposição eventualmente necessários serão adquiridos diretamente pelo CONTRATANTE, podendo a CONTRATADA indicar fornecedores homologados para garantia da qualidade técnica.</p>
   </div>
 </div>
@@ -1949,7 +1949,7 @@ body{font-family:'Times New Roman',Times,serif;background:#fff;color:#1f2937;fon
 <div class="ct-clausula">
   <div class="ct-clausula-titulo">Cláusula 9ª — Rescisão</div>
   <div class="ct-clausula-corpo">
-    O presente instrumento poderá ser rescindido por qualquer das partes mediante aviso prévio por escrito de 30 (trinta) dias. Em caso de rescisão antecipada pelo CONTRATANTE sem justa causa, este ficará obrigado ao pagamento de multa equivalente a 20% (vinte por cento) do valor remanescente das parcelas não vencidas.
+    Em caso de rescisão antecipada pelo CONTRATANTE sem justa causa, antes de findo o prazo previsto na Cláusula 4ª acima, este ficará obrigado ao pagamento de multa equivalente a 20% (vinte por cento) do valor remanescente das parcelas não vencidas.
   </div>
 </div>
 
