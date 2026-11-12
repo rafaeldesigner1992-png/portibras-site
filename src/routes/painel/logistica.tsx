@@ -1051,59 +1051,25 @@ function LogisticaPage() {
       } catch { return 0; }
     }
 
-    // Rota circular: base → paradas → base (mesma origem e destino)
+    // Rota circular: base → p1 → p2 → ... → base (segmento a segmento, ordem exata)
     async function rotaCircular(base: string, paradas: string[]): Promise<number> {
       if (paradas.length === 0) return 0;
-      try {
-        const body: Record<string, unknown> = {
-          origin: { address: base },
-          destination: { address: base },
-          travelMode: "DRIVE",
-          routingPreference: "TRAFFIC_UNAWARE",
-          computeAlternativeRoutes: false,
-        };
-        if (paradas.length > 0) {
-          body.intermediates = paradas.map(e => ({ location: { address: e }, via: false }));
-          body.optimizeWaypointOrder = false;
-        }
-        const resp = await fetch(
-          `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
-            body: JSON.stringify(body),
-          }
-        );
-        const data = await resp.json();
-        return data.routes?.[0]?.distanceMeters ? data.routes[0].distanceMeters / 1000 : configCusto.kmBase;
-      } catch { return configCusto.kmBase; }
+      const pontos = [base, ...paradas, base];
+      let total = 0;
+      for (let i = 0; i < pontos.length - 1; i++) {
+        total += await distanciaKm(pontos[i], pontos[i + 1]);
+      }
+      return total;
     }
 
-    // Rota aberta: origem → paradas → destino (pontos de saída e chegada diferentes)
+    // Rota aberta: origem → p1 → p2 → ... → destino (segmento a segmento, ordem exata)
     async function rotaAberta(origem: string, paradas: string[], destino: string): Promise<number> {
-      try {
-        const body: Record<string, unknown> = {
-          origin: { address: origem },
-          destination: { address: destino },
-          travelMode: "DRIVE",
-          routingPreference: "TRAFFIC_UNAWARE",
-          computeAlternativeRoutes: false,
-        };
-        if (paradas.length > 0) {
-          body.intermediates = paradas.map(e => ({ location: { address: e }, via: false }));
-          body.optimizeWaypointOrder = false;
-        }
-        const resp = await fetch(
-          `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
-            body: JSON.stringify(body),
-          }
-        );
-        const data = await resp.json();
-        return data.routes?.[0]?.distanceMeters ? data.routes[0].distanceMeters / 1000 : configCusto.kmBase;
-      } catch { return configCusto.kmBase; }
+      const pontos = [origem, ...paradas, destino];
+      let total = 0;
+      for (let i = 0; i < pontos.length - 1; i++) {
+        total += await distanciaKm(pontos[i], pontos[i + 1]);
+      }
+      return total;
     }
 
     // ── Opção 1: sempre São Pedro → roteiro → São Pedro (por dia) ──────────
