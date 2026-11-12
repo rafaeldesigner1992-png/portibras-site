@@ -4577,25 +4577,17 @@ function LogisticaPage() {
                                                   <span className="text-right">Total</span>
                                                   <span className="text-right">Diferença</span>
                                                 </div>
-                                                {/* Linha Opção 1 */}
-                                                {(() => {
-                                                  const melhorGlobal = Math.min(custoDeslocamento, melhorTotal);
-                                                  const isMelhor1 = custoDeslocamento <= melhorTotal;
-                                                  return (
-                                                  <div className={cn("grid grid-cols-3 px-3 py-2 text-xs font-medium border-b border-gray-100", isMelhor1 ? "bg-green-50 text-green-800" : "text-gray-600")}>
-                                                    <span className="flex items-center gap-1">🚗 Deslocamento{isMelhor1 && <span className="text-[9px] font-bold bg-green-200 text-green-800 rounded px-1">✓ Melhor</span>}</span>
-                                                    <span className="text-right font-bold tabular-nums">{fmtR(custoDeslocamento)}</span>
-                                                    <span className={cn("text-right tabular-nums", isMelhor1 ? "text-green-700 font-bold" : "text-red-500")}>
-                                                      {isMelhor1 ? `−${fmtR(custoDeslocamento - melhorGlobal)}` : `+${fmtR(custoDeslocamento - melhorGlobal)}`}
-                                                    </span>
-                                                  </div>
-                                                  );
-                                                })()}
-                                                {/* Linhas Airbnbs */}
+                                                {/* Linha Opção 1 — referência */}
+                                                <div className="grid grid-cols-3 px-3 py-2 text-xs font-medium border-b border-gray-100 text-gray-600">
+                                                  <span className="flex items-center gap-1">🚗 Deslocamento</span>
+                                                  <span className="text-right font-bold tabular-nums">{fmtR(custoDeslocamento)}</span>
+                                                  <span className="text-right tabular-nums text-gray-400">referência</span>
+                                                </div>
+                                                {/* Linhas Airbnbs — diferença em relação ao Deslocamento */}
                                                 {opcoesAirbnb.map((op, idx) => {
-                                                  const melhorGlobal = Math.min(custoDeslocamento, melhorTotal);
                                                   const isMelhor = op.total === melhorTotal && op.total < custoDeslocamento;
                                                   const isLast = idx === opcoesAirbnb.length - 1;
+                                                  const diff = op.total - custoDeslocamento;
                                                   return (
                                                   <div key={idx} className={cn("grid grid-cols-3 px-3 py-2 text-xs font-medium", !isLast && "border-b border-gray-100", isMelhor ? "bg-orange-50 text-orange-800" : "text-gray-600")}>
                                                     <span className="flex items-center gap-1 truncate">
@@ -4603,8 +4595,8 @@ function LogisticaPage() {
                                                       {isMelhor && <span className="text-[9px] font-bold bg-orange-200 text-orange-800 rounded px-1 shrink-0">✓ Melhor</span>}
                                                     </span>
                                                     <span className="text-right font-bold tabular-nums">{fmtR(op.total)}</span>
-                                                    <span className={cn("text-right tabular-nums", isMelhor ? "text-orange-700 font-bold" : "text-red-500")}>
-                                                      {op.total <= melhorGlobal ? `−${fmtR(melhorGlobal - op.total)}` : `+${fmtR(op.total - melhorGlobal)}`}
+                                                    <span className={cn("text-right tabular-nums font-semibold", diff < 0 ? "text-green-600" : "text-red-500")}>
+                                                      {diff < 0 ? `−${fmtR(Math.abs(diff))}` : `+${fmtR(diff)}`}
                                                     </span>
                                                   </div>
                                                   );
