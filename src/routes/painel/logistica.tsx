@@ -2188,11 +2188,20 @@ function LogisticaPage() {
         atendimento_id: selAtend?.id ?? "novo",
       };
 
-      const { data: json, error: fnError } = await supabase.functions.invoke(
-        "appsheet-criar-atividade",
-        { body: payload }
-      );
-      if (fnError) throw new Error(fnError.message ?? "Erro desconhecido");
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/appsheet-criar-atividade`;
+      const res = await fetch(fnUrl, {
+        method : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey"       : import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Erro ${res.status}: ${errText}`);
+      }
+      const json = await res.json();
 
       setAppSheetStatus({
         tipo,
