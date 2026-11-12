@@ -2189,10 +2189,12 @@ function LogisticaPage() {
       };
 
       const fnUrl = `https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/appsheet-criar-atividade`;
+      const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9kbXV1dGlqcWlraHpsZ3pqbnd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNTkzNTYsImV4cCI6MjEwODkzNTM1Nn0.grjNr7wSnvDEvnVT-dzbhezNHdYsDsBLJM-ijoZ4mTE";
       const res = await fetch(fnUrl, {
         method : "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type"  : "application/json",
+          "Authorization" : `Bearer ${ANON_KEY}`,
         },
         body: JSON.stringify(payload),
       });
