@@ -5060,6 +5060,17 @@ function LogisticaPage() {
                             ) : filtrados.map(item => (
                               <button key={item.tipo + item.id} type="button"
                                 onClick={async () => {
+                                  // Tenta buscar email na tabela clientes se não vier no pedido
+                                  let emailResolvido = item.cliente_email || "";
+                                  if (!emailResolvido && item.cliente) {
+                                    const { data: cliData } = await supabase
+                                      .from("clientes")
+                                      .select("email")
+                                      .ilike("nome", `%${item.cliente}%`)
+                                      .limit(1)
+                                      .maybeSingle();
+                                    if (cliData?.email) emailResolvido = cliData.email;
+                                  }
                                   setFormAtend(f => ({
                                     ...f,
                                     titulo: f.titulo || item.cliente,
@@ -5067,7 +5078,7 @@ function LogisticaPage() {
                                     endereco: f.endereco || item.endereco || "",
                                     descricao: f.descricao || item.descricao || "",
                                     cliente_nome: f.cliente_nome || item.cliente,
-                                    cliente_email: f.cliente_email || item.cliente_email || "",
+                                    cliente_email: f.cliente_email || emailResolvido,
                                   }));
                                   setBuscaVinculo("");
                                   // Buscar tarefas do pedido vinculado
