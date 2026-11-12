@@ -4176,6 +4176,41 @@ function LogisticaPage() {
       {/* ═══════ ABA ATENDIMENTOS ═══════ */}
       {aba === "atendimentos" && (
         <>
+          {/* ── KPIs de Atendimentos ── */}
+          {(() => {
+            const ativosAtend = atendimentos.filter(a => a.status !== "Concluído" && a.status !== "Cancelado");
+            const comData     = ativosAtend.filter(a => !!a.data_agendada);
+            const semData     = ativosAtend.filter(a => !a.data_agendada);
+            return (
+              <div className="mb-6 grid grid-cols-3 gap-4">
+                {/* Total de atendimentos ativos */}
+                <div className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Atendimentos</p>
+                  <p className="mt-1.5 text-2xl font-bold tabular-nums text-gray-900">
+                    {carregandoAtend ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-gray-100" /> : ativosAtend.length}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-gray-400">em aberto</p>
+                </div>
+                {/* Com data agendada */}
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-5 py-4 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-500">Programados</p>
+                  <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-700">
+                    {carregandoAtend ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-emerald-100" /> : comData.length}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-emerald-500">com data confirmada</p>
+                </div>
+                {/* Sem data */}
+                <div className={cn("rounded-2xl border px-5 py-4 shadow-sm", semData.length > 0 ? "border-orange-100 bg-orange-50" : "border-gray-100 bg-white")}>
+                  <p className={cn("text-[10px] font-semibold uppercase tracking-widest", semData.length > 0 ? "text-orange-500" : "text-gray-400")}>Sem data</p>
+                  <p className={cn("mt-1.5 text-2xl font-bold tabular-nums", semData.length > 0 ? "text-orange-700" : "text-gray-400")}>
+                    {carregandoAtend ? <span className="inline-block h-6 w-20 animate-pulse rounded bg-gray-100" /> : semData.length}
+                  </p>
+                  <p className={cn("mt-0.5 text-[10px]", semData.length > 0 ? "text-orange-400" : "text-gray-400")}>aguardando agendamento</p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── Tickets em Aberto ── */}
           {/* ── Vistorias aguardando agendamento ── */}
           {(() => {
