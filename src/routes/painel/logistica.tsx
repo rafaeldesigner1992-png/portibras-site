@@ -493,6 +493,20 @@ interface CheckAba {
   checked_por: string | null;
 }
 
+interface PedidoCusto {
+  id: string;
+  pedido_id: string;
+  origem: "logistica" | "financeiro";
+  categoria: "material" | "mao_obra" | "combustivel" | "pedagio" | "taxa_admin" | "boleto" | "imposto" | "outro";
+  descricao: string;
+  valor: number;
+  quantidade: number;
+  automatico: boolean;
+  data_referencia: string | null;
+  obs: string | null;
+  criado_em: string;
+}
+
 // ─── Pedidos Fechados (legado — mantido para compatibilidade) ─────────────────
 interface PedidoFechado {
   id: string;
@@ -924,7 +938,20 @@ function LogisticaPage() {
   // progresso por pedido: { aquisicao: bool, tarefas: bool }
   const [progressoCards, setProgressoCards] = useState<Record<string, { info: boolean; aquisicao: boolean; tarefas: boolean; tarefasTotal: number; tarefasConcluidas: number }>>({});
   const [pedidoAberto, setPedidoAberto] = useState<PedidoLogistico | null>(null);
-  const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao" | "tarefas">("info");
+  const [abaPedido, setAbaPedido] = useState<"info" | "aquisicao" | "tarefas" | "custos">("info");
+
+  // ── Custos do pedido ────────────────────────────────────────────────────────
+  const [custosPedido, setCustosPedido] = useState<PedidoCusto[]>([]);
+  const [carregandoCustos, setCarregandoCustos] = useState(false);
+  const [salvandoCusto, setSalvandoCusto] = useState(false);
+  const [formCusto, setFormCusto] = useState({
+    categoria: "material" as PedidoCusto["categoria"],
+    descricao: "",
+    valor: "",
+    quantidade: "1",
+    obs: "",
+  });
+  const [custoEditando, setCustoEditando] = useState<PedidoCusto | null>(null);
   const [aquisicoes, setAquisicoes] = useState<ItemAquisicao[]>([]);
   const [carregandoAquis, setCarregandoAquis] = useState(false);
   const [formAquis, setFormAquis] = useState({ nome: "", quantidade: "1", unidade: "un", custo_unitario: "", fornecedor: "", link_compra: "", observacoes: "" });
@@ -1881,16 +1908,60 @@ function LogisticaPage() {
     setTarefas(ts => ts.filter(t => t.id !== id));
   }
 
+  async function carregarCustos(pedidoId: string) {
+    setCarregandoCustos(true);
+    const { data } = await supabase
+      .from("pedido_custos")
+      .select("*")
+      .eq("pedido_id", pedidoId)
+      .eq("origem", "logistica")
+      .order("criado_em", { ascending: false });
+    if (data) setCustosPedido(data as PedidoCusto[]);
+    setCarregandoCustos(false);
+  }
+
+  async function salvarCusto() {
+    if (!pedidoAberto || !formCusto.descricao.trim() || !formCusto.valor) return;
+    setSalvandoCusto(true);
+    const payload = {
+      pedido_id: pedidoAberto.id,
+      origem: "logistica" as const,
+      categoria: formCusto.categoria,
+      descricao: formCusto.descricao.trim(),
+      valor: parseFloat(formCusto.valor.replace(",", ".")),
+      quantidade: parseFloat(formCusto.quantidade.replace(",", ".")) || 1,
+      obs: formCusto.obs.trim() || null,
+      automatico: false,
+    };
+    if (custoEditando) {
+      await supabase.from("pedido_custos").update(payload).eq("id", custoEditando.id);
+      setCustosPedido(cs => cs.map(c => c.id === custoEditando.id ? { ...c, ...payload } : c));
+      setCustoEditando(null);
+    } else {
+      const { data } = await supabase.from("pedido_custos").insert(payload).select().single();
+      if (data) setCustosPedido(cs => [data as PedidoCusto, ...cs]);
+    }
+    setFormCusto({ categoria: "material", descricao: "", valor: "", quantidade: "1", obs: "" });
+    setSalvandoCusto(false);
+  }
+
+  async function excluirCusto(id: string) {
+    await supabase.from("pedido_custos").delete().eq("id", id);
+    setCustosPedido(cs => cs.filter(c => c.id !== id));
+  }
+
   async function abrirPedido(p: PedidoLogistico) {
     setPedidoAberto(p);
     setAbaPedido("info");
     setAquisicoes([]);
     setTarefas([]);
     setChecksAbas([]);
+    setCustosPedido([]);
     setNovaTarefa("");
     carregarAquisicoes(p.id);
     carregarTarefas(p.id);
     carregarChecks(p.id);
+    carregarCustos(p.id);
   }
 
   async function moverEtapa(pedido: PedidoLogistico, novaEtapa: EtapaLogistica) {
@@ -3191,40 +3262,43 @@ function LogisticaPage() {
 
                   {/* Abas internas */}
                   <div className="flex border-b border-gray-100 shrink-0">
-                    {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }, { key: "tarefas", label: "Tarefas" }] as const).map(t => {
-                      // Último check desta aba (checked = true significa "ok, revisado")
-                      const ultimoCheck = checksAbas
-                        .filter(c => c.aba === t.key)
-                        .sort((a, b) => new Date(b.checked_em).getTime() - new Date(a.checked_em).getTime())[0];
+                    {([{ key: "info", label: "Informações" }, { key: "aquisicao", label: "Aquisição" }, { key: "tarefas", label: "Tarefas" }, { key: "custos", label: "Custos" }] as const).map(t => {
+                      // Último check desta aba (apenas para info/aquisicao/tarefas)
+                      const ultimoCheck = t.key !== "custos" ? checksAbas
+                        .filter(c => c.aba === (t.key as "info" | "aquisicao" | "tarefas"))
+                        .sort((a, b) => new Date(b.checked_em).getTime() - new Date(a.checked_em).getTime())[0] : undefined;
                       const estaChecked = ultimoCheck?.checked === true;
-                      const carregandoEsteCheck = salvandoCheck === t.key;
+                      const carregandoEsteCheck = salvandoCheck === (t.key as "info" | "aquisicao" | "tarefas" | null);
 
                       return (
                       <div key={t.key} className="flex items-stretch">
-                        {/* Botão de check clicável — separado do label */}
-                        <button
-                          onClick={e => { e.stopPropagation(); toggleCheckAba(t.key); }}
-                          disabled={!!carregandoEsteCheck}
-                          title={estaChecked ? "Marcar como pendente" : "Marcar aba como revisada"}
-                          className={cn(
-                            "flex items-center justify-center pl-3 pr-1 py-2.5 transition-colors group/check",
-                            abaPedido === t.key ? "text-[#1a6b2f]" : "text-gray-300 hover:text-gray-500"
-                          )}
-                        >
-                          <span className={cn(
-                            "h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center transition-all",
-                            estaChecked
-                              ? "border-blue-500 bg-blue-500"
-                              : "border-gray-300 bg-white group-hover/check:border-blue-300",
-                            carregandoEsteCheck && "opacity-50"
-                          )}>
-                            {estaChecked && (
-                              <svg className="h-2 w-2 text-white" fill="none" viewBox="0 0 8 8">
-                                <path d="M1.5 4L3.5 6L6.5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
+                        {/* Botão de check — apenas para abas info/aquisicao/tarefas */}
+                        {t.key !== "custos" && (
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleCheckAba(t.key as "info" | "aquisicao" | "tarefas"); }}
+                            disabled={!!carregandoEsteCheck}
+                            title={estaChecked ? "Marcar como pendente" : "Marcar aba como revisada"}
+                            className={cn(
+                              "flex items-center justify-center pl-3 pr-1 py-2.5 transition-colors group/check",
+                              abaPedido === t.key ? "text-[#1a6b2f]" : "text-gray-300 hover:text-gray-500"
                             )}
-                          </span>
-                        </button>
+                          >
+                            <span className={cn(
+                              "h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center transition-all",
+                              estaChecked
+                                ? "border-blue-500 bg-blue-500"
+                                : "border-gray-300 bg-white group-hover/check:border-blue-300",
+                              carregandoEsteCheck && "opacity-50"
+                            )}>
+                              {estaChecked && (
+                                <svg className="h-2 w-2 text-white" fill="none" viewBox="0 0 8 8">
+                                  <path d="M1.5 4L3.5 6L6.5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </span>
+                          </button>
+                        )}
+                        {t.key === "custos" && <span className="pl-3" />}
 
                         {/* Label da aba — abre a aba */}
                         <button
@@ -3251,6 +3325,11 @@ function LogisticaPage() {
                               </span>
                             );
                           })()}
+                          {t.key === "custos" && custosPedido.length > 0 && (
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white">
+                              {custosPedido.length}
+                            </span>
+                          )}
                           {t.label}
                         </button>
                       </div>
@@ -3918,6 +3997,156 @@ function LogisticaPage() {
                               <Plus className="h-4 w-4" />
                               Adicionar
                             </button>
+                          </div>
+                        </>
+                      );
+                    })()}
+
+                    {/* ─ ABA CUSTOS ─ */}
+                    {abaPedido === "custos" && (() => {
+                      const totalCustos = custosPedido.reduce((s, c) => s + c.valor * c.quantidade, 0);
+                      const fmtR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+                      const CATEGORIAS: { key: PedidoCusto["categoria"]; label: string; emoji: string }[] = [
+                        { key: "material",   label: "Material",         emoji: "🔩" },
+                        { key: "mao_obra",   label: "Mão de obra",      emoji: "👷" },
+                        { key: "combustivel",label: "Combustível",       emoji: "⛽" },
+                        { key: "pedagio",    label: "Pedágio",           emoji: "🛣️" },
+                        { key: "outro",      label: "Outro",             emoji: "📦" },
+                      ];
+                      return (
+                        <>
+                          {/* Resumo total */}
+                          {custosPedido.length > 0 && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between">
+                              <div>
+                                <p className="text-[9px] font-semibold uppercase tracking-widest text-amber-600 mb-0.5">Total de custos operacionais</p>
+                                <p className="text-xl font-bold text-amber-800">{fmtR(totalCustos)}</p>
+                              </div>
+                              <span className="text-2xl">💰</span>
+                            </div>
+                          )}
+
+                          {/* Lista de itens */}
+                          {carregandoCustos ? (
+                            <div className="flex items-center gap-2 text-gray-400 text-sm">
+                              <Loader2 className="h-4 w-4 animate-spin" /> Carregando custos…
+                            </div>
+                          ) : custosPedido.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {custosPedido.map(c => {
+                                const cat = CATEGORIAS.find(k => k.key === c.categoria);
+                                return (
+                                  <div key={c.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2.5">
+                                    <span className="text-base shrink-0">{cat?.emoji ?? "📦"}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-gray-800 truncate">{c.descricao}</p>
+                                      <p className="text-[10px] text-gray-400">{cat?.label} · qtd {c.quantidade.toLocaleString("pt-BR")}</p>
+                                      {c.obs && <p className="text-[10px] text-gray-400 italic truncate">{c.obs}</p>}
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <p className="text-sm font-bold text-gray-800">{fmtR(c.valor * c.quantidade)}</p>
+                                      {c.quantidade > 1 && <p className="text-[10px] text-gray-400">{fmtR(c.valor)}/un</p>}
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        onClick={() => {
+                                          setCustoEditando(c);
+                                          setFormCusto({
+                                            categoria: c.categoria,
+                                            descricao: c.descricao,
+                                            valor: String(c.valor).replace(".", ","),
+                                            quantidade: String(c.quantidade).replace(".", ","),
+                                            obs: c.obs ?? "",
+                                          });
+                                        }}
+                                        className="rounded-lg p-1 text-gray-300 hover:bg-blue-50 hover:text-blue-500 transition-colors"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => excluirCusto(c.id)}
+                                        className="rounded-lg p-1 text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-300">
+                              Nenhum custo registrado ainda
+                            </div>
+                          )}
+
+                          {/* Formulário adicionar/editar */}
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                            <p className="text-xs font-semibold text-gray-600">
+                              {custoEditando ? "✏️ Editar custo" : "+ Adicionar custo"}
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <select
+                                value={formCusto.categoria}
+                                onChange={e => setFormCusto(f => ({ ...f, categoria: e.target.value as PedidoCusto["categoria"] }))}
+                                className="col-span-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-[#1a6b2f] focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/20"
+                              >
+                                {CATEGORIAS.map(c => (
+                                  <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="text"
+                                placeholder="Descrição do custo*"
+                                value={formCusto.descricao}
+                                onChange={e => setFormCusto(f => ({ ...f, descricao: e.target.value }))}
+                                className="col-span-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-300 focus:border-[#1a6b2f] focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/20"
+                              />
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Valor (R$)*"
+                                value={formCusto.valor}
+                                onChange={e => setFormCusto(f => ({ ...f, valor: e.target.value }))}
+                                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-300 focus:border-[#1a6b2f] focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/20"
+                              />
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Qtd (padrão 1)"
+                                value={formCusto.quantidade}
+                                onChange={e => setFormCusto(f => ({ ...f, quantidade: e.target.value }))}
+                                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-300 focus:border-[#1a6b2f] focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/20"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Observação (opcional)"
+                                value={formCusto.obs}
+                                onChange={e => setFormCusto(f => ({ ...f, obs: e.target.value }))}
+                                className="col-span-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-300 focus:border-[#1a6b2f] focus:outline-none focus:ring-2 focus:ring-[#1a6b2f]/20"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              {custoEditando && (
+                                <button
+                                  onClick={() => {
+                                    setCustoEditando(null);
+                                    setFormCusto({ categoria: "material", descricao: "", valor: "", quantidade: "1", obs: "" });
+                                  }}
+                                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+                                >
+                                  Cancelar
+                                </button>
+                              )}
+                              <button
+                                onClick={salvarCusto}
+                                disabled={salvandoCusto || !formCusto.descricao.trim() || !formCusto.valor}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-40 transition-colors"
+                              >
+                                {salvandoCusto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                                {custoEditando ? "Salvar alteração" : "Adicionar custo"}
+                              </button>
+                            </div>
                           </div>
                         </>
                       );

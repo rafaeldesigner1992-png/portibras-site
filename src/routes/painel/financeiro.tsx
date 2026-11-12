@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -448,6 +448,78 @@ function FinanceiroPage() {
   const [atualizandoStatus, setAtualizandoStatus] = useState<string | null>(null);
   const [salvandoObs, setSalvandoObs] = useState<string | null>(null);
   const [obsEditando, setObsEditando] = useState<Record<string, string>>({});
+
+  // ── Custos por pedido (financeiro) ─────────────────────────────────────────
+  interface PedidoCustoFin {
+    id: string;
+    pedido_id: string;
+    origem: "logistica" | "financeiro";
+    categoria: "material" | "mao_obra" | "combustivel" | "pedagio" | "taxa_admin" | "boleto" | "imposto" | "outro";
+    descricao: string;
+    valor: number;
+    quantidade: number;
+    automatico: boolean;
+    obs: string | null;
+    criado_em: string;
+  }
+  // pedidoId -> lista de custos (todos, logistica + financeiro)
+  const [custosPorPedido, setCustosPorPedido] = useState<Record<string, PedidoCustoFin[]>>({});
+  const [carregandoCustosPedido, setCarregandoCustosPedido] = useState<Record<string, boolean>>({});
+  const [pedidoCustoExpandido, setPedidoCustoExpandido] = useState<string | null>(null);
+  const [salvandoCustoFin, setSalvandoCustoFin] = useState<string | null>(null); // pedido_id que está salvando
+  const [formCustoFin, setFormCustoFin] = useState<Record<string, {
+    categoria: PedidoCustoFin["categoria"];
+    descricao: string;
+    valor: string;
+    quantidade: string;
+  }>>({});
+
+  async function carregarCustosPedido(pedidoId: string) {
+    if (custosPorPedido[pedidoId]) return; // já carregado
+    setCarregandoCustosPedido(c => ({ ...c, [pedidoId]: true }));
+    const { data } = await supabase
+      .from("pedido_custos")
+      .select("*")
+      .eq("pedido_id", pedidoId)
+      .order("criado_em", { ascending: true });
+    setCustosPorPedido(cp => ({ ...cp, [pedidoId]: (data ?? []) as PedidoCustoFin[] }));
+    setCarregandoCustosPedido(c => ({ ...c, [pedidoId]: false }));
+  }
+
+  async function salvarCustoFin(pedidoId: string) {
+    const f = formCustoFin[pedidoId];
+    if (!f || !f.descricao.trim() || !f.valor) return;
+    setSalvandoCustoFin(pedidoId);
+    const payload = {
+      pedido_id: pedidoId,
+      origem: "financeiro" as const,
+      categoria: f.categoria,
+      descricao: f.descricao.trim(),
+      valor: parseFloat(f.valor.replace(",", ".")),
+      quantidade: parseFloat(f.quantidade.replace(",", ".")) || 1,
+      automatico: false,
+    };
+    const { data } = await supabase.from("pedido_custos").insert(payload).select().single();
+    if (data) {
+      setCustosPorPedido(cp => ({
+        ...cp,
+        [pedidoId]: [...(cp[pedidoId] ?? []), data as PedidoCustoFin],
+      }));
+    }
+    setFormCustoFin(f => ({
+      ...f,
+      [pedidoId]: { categoria: "taxa_admin", descricao: "", valor: "", quantidade: "1" },
+    }));
+    setSalvandoCustoFin(null);
+  }
+
+  async function excluirCustoFin(pedidoId: string, custoId: string) {
+    await supabase.from("pedido_custos").delete().eq("id", custoId);
+    setCustosPorPedido(cp => ({
+      ...cp,
+      [pedidoId]: (cp[pedidoId] ?? []).filter(c => c.id !== custoId),
+    }));
+  }
 
   const CAMPOS_FATURAR = "id,cliente_nome,cliente_empresa,cliente_telefone,tipo_servico,valor_venda,tipo_cobranca,etapa,cobrado,status_cobranca,obs_cobranca,cobrado_em,criado_em,crm_lead_id";
 
@@ -1374,9 +1446,18 @@ function FinanceiroPage() {
                         const cobColor = p.tipo_cobranca === "antes" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700";
                         const isParcial = p.status_cobranca === "cobrado_parcial";
                         const obsAtual = obsEditando[p.id] ?? (p.obs_cobranca || "");
+                        const custosPed = custosPorPedido[p.id] ?? [];
+                        const custoLogistica = custosPed.filter(c => c.origem === "logistica").reduce((s, c) => s + c.valor * c.quantidade, 0);
+                        const custoFinanceiro = custosPed.filter(c => c.origem === "financeiro").reduce((s, c) => s + c.valor * c.quantidade, 0);
+                        const custoTotal = custoLogistica + custoFinanceiro;
+                        const margem = p.valor_venda != null && custoTotal > 0
+                          ? ((p.valor_venda - custoTotal) / p.valor_venda) * 100
+                          : null;
+                        const custoExpandido = pedidoCustoExpandido === p.id;
+                        const fCusto = formCustoFin[p.id] ?? { categoria: "taxa_admin" as PedidoCustoFin["categoria"], descricao: "", valor: "", quantidade: "1" };
                         return (
+                          <React.Fragment key={p.id}>
                           <tr
-                            key={p.id}
                             className={cn(
                               "transition-colors",
                               isParcial
@@ -1392,6 +1473,30 @@ function FinanceiroPage() {
                                   🔶 Parcial
                                 </span>
                               )}
+                              <button
+                                onClick={() => {
+                                  if (custoExpandido) {
+                                    setPedidoCustoExpandido(null);
+                                  } else {
+                                    setPedidoCustoExpandido(p.id);
+                                    carregarCustosPedido(p.id);
+                                    if (!formCustoFin[p.id]) {
+                                      setFormCustoFin(f => ({ ...f, [p.id]: { categoria: "taxa_admin", descricao: "", valor: "", quantidade: "1" } }));
+                                    }
+                                  }
+                                }}
+                                className={cn(
+                                  "mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+                                  custoExpandido
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-gray-100 text-gray-500 hover:bg-amber-50 hover:text-amber-600"
+                                )}
+                              >
+                                💰 Custos
+                                {custosPed.length > 0 && (
+                                  <span className="rounded-full bg-amber-500 px-1 text-[9px] text-white">{custosPed.length}</span>
+                                )}
+                              </button>
                             </td>
                             <td className="px-4 py-3 hidden sm:table-cell">
                               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
@@ -1465,6 +1570,115 @@ function FinanceiroPage() {
                               </td>
                             )}
                           </tr>
+                          {/* ── Painel de custos expansível ── */}
+                          {custoExpandido && (
+                            <tr>
+                              <td colSpan={8} className="p-0">
+                                <div className="border-t border-amber-100 bg-amber-50/40 px-4 py-4">
+                                  {carregandoCustosPedido[p.id] ? (
+                                    <div className="flex items-center gap-2 text-xs text-amber-600">
+                                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-amber-600" />
+                                      Carregando custos…
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      {/* Resumo margem */}
+                                      {custoTotal > 0 && p.valor_venda != null && (
+                                        <div className="flex flex-wrap gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs">
+                                          <span className="text-gray-500">Venda: <strong className="text-[#1a6b2f]">{fmt(p.valor_venda)}</strong></span>
+                                          <span className="text-gray-400">|</span>
+                                          <span className="text-gray-500">Custo logística: <strong className="text-orange-600">{fmt(custoLogistica)}</strong></span>
+                                          <span className="text-gray-500">Custo financeiro: <strong className="text-red-600">{fmt(custoFinanceiro)}</strong></span>
+                                          <span className="text-gray-500">Total custo: <strong className="text-gray-800">{fmt(custoTotal)}</strong></span>
+                                          <span className="text-gray-400">|</span>
+                                          <span className={cn("font-semibold", margem != null && margem >= 25 ? "text-green-700" : margem != null && margem >= 0 ? "text-yellow-600" : "text-red-600")}>
+                                            Margem: {margem != null ? pct(margem) : "—"}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {/* Lista de custos existentes */}
+                                      {custosPed.length > 0 ? (
+                                        <div className="space-y-1">
+                                          {custosPed.map(c => {
+                                            const emojiCat: Record<string, string> = {
+                                              material: "🔧", mao_obra: "👷", combustivel: "⛽", pedagio: "🛣️",
+                                              taxa_admin: "📋", boleto: "🏦", imposto: "💼", outro: "📌",
+                                            };
+                                            const labelCat: Record<string, string> = {
+                                              material: "Material", mao_obra: "Mão de obra", combustivel: "Combustível",
+                                              pedagio: "Pedágio", taxa_admin: "Taxa adm.", boleto: "Boleto", imposto: "Imposto", outro: "Outro",
+                                            };
+                                            return (
+                                              <div key={c.id} className={cn(
+                                                "flex items-center gap-2 rounded px-2 py-1.5 text-xs",
+                                                c.origem === "logistica" ? "bg-orange-50/60" : "bg-red-50/60"
+                                              )}>
+                                                <span>{emojiCat[c.categoria] ?? "📌"}</span>
+                                                <span className={cn("rounded px-1 py-0.5 text-[10px] font-medium", c.origem === "logistica" ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700")}>
+                                                  {c.origem === "logistica" ? "Log." : "Fin."}
+                                                </span>
+                                                <span className="text-gray-500">{labelCat[c.categoria]}</span>
+                                                <span className="flex-1 text-gray-700">{c.descricao}</span>
+                                                {c.quantidade !== 1 && <span className="text-gray-400">×{c.quantidade}</span>}
+                                                <span className="font-medium text-gray-800">{fmt(c.valor * c.quantidade)}</span>
+                                                {c.origem === "financeiro" && (
+                                                  <button
+                                                    onClick={() => excluirCustoFin(p.id, c.id)}
+                                                    className="ml-1 rounded p-0.5 text-gray-300 hover:bg-red-100 hover:text-red-500"
+                                                  >
+                                                    <X className="h-3 w-3" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-amber-500/80">Nenhum custo registrado ainda.</p>
+                                      )}
+                                      {/* Formulário novo custo financeiro */}
+                                      <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-amber-200 bg-white px-3 py-2">
+                                        <span className="text-xs font-semibold text-amber-700">+ Custo financeiro</span>
+                                        <select
+                                          value={fCusto.categoria}
+                                          onChange={e => setFormCustoFin(f => ({ ...f, [p.id]: { ...fCusto, categoria: e.target.value as PedidoCustoFin["categoria"] } }))}
+                                          className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300"
+                                        >
+                                          <option value="taxa_admin">📋 Taxa adm.</option>
+                                          <option value="boleto">🏦 Boleto</option>
+                                          <option value="imposto">💼 Imposto</option>
+                                          <option value="outro">📌 Outro</option>
+                                        </select>
+                                        <input
+                                          type="text"
+                                          placeholder="Descrição"
+                                          value={fCusto.descricao}
+                                          onChange={e => setFormCustoFin(f => ({ ...f, [p.id]: { ...fCusto, descricao: e.target.value } }))}
+                                          className="flex-1 min-w-[120px] rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs placeholder-gray-300 focus:outline-none focus:ring-1 focus:ring-amber-300"
+                                        />
+                                        <input
+                                          type="text"
+                                          placeholder="R$ valor"
+                                          value={fCusto.valor}
+                                          onChange={e => setFormCustoFin(f => ({ ...f, [p.id]: { ...fCusto, valor: e.target.value } }))}
+                                          className="w-24 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs placeholder-gray-300 focus:outline-none focus:ring-1 focus:ring-amber-300"
+                                        />
+                                        <button
+                                          onClick={() => salvarCustoFin(p.id)}
+                                          disabled={salvandoCustoFin === p.id || !fCusto.descricao.trim() || !fCusto.valor}
+                                          className="flex items-center gap-1 rounded bg-amber-500 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-40"
+                                        >
+                                          {salvandoCustoFin === p.id ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Plus className="h-3 w-3" />}
+                                          Salvar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
