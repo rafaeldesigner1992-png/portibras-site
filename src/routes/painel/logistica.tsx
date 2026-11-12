@@ -1077,22 +1077,57 @@ function LogisticaPage() {
     }
 
     if (airbnbAddr && airbnbAddr.trim()) {
-      // Com Airbnb:
-      // 1. São Pedro → Airbnb (chegada no primeiro dia antes dos atendimentos)
-      const kmIdaAirbnb = await distanciaKm(ORIGEM_BASE, airbnbAddr);
-      kmTotal += kmIdaAirbnb;
-
-      // 2. Para cada dia: Airbnb → atendimentos → Airbnb
-      for (const dia of dias) {
-        const endsDia = [...new Set(endsPorDia[dia])];
-        kmTotal += await rotaCircular(airbnbAddr, endsDia);
+      // ── Lógica com Airbnb ──────────────────────────────────────────────────
+      // Regra: se houver atendimento no dia seguinte, o retorno do dia é para o
+      // Airbnb. Se não houver (último dia com atendimento), o retorno é para
+      // São Pedro diretamente.
+      //
+      // Fluxo:
+      //  1º dia: São Pedro → [roteiro] → Airbnb
+      //  Dias intermediários: Airbnb → [roteiro] → Airbnb
+      //  Último dia: Airbnb → [roteiro] → São Pedro
+      //
+      // Helper: rota origem → paradas → destino (ponto final diferente)
+      async function rotaAberta(origem: string, paradas: string[], destino: string): Promise<number> {
+        if (paradas.length === 0) return distanciaKm(origem, destino);
+        if (paradas.length === 1) {
+          return (await distanciaKm(origem, paradas[0])) + (await distanciaKm(paradas[0], destino));
+        }
+        try {
+          const resp = await fetch(
+            `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
+              body: JSON.stringify({
+                origin: { address: origem },
+                destination: { address: destino },
+                intermediates: paradas.map(e => ({ location: { address: e } })),
+                travelMode: "DRIVE",
+                routingPreference: "TRAFFIC_UNAWARE",
+                computeAlternativeRoutes: false,
+              }),
+            }
+          );
+          const data = await resp.json();
+          return data.routes?.[0]?.distanceMeters
+            ? data.routes[0].distanceMeters / 1000
+            : configCusto.kmBase;
+        } catch { return configCusto.kmBase; }
       }
 
-      // 3. Último dia: Airbnb → São Pedro (volta para casa)
-      const kmVoltaAirbnb = await distanciaKm(airbnbAddr, ORIGEM_BASE);
-      kmTotal += kmVoltaAirbnb;
+      for (let i = 0; i < dias.length; i++) {
+        const dia = dias[i];
+        const endsDia = [...new Set(endsPorDia[dia])];
+        const temAmanha = i < dias.length - 1; // há atendimento no próximo dia?
+
+        const origem = i === 0 ? ORIGEM_BASE : airbnbAddr;   // 1º dia: sai de São Pedro
+        const destino = temAmanha ? airbnbAddr : ORIGEM_BASE; // último dia: volta p/ casa
+
+        kmTotal += await rotaAberta(origem, endsDia, destino);
+      }
     } else {
-      // Sem Airbnb: cada dia sai de São Pedro e volta
+      // ── Sem Airbnb: cada dia sai de São Pedro e volta ──────────────────────
       for (const dia of dias) {
         const endsDia = [...new Set(endsPorDia[dia])];
         kmTotal += await rotaCircular(ORIGEM_BASE, endsDia);
