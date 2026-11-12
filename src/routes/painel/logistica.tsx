@@ -4314,6 +4314,9 @@ function LogisticaPage() {
                           return { ...op, valNum, temValor, hospedagem, refeicoes, comb, total };
                         });
                         const melhorTotal = opcoesAirbnb.length > 0 ? Math.min(...opcoesAirbnb.map(o => o.total)) : Infinity;
+                        // Custo estimado sem endereço (sem combustível real)
+                        const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
+                          + diasComAtend * configCusto.refeicaoFora + custoPedagios2;
                         const seg = sem[0]; const sex = sem[4];
                         const labelSem = `${seg.getDate()}/${seg.getMonth()+1} – ${sex.getDate()}/${sex.getMonth()+1}`;
                         // Clientes da semana
