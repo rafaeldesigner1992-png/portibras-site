@@ -6,7 +6,7 @@ import {
   ExternalLink, Clock, Pencil, Trash2, AlertCircle,
   Wrench, CalendarDays as CalendarIcon, Ticket, ChevronRight, MapPin, User, HardHat, Check,
   ClipboardList, ShoppingBag, ChevronDown, ChevronUp, Loader2, BarChart2, FileCheck,
-  ClipboardCheck, Upload, FileText, Phone, Mail, Building2, Search,
+  ClipboardCheck, Upload, FileText, Phone, Mail, Building2, Search, CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -531,6 +531,7 @@ interface Atendimento {
   cliente_nome: string | null;
   cliente_email: string | null;
   cliente_email_cc: string | null;
+  crm_lead_id: string | null;
 }
 
 interface Material {
@@ -2159,6 +2160,26 @@ function LogisticaPage() {
   function excluirAtend(id: string) {
     const atend = atendimentos.find(a => a.id === id);
     if (atend) setModalCancelar(atend);
+  }
+
+  async function concluirVistoria(v: Atendimento) {
+    // 1. Marca atendimento como Concluído
+    await supabase.from("atendimentos").update({ status: "Concluído" }).eq("id", v.id);
+    setAtendimentos(prev => prev.map(a => a.id === v.id ? { ...a, status: "Concluído" } : a));
+
+    // 2. Se tiver lead vinculado no CRM, insere nota no histórico
+    if (v.crm_lead_id) {
+      const dataFormatada = v.data_agendada
+        ? new Date(v.data_agendada + "T00:00:00").toLocaleDateString("pt-BR")
+        : "sem data registrada";
+      const horaFormatada = v.hora_inicio ? ` às ${v.hora_inicio}` : "";
+      const nota = `✅ Vistoria realizada em ${dataFormatada}${horaFormatada}.\n\nO atendimento foi concluído com sucesso. Pode prosseguir com o contato.`;
+      await supabase.from("crm_conversas").insert({
+        lead_id: v.crm_lead_id,
+        texto: nota,
+        autor: "Sistema — Logística",
+      });
+    }
   }
 
   function abrirModalMat(atendimentoId: string) {
@@ -3925,6 +3946,13 @@ function LogisticaPage() {
                           className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
                         >
                           <CalendarIcon className="h-3.5 w-3.5" /> Agendar
+                        </button>
+                        <button
+                          onClick={() => concluirVistoria(v)}
+                          className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700"
+                          title="Marcar vistoria como concluída"
+                        >
+                          <CheckCircle className="h-3.5 w-3.5" /> Concluir
                         </button>
                         <button
                           onClick={() => excluirAtend(v.id)}
