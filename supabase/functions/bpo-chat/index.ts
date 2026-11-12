@@ -39,6 +39,35 @@ serve(async (req) => {
 
     // ── Calcula dados da meta ──────────────────────────────────────────────
     async function calcularMeta() {
+      // Busca todas as configs relevantes de uma vez
+      const { data: cfgs } = await sb
+        .from("configuracoes")
+        .select("chave, valor")
+        .in("chave", ["margem_meta_pct", "pct_recebimento", "pct_custo_material"]);
+
+      const cfg = Object.fromEntries((cfgs ?? []).map((r: { chave: string; valor: string }) => [r.chave, r.valor]));
+
+      // Parâmetros do modelo financeiro da PORTIBRAS
+      // pct_recebimento: % do valor bruto da NFS-e que a empresa efetivamente recebe (padrão 50%)
+      const pctRecebimento = Number(cfg.pct_recebimento ?? 50) / 100;
+      // pct_custo_material: % do valor bruto que vai para material (padrão 40%)
+      const pctCustoMaterial = Number(cfg.pct_custo_material ?? 40) / 100;
+      // margem_meta_pct: margem de lucro desejada sobre o valor bruto da NFS-e (padrão 38%)
+      const margemPct = Number(cfg.margem_meta_pct ?? 38);
+      const margemDecimal = margemPct / 100;
+
+      // Margem bruta disponível antes dos custos fixos:
+      //   recebe 50% → paga 40% de material → sobra 10% do bruto para fixos + lucro
+      const margemBrutaDisponivel = pctRecebimento - pctCustoMaterial;
+
+      // A meta de lucro líquido (38% sobre o bruto) deve ser separada dos custos fixos.
+      // Para cobrir os fixos E ainda ter 38% de lucro sobre o bruto:
+      //   meta_bruta × margemBrutaDisponivel = custos_fixos + meta_bruta × margemDecimal
+      //   meta_bruta × (margemBrutaDisponivel − margemDecimal) = custos_fixos
+      //   meta_bruta = custos_fixos / (margemBrutaDisponivel − margemDecimal)
+      //
+      // Se margemDecimal >= margemBrutaDisponivel (negócio inviável), usa fallback simples.
+
       // Custos fixos ativos
       const { data: custos } = await sb
         .from("financeiro_custos_fixos")
@@ -53,19 +82,15 @@ serve(async (req) => {
         .eq("ativa", true);
       const totalDividas = (dividas ?? []).reduce((s: number, d: { parcela_mensal: number }) => s + d.parcela_mensal, 0);
 
-      // Ponto de equilíbrio
+      // Ponto de equilíbrio (apenas custos fixos + dívidas, sem material — material já está no modelo)
       const pontoEquilibrio = totalCustos + totalDividas;
 
-      // Margem configurada
-      const { data: cfgRows } = await sb
-        .from("configuracoes")
-        .select("valor")
-        .eq("chave", "margem_meta_pct")
-        .single();
-      const margemPct = Number(cfgRows?.valor ?? 20);
-
-      // Meta = ponto_equilíbrio × (1 + margem/100)
-      const metaVendas = pontoEquilibrio * (1 + margemPct / 100);
+      // Cálculo da meta bruta de NFS-e
+      // Fórmula: meta = pontoEquilibrio / max(margemBrutaDisponivel − margemDecimal, 0.01)
+      const denominador = Math.max(margemBrutaDisponivel - margemDecimal, 0.01);
+      const metaVendas = pontoEquilibrio > 0
+        ? pontoEquilibrio / denominador
+        : 0;
 
       // Receitas do mês atual = NFS-e emitidas no Conta Azul (fonte de verdade)
       const agora = new Date();
@@ -89,7 +114,12 @@ serve(async (req) => {
         })
         .reduce((s: number, n: { valor_servicos: number }) => s + (n.valor_servicos ?? 0), 0);
 
-      return { totalCustos, totalDividas, pontoEquilibrio, margemPct, metaVendas, receitaAtual };
+      return {
+        totalCustos, totalDividas, pontoEquilibrio,
+        margemPct, pctRecebimento: pctRecebimento * 100, pctCustoMaterial: pctCustoMaterial * 100,
+        margemBrutaDisponivel: margemBrutaDisponivel * 100,
+        metaVendas, receitaAtual,
+      };
     }
 
     // ── Modo: retornar apenas a meta ──────────────────────────────────────
@@ -105,17 +135,24 @@ serve(async (req) => {
 
       const meta = await calcularMeta();
 
+      const faltam = Math.max(meta.metaVendas - meta.receitaAtual, 0);
       const systemPrompt = `Você é o BPO (Business Process Outsourcing) de vendas da PORTIBRAS,
 empresa de manutenção e instalação de portas corta-fogo no Rio de Janeiro.
+
+Modelo financeiro da empresa:
+- A PORTIBRAS recebe ${meta.pctRecebimento}% do valor bruto de cada NFS-e emitida
+- Custo de materiais: ${meta.pctCustoMaterial}% do valor bruto (pago ao fornecedor)
+- Margem bruta disponível (recebimento − material): ${meta.margemBrutaDisponivel.toFixed(1)}% do bruto
+- Margem de lucro líquido alvo: ${meta.margemPct}% sobre o valor bruto da NFS-e
 
 Dados financeiros atuais do mês:
 - Custos fixos mensais: R$ ${meta.totalCustos.toFixed(2)}
 - Parcelas de dívidas: R$ ${meta.totalDividas.toFixed(2)}
-- Ponto de equilíbrio: R$ ${meta.pontoEquilibrio.toFixed(2)}
-- Margem de lucro alvo: ${meta.margemPct}%
-- META DE VENDAS DO MÊS: R$ ${meta.metaVendas.toFixed(2)}
-- Receita já realizada este mês: R$ ${meta.receitaAtual.toFixed(2)}
-- Faltam para bater a meta: R$ ${Math.max(meta.metaVendas - meta.receitaAtual, 0).toFixed(2)}
+- Ponto de equilíbrio (fixos + dívidas): R$ ${meta.pontoEquilibrio.toFixed(2)}
+- META DE NFS-e A EMITIR NO MÊS: R$ ${meta.metaVendas.toFixed(2)}
+- NFS-e já emitidas este mês: R$ ${meta.receitaAtual.toFixed(2)}
+- Faltam para bater a meta: R$ ${faltam.toFixed(2)}
+- Receita líquida estimada deste mês: R$ ${(meta.receitaAtual * meta.pctRecebimento / 100).toFixed(2)} (${meta.pctRecebimento}% das NFS-e)
 
 Seu papel:
 1. Ajudar a equipe de vendas a entender e bater a meta
