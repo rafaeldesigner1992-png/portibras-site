@@ -3858,6 +3858,27 @@ function LogisticaPage() {
                               Nenhuma tarefa ainda
                             </div>
                           )}
+
+                          {/* Campo para adicionar tarefa personalizada */}
+                          <div className="mt-3 flex gap-2">
+                            <input
+                              type="text"
+                              value={novaTarefa}
+                              onChange={e => setNovaTarefa(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") adicionarTarefa(); }}
+                              placeholder="Nova tarefa personalizada…"
+                              disabled={salvandoTarefa}
+                              className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-300 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
+                            />
+                            <button
+                              onClick={adicionarTarefa}
+                              disabled={salvandoTarefa || !novaTarefa.trim()}
+                              className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Adicionar
+                            </button>
+                          </div>
                         </>
                       );
                     })()}
