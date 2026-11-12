@@ -1010,8 +1010,7 @@ function LogisticaPage() {
   const [kmOpcao1, setKmOpcao1] = useState<Record<string, number>>({});
   const [calculandoKm, setCalculandoKm] = useState<Record<string, boolean>>({});
   // Opções de Airbnb por semana: array de {endereco, valor, km}
-  type AirbnbOpcao = { endereco: string; valor: string; km?: number };
-  const [airbnbOpcoes, setAirbnbOpcoes] = useState<Record<string, AirbnbOpcao[]>>({});
+  const [airbnbOpcoes, setAirbnbOpcoes] = useState<Record<string, { endereco: string; valor: string; km?: number }[]>>({});
 
   const GMAPS_KEY = "AIzaSyBFAgV8Sz31uMReMajxQEJuqJFbXmlcF8E";
   const ORIGEM_BASE = "São Pedro da Aldeia, RJ, Brasil";
