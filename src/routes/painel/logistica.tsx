@@ -1007,13 +1007,16 @@ function LogisticaPage() {
   // Cache de km calculados por semana: chave → km total real
   const [kmPorSemana, setKmPorSemana] = useState<Record<string, number>>({});
   const [calculandoKm, setCalculandoKm] = useState<Record<string, boolean>>({});
+  // Endereço do Airbnb por semana (chave ISO → endereço)
+  const [airbnbEndereco, setAirbnbEndereco] = useState<Record<string, string>>({});
 
   const GMAPS_KEY = "AIzaSyBFAgV8Sz31uMReMajxQEJuqJFbXmlcF8E";
   const ORIGEM_BASE = "São Pedro da Aldeia, RJ, Brasil";
 
-  // Calcula km real de uma semana usando Google Routes API (substituta da Distance Matrix)
-  async function calcularKmSemana(chaveSem: string, atends: Atendimento[]) {
-    // Extrai endereços únicos com data
+  // Calcula km real de uma semana usando Google Routes API
+  // Se airbnbAddr estiver preenchido, usa esse endereço como base para dias internos
+  // e soma o trecho São Pedro → Airbnb (ida) e Airbnb → São Pedro (volta no último dia)
+  async function calcularKmSemana(chaveSem: string, atends: Atendimento[], airbnbAddr?: string) {
     const endsPorDia: Record<string, string[]> = {};
     atends.forEach(a => {
       if (a.data_agendada && a.endereco) {
@@ -1021,61 +1024,78 @@ function LogisticaPage() {
         endsPorDia[a.data_agendada].push(a.endereco);
       }
     });
-    const dias = Object.keys(endsPorDia);
+    const dias = Object.keys(endsPorDia).sort();
     if (dias.length === 0) return;
 
     setCalculandoKm(prev => ({ ...prev, [chaveSem]: true }));
     let kmTotal = 0;
 
-    for (const dia of dias) {
-      const endsDia = [...new Set(endsPorDia[dia])];
-      // Monta waypoints intermediários (exceto origem e destino final)
-      const intermediarios = endsDia.slice(0, -1).map(e => ({
-        location: { address: e }
-      }));
-      const body = {
-        origin: { address: ORIGEM_BASE },
-        destination: { address: ORIGEM_BASE },
-        intermediates: [
-          ...endsDia.map(e => ({ location: { address: e } }))
-        ],
-        travelMode: "DRIVE",
-        routingPreference: "TRAFFIC_UNAWARE",
-        computeAlternativeRoutes: false,
-      };
-      // Se há só 1 destino, vai direto origem→destino→origem com 2 chamadas simples
-      if (endsDia.length === 1) {
-        // Routes API: origem → destino
-        const r1 = await fetch(
+    // Helper: distância entre dois pontos via Routes API
+    async function distanciaKm(origem: string, destino: string): Promise<number> {
+      try {
+        const r = await fetch(
           `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
-            body: JSON.stringify({ origin: { address: ORIGEM_BASE }, destination: { address: endsDia[0] }, travelMode: "DRIVE" }),
+            body: JSON.stringify({ origin: { address: origem }, destination: { address: destino }, travelMode: "DRIVE" }),
           }
         );
-        const d1 = await r1.json();
-        const kmIda = (d1.routes?.[0]?.distanceMeters || 0) / 1000;
-        kmTotal += kmIda * 2; // ida + volta (mesma distância)
-      } else {
-        try {
-          const resp = await fetch(
-            `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
-              body: JSON.stringify(body),
-            }
-          );
-          const data = await resp.json();
-          if (data.routes?.[0]?.distanceMeters) {
-            kmTotal += data.routes[0].distanceMeters / 1000;
-          } else {
-            kmTotal += configCusto.kmBase;
+        const d = await r.json();
+        return (d.routes?.[0]?.distanceMeters || 0) / 1000;
+      } catch { return 0; }
+    }
+
+    // Helper: rota circular base → paradas → base
+    async function rotaCircular(base: string, paradas: string[]): Promise<number> {
+      if (paradas.length === 0) return 0;
+      if (paradas.length === 1) {
+        const km = await distanciaKm(base, paradas[0]);
+        return km * 2;
+      }
+      try {
+        const resp = await fetch(
+          `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
+            body: JSON.stringify({
+              origin: { address: base },
+              destination: { address: base },
+              intermediates: paradas.map(e => ({ location: { address: e } })),
+              travelMode: "DRIVE",
+              routingPreference: "TRAFFIC_UNAWARE",
+              computeAlternativeRoutes: false,
+            }),
           }
-        } catch {
-          kmTotal += configCusto.kmBase;
-        }
+        );
+        const data = await resp.json();
+        return data.routes?.[0]?.distanceMeters
+          ? data.routes[0].distanceMeters / 1000
+          : configCusto.kmBase;
+      } catch { return configCusto.kmBase; }
+    }
+
+    if (airbnbAddr && airbnbAddr.trim()) {
+      // Com Airbnb:
+      // 1. São Pedro → Airbnb (chegada no primeiro dia antes dos atendimentos)
+      const kmIdaAirbnb = await distanciaKm(ORIGEM_BASE, airbnbAddr);
+      kmTotal += kmIdaAirbnb;
+
+      // 2. Para cada dia: Airbnb → atendimentos → Airbnb
+      for (const dia of dias) {
+        const endsDia = [...new Set(endsPorDia[dia])];
+        kmTotal += await rotaCircular(airbnbAddr, endsDia);
+      }
+
+      // 3. Último dia: Airbnb → São Pedro (volta para casa)
+      const kmVoltaAirbnb = await distanciaKm(airbnbAddr, ORIGEM_BASE);
+      kmTotal += kmVoltaAirbnb;
+    } else {
+      // Sem Airbnb: cada dia sai de São Pedro e volta
+      for (const dia of dias) {
+        const endsDia = [...new Set(endsPorDia[dia])];
+        kmTotal += await rotaCircular(ORIGEM_BASE, endsDia);
       }
     }
 
@@ -4302,6 +4322,24 @@ function LogisticaPage() {
                                   ))}
                                   {clientes.length > 5 && <span className="text-[10px] text-gray-400">+{clientes.length - 5}</span>}
                                 </div>
+                                {/* Campo endereço Airbnb para cálculo de combustível */}
+                                <div className="flex items-center gap-1.5 mb-2">
+                                  <span className="text-[10px] text-gray-400 shrink-0">🏠 Airbnb:</span>
+                                  <input
+                                    type="text"
+                                    placeholder="Endereço do Airbnb (opcional)…"
+                                    value={airbnbEndereco[chaveSem] ?? ""}
+                                    onChange={e => setAirbnbEndereco(prev => ({ ...prev, [chaveSem]: e.target.value }))}
+                                    className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 bg-white min-w-0"
+                                  />
+                                  {airbnbEndereco[chaveSem] && kmPorSemana[chaveSem] && (
+                                    <button
+                                      onClick={() => setKmPorSemana(prev => { const n = { ...prev }; delete n[chaveSem]; return n; })}
+                                      className="text-[9px] text-gray-400 hover:text-red-500"
+                                      title="Limpar km calculado para recalcular"
+                                    >↺</button>
+                                  )}
+                                </div>
                                 {/* Comparativo em tabela unitário + total */}
                                 {(() => {
                                   const fmtR = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -4341,7 +4379,7 @@ function LogisticaPage() {
                                                 ? <span className="text-[9px] text-blue-500 animate-pulse">calc…</span>
                                                 : kmReal
                                                   ? <span className="text-[9px] text-green-600">{kmReal} km</span>
-                                                  : <button onClick={() => calcularKmSemana(chaveSem, atends)} className="text-[9px] text-blue-500 hover:underline">📍 calc</button>
+                                                  : <button onClick={() => calcularKmSemana(chaveSem, atends, airbnbEndereco[chaveSem])} className="text-[9px] text-blue-500 hover:underline">📍 calc</button>
                                               }
                                             </td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn)}/dia</td>
