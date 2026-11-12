@@ -56,7 +56,7 @@ type TicketForm = {
   contatoTel: string;
 };
 
-type PedidoOpt = { id: string; label: string; endereco: string | null; email: string | null };
+type PedidoOpt = { id: string; label: string; endereco: string | null; email: string | null; origem: "pedido" | "cliente" };
 
 export function PainelSidebar() {
   const { usuario, logout, temAcesso } = useAuth();
@@ -85,19 +85,44 @@ export function PainelSidebar() {
   async function abrirModal() {
     setModalAberto(true);
     setForm({ busca: "", pedidoId: "", clienteNome: "", clienteEmail: "", motivo: "", prioridade: "alta", contatoNome: "", contatoTel: "" });
-    // Load recent pedidos
-    const { data } = await supabase
-      .from("logistica_pedidos")
-      .select("id, cliente_nome, cliente_empresa, cliente_endereco, cliente_email")
-      .not("etapa", "in", "(cancelado)")
-      .order("criado_em", { ascending: false })
-      .limit(100);
-    if (data) setPedidosOpts(data.map(p => ({
+    // Carrega pedidos e clientes em paralelo
+    const [{ data: pedidos }, { data: clientes }] = await Promise.all([
+      supabase
+        .from("logistica_pedidos")
+        .select("id, cliente_nome, cliente_empresa, cliente_endereco, cliente_email")
+        .not("etapa", "in", "(cancelado)")
+        .order("criado_em", { ascending: false })
+        .limit(100),
+      supabase
+        .from("clientes")
+        .select("id, nome, endereco, bairro, cidade, email")
+        .order("nome", { ascending: true })
+        .limit(300),
+    ]);
+    const opts: PedidoOpt[] = [];
+    if (pedidos) pedidos.forEach(p => opts.push({
       id: p.id,
       label: p.cliente_empresa || p.cliente_nome || "Cliente",
       endereco: p.cliente_endereco,
       email: p.cliente_email,
-    })));
+      origem: "pedido",
+    }));
+    // Adiciona clientes da base que não estejam já nos pedidos
+    if (clientes) {
+      const nomesNoPedido = new Set(opts.map(o => o.label.toLowerCase()));
+      clientes.forEach(c => {
+        if (!nomesNoPedido.has(c.nome.toLowerCase())) {
+          opts.push({
+            id: `cli_${c.id}`,
+            label: c.nome,
+            endereco: [c.endereco, c.bairro, c.cidade].filter(Boolean).join(", ") || null,
+            email: c.email ?? null,
+            origem: "cliente",
+          });
+        }
+      });
+    }
+    setPedidosOpts(opts);
     setTimeout(() => buscaRef.current?.focus(), 100);
   }
 
@@ -133,6 +158,11 @@ export function PainelSidebar() {
       payload.observacoes = `Ticket vinculado ao pedido: ${form.pedidoId}`;
     } else {
       payload.cliente_nome = form.clienteNome.trim() || "Ticket sem vínculo";
+      payload.cliente_empresa = form.clienteNome.trim() || null;
+    }
+    // Salva o email do cliente no pedido ticket
+    if (form.clienteEmail.trim()) {
+      payload.cliente_email = form.clienteEmail.trim();
     }
 
     await supabase.from("logistica_pedidos").insert(payload);
@@ -383,16 +413,29 @@ export function PainelSidebar() {
                       <button
                         key={p.id}
                         className="w-full text-left px-3 py-2 hover:bg-red-50 text-sm border-b border-gray-50 last:border-0"
-                        onClick={() => setForm(f => ({ ...f, busca: p.label, pedidoId: p.id, clienteNome: p.label, clienteEmail: p.email ?? "" }))}
+                        onClick={() => setForm(f => ({
+                          ...f,
+                          busca: p.label,
+                          pedidoId: p.origem === "pedido" ? p.id : "",
+                          clienteNome: p.label,
+                          clienteEmail: p.email ?? "",
+                        }))}
                       >
-                        <span className="font-medium text-gray-900">{p.label}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{p.label}</span>
+                          {p.origem === "cliente" && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-700">Base</span>
+                          )}
+                        </div>
                         {p.endereco && <span className="block text-xs text-gray-400 truncate">{p.endereco}</span>}
                       </button>
                     ))}
                   </div>
                 )}
-                {form.pedidoId && (
-                  <p className="mt-1 text-xs text-green-700 font-medium">✓ Vinculado a: {form.clienteNome}</p>
+                {form.clienteNome && form.busca === form.clienteNome && (
+                  <p className="mt-1 text-xs text-green-700 font-medium">
+                    {form.pedidoId ? `✓ Vinculado ao pedido: ${form.clienteNome}` : `✓ Cliente: ${form.clienteNome}`}
+                  </p>
                 )}
                 {!form.pedidoId && form.busca && (
                   <div className="mt-1.5">
