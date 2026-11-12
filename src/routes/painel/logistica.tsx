@@ -1006,7 +1006,7 @@ function LogisticaPage() {
   const [tarefasPedidoVinculado, setTarefasPedidoVinculado] = useState<{ id: string; descricao: string }[]>([]);
   const [tarefasSelecionadas, setTarefasSelecionadas] = useState<string[]>([]);
   const [atendAberto, setAtendAberto] = useState<string | null>(null);
-  const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("lista");
+  const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("calendario");
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
   const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
   const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
@@ -5151,140 +5151,6 @@ function LogisticaPage() {
           </>
           )}
 
-          {/* ── Pedidos Fechados do CRM ── */}
-          <div className="mt-8">
-            <div className="mb-3 flex items-center gap-2">
-              <FileCheck className="h-4 w-4 text-green-600" />
-              <h2 className="text-sm font-semibold text-gray-700">Pedidos Fechados</h2>
-              {carregandoPedidos ? (
-                <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
-              ) : (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                  {pedidosFechados.length}
-                </span>
-              )}
-              <span className="text-xs text-gray-400">— contratos fechados no CRM</span>
-            </div>
-
-            {carregandoPedidos ? (
-              <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
-            ) : pedidosFechados.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-sm text-gray-400">
-                Nenhum pedido fechado ainda
-              </div>
-            ) : (
-              <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Cliente</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Tipo</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden sm:table-cell">Proposta</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden lg:table-cell">Valor</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Data</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {pedidosFechados.map(p => {
-                      const clienteNome = p.lead?.empresa || p.lead?.nome || "—";
-                      const valorMensal = p.conteudo?.parcela ?? null;
-                      const dataFecho = p.atualizado_em
-                        ? new Date(p.atualizado_em).toLocaleDateString("pt-BR")
-                        : new Date(p.criado_em).toLocaleDateString("pt-BR");
-                      return (
-                        <tr key={p.id} className="hover:bg-gray-50/60">
-                          <td className="px-4 py-3">
-                            <p className="text-sm font-medium text-gray-900">{clienteNome}</p>
-                          </td>
-                          <td className="px-4 py-3 hidden md:table-cell">
-                            <span className={cn(
-                              "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                              p.tipo === "manutencao"
-                                ? "bg-blue-100 text-blue-700"
-                                : "bg-emerald-100 text-emerald-700"
-                            )}>
-                              {p.tipo === "manutencao" ? "Manutenção 12×" : "Orçamento"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 hidden sm:table-cell text-sm text-gray-500 truncate max-w-[180px]">
-                            {p.nome_arquivo || "—"}
-                          </td>
-                          <td className="px-4 py-3 hidden lg:table-cell">
-                            {valorMensal ? (
-                              <span className="text-sm font-semibold text-gray-800">
-                                {valorMensal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                                <span className="text-xs font-normal text-gray-400">/mês</span>
-                              </span>
-                            ) : <span className="text-xs text-gray-400">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-500">{dataFecho}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 justify-end">
-                              <a
-                                href={`/painel/crm?lead=${p.lead_id}`}
-                                className="flex items-center gap-1 text-xs text-[#1a6b2f] hover:underline"
-                              >
-                                <ExternalLink className="h-3 w-3" /> CRM
-                              </a>
-                              {isAdmin && (
-                                <button
-                                  onClick={() => setExcluindoPedidoFechado(p)}
-                                  className="rounded-lg p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
-                                  title="Excluir registro"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Modal de confirmação — excluir pedido fechado */}
-          {excluindoPedidoFechado && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-              <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
-                <div className="flex items-start gap-3 p-5">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
-                    <AlertTriangle className="h-5 w-5 text-red-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-gray-900">Excluir registro</p>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Tem certeza que deseja excluir o registro de{" "}
-                      <span className="font-semibold text-gray-800">
-                        {excluindoPedidoFechado.lead?.empresa || excluindoPedidoFechado.lead?.nome || "este cliente"}
-                      </span>?
-                      Esta ação não pode ser desfeita.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2 border-t border-gray-100 px-5 py-4">
-                  <button
-                    onClick={() => setExcluindoPedidoFechado(null)}
-                    disabled={processandoExclusaoPF}
-                    className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={excluirPedidoFechado}
-                    disabled={processandoExclusaoPF}
-                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {processandoExclusaoPF ? "Excluindo…" : "Excluir"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Popup evento do calendário */}
           {calEventoPopup && (
