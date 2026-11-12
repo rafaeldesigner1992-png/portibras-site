@@ -990,7 +990,9 @@ function LogisticaPage() {
   // Parâmetros de custo logístico (configuráveis)
   const [configCusto, setConfigCusto] = useState({
     kmBase: 180,          // km São Pedro da Aldeia → Região Lagos (ida+volta)
-    custoPorKm: 0.70,     // R$/km (combustível + desgaste)
+    kmPorLitro: 10,       // média de consumo do veículo (km/L)
+    precoCombustivel: 6.50, // preço médio do combustível (R$/L)
+    custoPorKm: 0.65,     // R$/km — calculado automaticamente: precoCombustivel / kmPorLitro
     airbnbPorNoite: 150,  // R$/noite (média Airbnb região)
     refeicaoFora: 60,     // R$/dia extra em alimentação quando fora
     // Pedágios rota padrão:
@@ -4614,7 +4616,7 @@ function LogisticaPage() {
                       })}
                     </div>
                     <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-[10px] text-gray-400">
-                      * Opção 1: São Pedro → Cliente 1 → Cliente 2 → … → São Pedro por dia (rota real via Google Maps quando calculada, estimativa de {configCusto.kmBase} km/dia caso contrário) · Opção 2: mesmo roteiro entre clientes, porém saindo e voltando ao Airbnb — a diferença de km reflete a economia de não percorrer São Pedro ↔ Rio a cada dia · Custo/km: R$ {configCusto.custoPorKm.toFixed(2)} · Airbnb: R$ {configCusto.airbnbPorNoite}/noite (estimativa) + R$ {configCusto.refeicaoFora}/dia em refeições
+                      * Opção 1: São Pedro → clientes em sequência → São Pedro por dia · Opção 2: mesmo roteiro, partindo/voltando ao Airbnb (elimina viagem São Pedro↔Rio/dia) · Combustível: {configCusto.precoCombustivel.toFixed(2)} R$/L ÷ {configCusto.kmPorLitro} km/L = R$ {configCusto.custoPorKm.toFixed(3)}/km · Rota real via Google Maps quando calculada · Airbnb: R$ {configCusto.airbnbPorNoite}/noite + R$ {configCusto.refeicaoFora}/dia refeições
                     </div>
                   </div>
                 );
@@ -4632,21 +4634,39 @@ function LogisticaPage() {
                       {/* Deslocamento */}
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Deslocamento</p>
                       {[
-                        { label: "Km por dia (ida + volta)", field: "kmBase", suffix: "km" },
-                        { label: "Custo por km", field: "custoPorKm", suffix: "R$/km" },
-                      ].map(({ label, field, suffix }) => (
+                        { label: "Km por dia (ida + volta)", field: "kmBase", suffix: "km", step: 1 },
+                        { label: "Média do veículo", field: "kmPorLitro", suffix: "km/L", step: 0.5 },
+                        { label: "Preço do combustível", field: "precoCombustivel", suffix: "R$/L", step: 0.05 },
+                      ].map(({ label, field, suffix, step }) => (
                         <div key={field} className="flex items-center justify-between gap-3">
                           <label className="text-sm text-gray-700 flex-1">{label}</label>
                           <div className="flex items-center gap-1.5">
-                            <input type="number" min={0} step={field === "custoPorKm" ? 0.05 : 1}
+                            <input type="number" min={0} step={step}
                               value={(configCusto as Record<string, number>)[field]}
-                              onChange={e => setConfigCusto(c => ({ ...c, [field]: Number(e.target.value) }))}
+                              onChange={e => {
+                                const val = Number(e.target.value);
+                                setConfigCusto(c => {
+                                  const updated = { ...c, [field]: val };
+                                  // Recalcular custoPorKm automaticamente
+                                  const kml = field === "kmPorLitro" ? val : updated.kmPorLitro;
+                                  const preco = field === "precoCombustivel" ? val : updated.precoCombustivel;
+                                  updated.custoPorKm = kml > 0 ? Math.round((preco / kml) * 1000) / 1000 : updated.custoPorKm;
+                                  return updated;
+                                });
+                              }}
                               className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right outline-none focus:border-[#1a6b2f]"
                             />
                             <span className="text-xs text-gray-400 w-14">{suffix}</span>
                           </div>
                         </div>
                       ))}
+                      {/* Custo por km calculado — readonly */}
+                      <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 flex items-center justify-between">
+                        <span className="text-sm text-gray-500">= Custo por km</span>
+                        <span className="text-sm font-semibold text-gray-700">
+                          R$ {configCusto.custoPorKm.toFixed(3)}/km
+                        </span>
+                      </div>
                       {/* Pedágios */}
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-3 mb-0.5">Pedágios</p>
                       <p className="text-[10px] text-gray-400 mb-1.5">Ida: Via Lagos + Manilha · Volta: Ponte + Via Lagos</p>
