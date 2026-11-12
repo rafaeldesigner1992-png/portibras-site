@@ -6,6 +6,8 @@ const SHEET_VISTORIA_ID  = "117fo9l7Sw-WlVFm4gL9JerEUHZS_65j71GOYeUQiRFk";
 const ABA_SERVICOS       = "EXECUCAO_PAI";
 const ABA_VISTORIA       = "VISTORIAS_PAI";
 
+const ADMIN_EMAIL        = "rafaeldesigner1992@gmail.com";
+
 // ─── Google Auth via Service Account ─────────────────────────────────────────
 async function getAccessToken(): Promise<string> {
   const saJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
@@ -70,6 +72,136 @@ async function appendRow(token: string, spreadsheetId: string, sheetName: string
   }
 }
 
+// ─── Enviar e-mail via Resend ─────────────────────────────────────────────────
+async function enviarEmail(params: {
+  to      : string[];
+  subject : string;
+  html    : string;
+}): Promise<void> {
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendKey) {
+    console.warn("RESEND_API_KEY não configurado — e-mail não enviado");
+    return;
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method : "POST",
+    headers: {
+      Authorization : `Bearer ${resendKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from   : "PORTIBRAS Sistema <noreply@portibras.com.br>",
+      to     : params.to,
+      subject: params.subject,
+      html   : params.html,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("Resend error:", err);
+    // Não lança erro — falha no e-mail não deve bloquear a criação do atendimento
+  }
+}
+
+// ─── Templates de e-mail ──────────────────────────────────────────────────────
+function htmlServico(params: {
+  id          : string;
+  condominio  : string;
+  endereco    : string;
+  data        : string;
+  horario     : string;
+  tecnico     : string;
+  descricao   : string;
+}): string {
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 30px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: #1a3c5e; color: #fff; padding: 24px 32px; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .header p { margin: 4px 0 0; font-size: 13px; opacity: 0.8; }
+    .badge { display: inline-block; background: #e8a800; color: #fff; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 4px; margin-top: 8px; }
+    .body { padding: 28px 32px; }
+    .row { display: flex; border-bottom: 1px solid #eee; padding: 10px 0; }
+    .row:last-child { border-bottom: none; }
+    .label { font-size: 12px; color: #888; min-width: 140px; padding-top: 2px; }
+    .value { font-size: 14px; color: #222; flex: 1; }
+    .footer { background: #f9f9f9; padding: 16px 32px; font-size: 12px; color: #aaa; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Novo Serviço Criado — DTE</h1>
+      <p>Um novo atendimento foi incluído no sistema PORTIBRAS</p>
+      <span class="badge">Em Andamento 🚧</span>
+    </div>
+    <div class="body">
+      <div class="row"><span class="label">ID do Serviço</span><span class="value">${params.id}</span></div>
+      <div class="row"><span class="label">Condomínio</span><span class="value">${params.condominio || "—"}</span></div>
+      <div class="row"><span class="label">Endereço</span><span class="value">${params.endereco || "—"}</span></div>
+      <div class="row"><span class="label">Data</span><span class="value">${params.data || "—"}</span></div>
+      <div class="row"><span class="label">Horário Início</span><span class="value">${params.horario || "—"}</span></div>
+      <div class="row"><span class="label">Técnico Responsável</span><span class="value">${params.tecnico || "—"}</span></div>
+      <div class="row"><span class="label">O que será realizado</span><span class="value">${params.descricao || "—"}</span></div>
+    </div>
+    <div class="footer">PORTIBRAS · Sistema de Gestão · portibras.com.br</div>
+  </div>
+</body>
+</html>`;
+}
+
+function htmlVistoria(params: {
+  id        : string;
+  condominio: string;
+  data      : string;
+  tecnico   : string;
+}): string {
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 30px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: #1a3c5e; color: #fff; padding: 24px 32px; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .header p { margin: 4px 0 0; font-size: 13px; opacity: 0.8; }
+    .badge { display: inline-block; background: #5b8dd9; color: #fff; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 4px; margin-top: 8px; }
+    .body { padding: 28px 32px; }
+    .row { display: flex; border-bottom: 1px solid #eee; padding: 10px 0; }
+    .row:last-child { border-bottom: none; }
+    .label { font-size: 12px; color: #888; min-width: 140px; padding-top: 2px; }
+    .value { font-size: 14px; color: #222; flex: 1; }
+    .footer { background: #f9f9f9; padding: 16px 32px; font-size: 12px; color: #aaa; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Nova Vistoria Criada — DTS</h1>
+      <p>Uma nova vistoria foi incluída no sistema PORTIBRAS</p>
+      <span class="badge">Aguardando DTS 📋</span>
+    </div>
+    <div class="body">
+      <div class="row"><span class="label">ID da Vistoria</span><span class="value">${params.id}</span></div>
+      <div class="row"><span class="label">Condomínio</span><span class="value">${params.condominio || "—"}</span></div>
+      <div class="row"><span class="label">Data</span><span class="value">${params.data || "—"}</span></div>
+      <div class="row"><span class="label">Técnico Responsável</span><span class="value">${params.tecnico || "—"}</span></div>
+    </div>
+    <div class="footer">PORTIBRAS · Sistema de Gestão · portibras.com.br</div>
+  </div>
+</body>
+</html>`;
+}
+
 // ─── Gerar ID curto tipo AppSheet (8 hex chars) ───────────────────────────────
 function gerarId(): string {
   return crypto.randomUUID().replace(/-/g, "").substring(0, 8);
@@ -122,31 +254,45 @@ serve(async (req) => {
 
     if (tipo === "servico") {
       // ── EXECUCAO_PAI ──────────────────────────────────────────────────────
-      // Colunas: ID_Execucao, Data, Condominio, Endereco_Completo, Hora_Inicio,
-      //          Hora_Termino, Acompanhado, Nome_Acompanhante, Status, Trigger_Bot,
-      //          Descricao_servico, Tecnico_Responsavel, Total_Manutencao,
-      //          Total_Execucoes, Total_Inviabilidade, Total_Condenacoes, Resumo_Materiais_DTE
-      const id = gerarId();
+      const id          = gerarId();
       const nomeCondominio = body.titulo;
       const nomeTecnico    = body.tecnico_nome ?? body.tecnico ?? "";
+      const horario        = formatarHorarioExecucao(body.data, body.hora_inicio);
+      const dataFormatada  = formatarData(body.data);
+
       const row = [
-        id,                                                   // ID_Execucao
-        formatarData(body.data),                              // Data
-        nomeCondominio,                                       // Condominio (nome do condomínio)
-        body.endereco ?? "",                                  // Endereco_Completo
-        formatarHorarioExecucao(body.data, body.hora_inicio), // Hora_Inicio
-        "",                                                   // Hora_Termino
-        "Selecionar",                                         // Acompanhado
-        "",                                                   // Nome_Acompanhante
-        "Em Andamento 🚧",                                    // Status
-        "",                                                   // Trigger_Bot
-        body.descricao ?? "",                                 // Descricao_servico
-        nomeTecnico,                                          // Tecnico_Responsavel
-        "0", "0", "0", "0",                                   // Totais
-        "",                                                   // Resumo_Materiais_DTE
+        id,                   // ID_Execucao
+        dataFormatada,        // Data
+        nomeCondominio,       // Condominio
+        body.endereco ?? "",  // Endereco_Completo
+        horario,              // Hora_Inicio
+        "",                   // Hora_Termino
+        "Selecionar",         // Acompanhado
+        "",                   // Nome_Acompanhante
+        "Em Andamento 🚧",   // Status
+        "",                   // Trigger_Bot
+        body.descricao ?? "", // Descricao_servico
+        nomeTecnico,          // Tecnico_Responsavel
+        "0", "0", "0", "0",  // Totais
+        "",                   // Resumo_Materiais_DTE
       ];
 
       await appendRow(token, SHEET_SERVICOS_ID, ABA_SERVICOS, row);
+
+      // ── E-mail de confirmação ─────────────────────────────────────────────
+      await enviarEmail({
+        to     : [ADMIN_EMAIL],
+        subject: `✅ Novo Serviço (DTE) — ${nomeCondominio}`,
+        html   : htmlServico({
+          id,
+          condominio: nomeCondominio,
+          endereco  : body.endereco ?? "",
+          data      : dataFormatada,
+          horario   : body.hora_inicio ?? "",
+          tecnico   : nomeTecnico,
+          descricao : body.descricao ?? "",
+        }),
+      });
 
       return new Response(JSON.stringify({ ok: true, tipo: "servico", id_gerado: id }), {
         status : 200,
@@ -155,23 +301,35 @@ serve(async (req) => {
 
     } else if (tipo === "vistoria") {
       // ── VISTORIAS_PAI ─────────────────────────────────────────────────────
-      // Colunas: Numero_Laudo, ID_Vistoria, ID_Cliente, Data_Vistoria,
-      //          Tecnico_Responsavel, Status_DTS, Arquivo_DTS, Gatilho_DTS, Resumo_Materiais_DTS
-      const id = gerarId();
+      const id           = gerarId();
       const nomeTecnicoV = body.tecnico_nome ?? body.tecnico ?? "";
+      const dataFormatada = formatarData(body.data);
+
       const row = [
-        "",                              // Numero_Laudo (AppSheet preenche)
-        id,                              // ID_Vistoria
-        body.titulo,                     // ID_Cliente (nome do condomínio)
-        formatarData(body.data),         // Data_Vistoria
-        nomeTecnicoV,                    // Tecnico_Responsavel
-        "Aguardando DTS",                // Status_DTS
-        "",                              // Arquivo_DTS
-        "",                              // Gatilho_DTS
-        "",                              // Resumo_Materiais_DTS
+        "",              // Numero_Laudo (AppSheet preenche)
+        id,              // ID_Vistoria
+        body.titulo,     // ID_Cliente (nome do condomínio)
+        dataFormatada,   // Data_Vistoria
+        nomeTecnicoV,    // Tecnico_Responsavel
+        "Aguardando DTS",// Status_DTS
+        "",              // Arquivo_DTS
+        "",              // Gatilho_DTS
+        "",              // Resumo_Materiais_DTS
       ];
 
       await appendRow(token, SHEET_VISTORIA_ID, ABA_VISTORIA, row);
+
+      // ── E-mail de confirmação ─────────────────────────────────────────────
+      await enviarEmail({
+        to     : [ADMIN_EMAIL],
+        subject: `📋 Nova Vistoria (DTS) — ${body.titulo}`,
+        html   : htmlVistoria({
+          id,
+          condominio: body.titulo,
+          data      : dataFormatada,
+          tecnico   : nomeTecnicoV,
+        }),
+      });
 
       return new Response(JSON.stringify({ ok: true, tipo: "vistoria", id_gerado: id }), {
         status : 200,
