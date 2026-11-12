@@ -4454,6 +4454,46 @@ function LogisticaPage() {
               semanas.push(sem);
               if (cur > ultimoDia && semanas.length >= 4) break;
             }
+
+            // ── Feriados brasileiros ──
+            function calcPascoa(a: number) {
+              const f = Math.floor, m = (19 * (a % 19) + 24) % 30, n = (2 * (a % 4) + 4 * (a % 7) + 6 * m + 5) % 7;
+              let d = 22 + m + n;
+              if (d > 31) { const dia = d - 31; return new Date(a, 3, dia); }
+              if (m === 29 && n === 6) return new Date(a, 2, 19 + 22);
+              if (m === 28 && n === 6 && (a % 19) > 10) return new Date(a, 2, 18 + 22);
+              return new Date(a, 2, d);
+            }
+            function feriadosBR(a: number): Record<string, string> {
+              const p = calcPascoa(a);
+              const add = (d: Date, dias: number) => { const r = new Date(d); r.setDate(r.getDate() + dias); return r; };
+              const fmt = (d: Date) => `${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+              const fixos: Record<string, string> = {
+                "01-01": "Confraternização Universal",
+                "04-21": "Tiradentes",
+                "05-01": "Dia do Trabalho",
+                "09-07": "Independência do Brasil",
+                "10-12": "Nossa Senhora Aparecida",
+                "11-02": "Finados",
+                "11-15": "Proclamação da República",
+                "11-20": "Consciência Negra",
+                "12-25": "Natal",
+              };
+              const moveis: Record<string, string> = {
+                [fmt(add(p, -47))]: "Carnaval",
+                [fmt(add(p, -48))]: "Carnaval",
+                [fmt(add(p, -2))]:  "Sexta-feira Santa",
+                [fmt(p)]:           "Páscoa",
+                [fmt(add(p, 60))]:  "Corpus Christi",
+              };
+              return { ...fixos, ...moveis };
+            }
+            const feriadosAno = feriadosBR(ano);
+            const feriadoDia = (dia: Date): string | null => {
+              if (dia.getFullYear() !== ano) return feriadosBR(dia.getFullYear())[`${String(dia.getMonth()+1).padStart(2,"0")}-${String(dia.getDate()).padStart(2,"0")}`] ?? null;
+              return feriadosAno[`${String(dia.getMonth()+1).padStart(2,"0")}-${String(dia.getDate()).padStart(2,"0")}`] ?? null;
+            };
+
             const atendPorDia = (dia: Date) => atendimentos.filter(a => {
               if (!a.data_agendada) return false;
               const ad = new Date(a.data_agendada + "T00:00:00");
@@ -4490,18 +4530,25 @@ function LogisticaPage() {
                           const eMes = dia.getMonth() === mes;
                           const eHoje = dia.toDateString() === hoje.toDateString();
                           const eventos = atendPorDia(dia);
+                          const feriado = feriadoDia(dia);
                           return (
                             <div key={di} className={cn(
                               "min-h-[80px] p-1.5 border-r border-gray-100 last:border-r-0",
                               !eMes && "bg-gray-50/60",
                               eHoje && "bg-green-50",
+                              feriado && "bg-red-50/40",
                               fechada && "pointer-events-none"
                             )}>
                               <div className={cn(
                                 "h-6 w-6 flex items-center justify-center rounded-full text-xs font-semibold mb-1",
-                                eHoje ? "bg-[#1a6b2f] text-white" : eMes ? "text-gray-700" : "text-gray-300"
+                                eHoje ? "bg-[#1a6b2f] text-white" : feriado ? "bg-red-100 text-red-600" : eMes ? "text-gray-700" : "text-gray-300"
                               )}>{dia.getDate()}</div>
                               <div className="space-y-0.5">
+                                {feriado && (
+                                  <div title={feriado} className="rounded px-1 py-0.5 text-[9px] font-medium truncate bg-red-100 text-red-600 select-none">
+                                    🎉 {feriado}
+                                  </div>
+                                )}
                                 {eventos.slice(0, 3).map(a => (
                                   <div key={a.id} title={a.titulo}
                                     onClick={e => { e.stopPropagation(); if (!fechada) setCalEventoPopup(a); }}
