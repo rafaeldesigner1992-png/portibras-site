@@ -974,6 +974,9 @@ function LogisticaPage() {
   const [filtroStatusAtend, setFiltroStatusAtend] = useState<string>("todos");
   const [filtroClassAtend, setFiltroClassAtend] = useState<string>("todos");
   const [buscaVinculo, setBuscaVinculo] = useState("");
+  const [pedidoVinculadoId, setPedidoVinculadoId] = useState<string | null>(null);
+  const [tarefasPedidoVinculado, setTarefasPedidoVinculado] = useState<{ id: string; descricao: string }[]>([]);
+  const [tarefasSelecionadas, setTarefasSelecionadas] = useState<string[]>([]);
   const [atendAberto, setAtendAberto] = useState<string | null>(null);
   const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("lista");
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
@@ -1950,6 +1953,9 @@ function LogisticaPage() {
   function abrirModalAtend(atend?: Atendimento) {
     setBuscaVinculo("");
     setAppSheetStatus(null);
+    setPedidoVinculadoId(null);
+    setTarefasPedidoVinculado([]);
+    setTarefasSelecionadas([]);
     if (atend) {
       setSelAtend(atend);
       setFormAtend({
@@ -5032,7 +5038,7 @@ function LogisticaPage() {
                               <p className="px-3 py-2 text-xs text-gray-400">Nenhum resultado encontrado</p>
                             ) : filtrados.map(item => (
                               <button key={item.tipo + item.id} type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                   setFormAtend(f => ({
                                     ...f,
                                     titulo: f.titulo || item.cliente,
@@ -5043,6 +5049,17 @@ function LogisticaPage() {
                                     cliente_email: f.cliente_email || item.cliente_email || "",
                                   }));
                                   setBuscaVinculo("");
+                                  // Buscar tarefas do pedido vinculado
+                                  if (item.tipo === "servico") {
+                                    setPedidoVinculadoId(item.id);
+                                    setTarefasSelecionadas([]);
+                                    const { data: tData } = await supabase
+                                      .from("logistica_tarefas")
+                                      .select("id, descricao")
+                                      .eq("pedido_id", item.id)
+                                      .order("ordem", { ascending: true });
+                                    setTarefasPedidoVinculado(tData ?? []);
+                                  }
                                 }}
                                 className="w-full flex items-start gap-3 px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
                                 <span className={cn("mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold",
@@ -5114,7 +5131,35 @@ function LogisticaPage() {
                   </div>
                   <div>
                     <label className="label-field">Atividade</label>
-                    <input className="input-field" value={formAtend.atividade} onChange={e => setFormAtend(f => ({ ...f, atividade: e.target.value }))} placeholder="O que será feito?" />
+                    {tarefasPedidoVinculado.length > 0 ? (
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                        <p className="text-xs text-gray-500 mb-1">Selecione o que será realizado neste atendimento:</p>
+                        {tarefasPedidoVinculado.map(t => (
+                          <label key={t.id} className="flex items-center gap-2 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-[#1a6b2f] focus:ring-[#1a6b2f]"
+                              checked={tarefasSelecionadas.includes(t.id)}
+                              onChange={e => {
+                                const novas = e.target.checked
+                                  ? [...tarefasSelecionadas, t.id]
+                                  : tarefasSelecionadas.filter(id => id !== t.id);
+                                setTarefasSelecionadas(novas);
+                                // Atualiza o campo atividade com as tarefas selecionadas
+                                const descricoes = tarefasPedidoVinculado
+                                  .filter(x => novas.includes(x.id))
+                                  .map(x => x.descricao)
+                                  .join(", ");
+                                setFormAtend(f => ({ ...f, atividade: descricoes }));
+                              }}
+                            />
+                            <span className="text-sm text-gray-700 group-hover:text-gray-900">{t.descricao}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <input className="input-field" value={formAtend.atividade} onChange={e => setFormAtend(f => ({ ...f, atividade: e.target.value }))} placeholder="O que será feito?" />
+                    )}
                   </div>
                   <div>
                     <label className="label-field">Descrição / Observações</label>
