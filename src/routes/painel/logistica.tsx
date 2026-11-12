@@ -1730,7 +1730,7 @@ function LogisticaPage() {
   async function carregarAtendimentos(): Promise<Atendimento[]> {
     setCarregandoAtend(true);
     const [{ data }, { data: tickets }] = await Promise.all([
-      supabase.from("atendimentos").select("*").not("status", "in", "(Concluído,Cancelado)").order("data_agendada", { ascending: false }),
+      supabase.from("atendimentos").select("*").order("data_agendada", { ascending: false }),
       supabase.from("logistica_pedidos")
         .select("*")
         .eq("is_ticket", true)
@@ -4414,7 +4414,7 @@ function LogisticaPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {subAbaAtend === "lista" && (
                 <div className="flex gap-1.5 flex-wrap">
-                  {["todos", "Programado", "Em andamento"].map(s => (
+                  {["todos", "Programado", "Em andamento", "Concluído", "Cancelado"].map(s => (
                     <button key={s} onClick={() => setFiltroStatusAtend(s)}
                       className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors",
                         filtroStatusAtend === s ? "bg-[#1a6b2f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
@@ -4506,9 +4506,9 @@ function LogisticaPage() {
                                   <div key={a.id} title={a.titulo}
                                     onClick={e => { e.stopPropagation(); if (!fechada) setCalEventoPopup(a); }}
                                     className={cn("rounded px-1 py-0.5 text-[9px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity",
-                                      a.status === "Concluído" ? "bg-green-100 text-green-700" :
+                                      a.status === "Concluído" ? "bg-gray-100 text-gray-400 line-through" :
+                                      a.status === "Cancelado" ? "bg-gray-100 text-gray-300 line-through" :
                                       a.status === "Em andamento" ? "bg-yellow-100 text-yellow-700" :
-                                      a.status === "Cancelado" ? "bg-gray-100 text-gray-400" :
                                       CLASS_COR[a.classificacao] ?? "bg-blue-100 text-blue-700"
                                     )}>
                                     {a.hora_inicio ? `${a.hora_inicio} ` : ""}{a.titulo}
@@ -5121,8 +5121,8 @@ function LogisticaPage() {
               {atendimentos
                 .filter(a =>
                   (filtroStatusAtend === "todos" || a.status === filtroStatusAtend) &&
-                  // Exclui vistorias (já aparecem na seção "Vistorias para Agendar")
-                  a.classificacao !== "Vistoria"
+                  // Exclui vistorias ativas (já aparecem na seção "Vistorias para Agendar"); concluídas/canceladas aparecem aqui normalmente
+                  !(a.classificacao === "Vistoria" && a.status !== "Concluído" && a.status !== "Cancelado")
                 )
                 .map(atend => (
                   <div key={atend.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
