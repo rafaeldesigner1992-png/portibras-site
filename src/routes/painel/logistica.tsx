@@ -4614,7 +4614,7 @@ function LogisticaPage() {
                       })}
                     </div>
                     <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-[10px] text-gray-400">
-                      * Deslocamento: {configCusto.kmBase} km/dia × R$ {configCusto.custoPorKm.toFixed(2)}/km · Airbnb: R$ {configCusto.airbnbPorNoite}/noite + R$ {configCusto.refeicaoFora}/dia em refeições
+                      * Opção 1: São Pedro → Cliente 1 → Cliente 2 → … → São Pedro por dia (rota real via Google Maps quando calculada, estimativa de {configCusto.kmBase} km/dia caso contrário) · Opção 2: mesmo roteiro entre clientes, porém saindo e voltando ao Airbnb — a diferença de km reflete a economia de não percorrer São Pedro ↔ Rio a cada dia · Custo/km: R$ {configCusto.custoPorKm.toFixed(2)} · Airbnb: R$ {configCusto.airbnbPorNoite}/noite (estimativa) + R$ {configCusto.refeicaoFora}/dia em refeições
                     </div>
                   </div>
                 );
