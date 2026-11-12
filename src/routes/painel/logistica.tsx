@@ -1004,8 +1004,10 @@ function LogisticaPage() {
     temAtendBarra: false,    // flag: semana tem cliente na Barra?
   });
   const [modalConfigCusto, setModalConfigCusto] = useState(false);
-  // Cache de km calculados por semana: chave → km total real
-  const [kmPorSemana, setKmPorSemana] = useState<Record<string, number>>({});
+  // Opção 1: km real partindo de São Pedro (sempre)
+  const [kmOpcao1, setKmOpcao1] = useState<Record<string, number>>({});
+  // Opção 2: km real partindo do Airbnb (só quando endereço preenchido)
+  const [kmOpcao2, setKmOpcao2] = useState<Record<string, number>>({});
   const [calculandoKm, setCalculandoKm] = useState<Record<string, boolean>>({});
   // Endereço do Airbnb por semana (chave ISO → endereço)
   const [airbnbEndereco, setAirbnbEndereco] = useState<Record<string, string>>({});
@@ -1014,8 +1016,8 @@ function LogisticaPage() {
   const ORIGEM_BASE = "São Pedro da Aldeia, RJ, Brasil";
 
   // Calcula km real de uma semana usando Google Routes API
-  // Se airbnbAddr estiver preenchido, usa esse endereço como base para dias internos
-  // e soma o trecho São Pedro → Airbnb (ida) e Airbnb → São Pedro (volta no último dia)
+  // Sempre calcula Opção 1 (São Pedro → roteiro → São Pedro por dia).
+  // Se airbnbAddr estiver preenchido, calcula também Opção 2 (com Airbnb como base).
   async function calcularKmSemana(chaveSem: string, atends: Atendimento[], airbnbAddr?: string) {
     const endsPorDia: Record<string, string[]> = {};
     atends.forEach(a => {
@@ -1028,9 +1030,8 @@ function LogisticaPage() {
     if (dias.length === 0) return;
 
     setCalculandoKm(prev => ({ ...prev, [chaveSem]: true }));
-    let kmTotal = 0;
 
-    // Helper: distância entre dois pontos via Routes API
+    // ── Helpers de rota via Routes API ─────────────────────────────────────
     async function distanciaKm(origem: string, destino: string): Promise<number> {
       try {
         const r = await fetch(
@@ -1046,13 +1047,10 @@ function LogisticaPage() {
       } catch { return 0; }
     }
 
-    // Helper: rota circular base → paradas → base
+    // Rota circular: base → paradas → base (mesma origem e destino)
     async function rotaCircular(base: string, paradas: string[]): Promise<number> {
       if (paradas.length === 0) return 0;
-      if (paradas.length === 1) {
-        const km = await distanciaKm(base, paradas[0]);
-        return km * 2;
-      }
+      if (paradas.length === 1) return (await distanciaKm(base, paradas[0])) * 2;
       try {
         const resp = await fetch(
           `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
@@ -1070,71 +1068,62 @@ function LogisticaPage() {
           }
         );
         const data = await resp.json();
-        return data.routes?.[0]?.distanceMeters
-          ? data.routes[0].distanceMeters / 1000
-          : configCusto.kmBase;
+        return data.routes?.[0]?.distanceMeters ? data.routes[0].distanceMeters / 1000 : configCusto.kmBase;
       } catch { return configCusto.kmBase; }
     }
 
-    if (airbnbAddr && airbnbAddr.trim()) {
-      // ── Lógica com Airbnb ──────────────────────────────────────────────────
-      // Regra: se houver atendimento no dia seguinte, o retorno do dia é para o
-      // Airbnb. Se não houver (último dia com atendimento), o retorno é para
-      // São Pedro diretamente.
-      //
-      // Fluxo:
-      //  1º dia: São Pedro → [roteiro] → Airbnb
-      //  Dias intermediários: Airbnb → [roteiro] → Airbnb
-      //  Último dia: Airbnb → [roteiro] → São Pedro
-      //
-      // Helper: rota origem → paradas → destino (ponto final diferente)
-      async function rotaAberta(origem: string, paradas: string[], destino: string): Promise<number> {
-        if (paradas.length === 0) return distanciaKm(origem, destino);
-        if (paradas.length === 1) {
-          return (await distanciaKm(origem, paradas[0])) + (await distanciaKm(paradas[0], destino));
-        }
-        try {
-          const resp = await fetch(
-            `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
-              body: JSON.stringify({
-                origin: { address: origem },
-                destination: { address: destino },
-                intermediates: paradas.map(e => ({ location: { address: e } })),
-                travelMode: "DRIVE",
-                routingPreference: "TRAFFIC_UNAWARE",
-                computeAlternativeRoutes: false,
-              }),
-            }
-          );
-          const data = await resp.json();
-          return data.routes?.[0]?.distanceMeters
-            ? data.routes[0].distanceMeters / 1000
-            : configCusto.kmBase;
-        } catch { return configCusto.kmBase; }
+    // Rota aberta: origem → paradas → destino (pontos de saída e chegada diferentes)
+    async function rotaAberta(origem: string, paradas: string[], destino: string): Promise<number> {
+      if (paradas.length === 0) return distanciaKm(origem, destino);
+      if (paradas.length === 1) {
+        return (await distanciaKm(origem, paradas[0])) + (await distanciaKm(paradas[0], destino));
       }
-
-      for (let i = 0; i < dias.length; i++) {
-        const dia = dias[i];
-        const endsDia = [...new Set(endsPorDia[dia])];
-        const temAmanha = i < dias.length - 1; // há atendimento no próximo dia?
-
-        const origem = i === 0 ? ORIGEM_BASE : airbnbAddr;   // 1º dia: sai de São Pedro
-        const destino = temAmanha ? airbnbAddr : ORIGEM_BASE; // último dia: volta p/ casa
-
-        kmTotal += await rotaAberta(origem, endsDia, destino);
-      }
-    } else {
-      // ── Sem Airbnb: cada dia sai de São Pedro e volta ──────────────────────
-      for (const dia of dias) {
-        const endsDia = [...new Set(endsPorDia[dia])];
-        kmTotal += await rotaCircular(ORIGEM_BASE, endsDia);
-      }
+      try {
+        const resp = await fetch(
+          `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
+            body: JSON.stringify({
+              origin: { address: origem },
+              destination: { address: destino },
+              intermediates: paradas.map(e => ({ location: { address: e } })),
+              travelMode: "DRIVE",
+              routingPreference: "TRAFFIC_UNAWARE",
+              computeAlternativeRoutes: false,
+            }),
+          }
+        );
+        const data = await resp.json();
+        return data.routes?.[0]?.distanceMeters ? data.routes[0].distanceMeters / 1000 : configCusto.kmBase;
+      } catch { return configCusto.kmBase; }
     }
 
-    setKmPorSemana(prev => ({ ...prev, [chaveSem]: Math.round(kmTotal) }));
+    // ── Opção 1: sempre São Pedro → roteiro → São Pedro (por dia) ──────────
+    let kmOp1 = 0;
+    for (const dia of dias) {
+      const endsDia = [...new Set(endsPorDia[dia])];
+      kmOp1 += await rotaCircular(ORIGEM_BASE, endsDia);
+    }
+    setKmOpcao1(prev => ({ ...prev, [chaveSem]: Math.round(kmOp1) }));
+
+    // ── Opção 2: com Airbnb (só quando endereço preenchido) ────────────────
+    // Fluxo:
+    //   1º dia  : São Pedro → roteiro → Airbnb
+    //   Dias int: Airbnb → roteiro → Airbnb
+    //   Último  : Airbnb → roteiro → São Pedro
+    if (airbnbAddr && airbnbAddr.trim()) {
+      let kmOp2 = 0;
+      for (let i = 0; i < dias.length; i++) {
+        const endsDia = [...new Set(endsPorDia[dias[i]])];
+        const temAmanha = i < dias.length - 1;
+        const origem  = i === 0   ? ORIGEM_BASE : airbnbAddr;
+        const destino = temAmanha ? airbnbAddr   : ORIGEM_BASE;
+        kmOp2 += await rotaAberta(origem, endsDia, destino);
+      }
+      setKmOpcao2(prev => ({ ...prev, [chaveSem]: Math.round(kmOp2) }));
+    }
+
     setCalculandoKm(prev => ({ ...prev, [chaveSem]: false }));
   }
 
@@ -4328,15 +4317,25 @@ function LogisticaPage() {
                           + configCusto.pedagioManilha       // Manilha só na ida
                           + configCusto.pedagogioPonte       // Ponte só na volta
                           + (configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0);
-                        // Usa km real calculado pela API (se disponível) ou fallback fixo
-                        const kmSemana = kmPorSemana[chaveSem] ?? (diasComAtend * configCusto.kmBase);
+                        // Opção 1: sempre São Pedro → roteiro → São Pedro por dia
+                        const kmReal1 = kmOpcao1[chaveSem];
+                        const kmExibido1 = kmReal1 ?? (diasComAtend * configCusto.kmBase);
+                        // Opção 2: com Airbnb (só quando endereço preenchido e calc feito)
+                        const temAirbnb = !!(airbnbEndereco[chaveSem]?.trim());
+                        const kmReal2 = kmOpcao2[chaveSem];
+                        const kmExibido2 = kmReal2 ?? (temAirbnb ? undefined : kmExibido1);
                         const estaCalculandoKm = calculandoKm[chaveSem] ?? false;
-                        const custoCombustivel = kmSemana * configCusto.custoPorKm;
                         const custoPedagios = diasComAtend * pedagioDiario;
-                        const custoDeslocamento = custoCombustivel + custoPedagios;
-                        const custoAirbnb = noitesNecessarias * configCusto.airbnbPorNoite
-                          + diasComAtend * configCusto.refeicaoFora;
-                        const economiaSeDormir = custoDeslocamento - custoAirbnb;
+                        // Custo total opção 1: combustível (São Pedro) + pedágios
+                        const custoDeslocamento = kmExibido1 * configCusto.custoPorKm + custoPedagios;
+                        // Custo total opção 2: combustível (Airbnb) + hospedagem + refeições (sem pedágios Via Lagos/Manilha/Ponte)
+                        const custoCombustivel2 = (kmExibido2 ?? 0) * configCusto.custoPorKm;
+                        const custoHospedagem = noitesNecessarias * configCusto.airbnbPorNoite;
+                        const custoRefeicoes = diasComAtend * configCusto.refeicaoFora;
+                        const custoAirbnb = custoCombustivel2 + custoHospedagem + custoRefeicoes;
+                        // Legado: custoAirbnb sem combustível para quando não há km2 ainda
+                        const custoAirbnbSemComb = custoHospedagem + custoRefeicoes;
+                        const economiaSeDormir = custoDeslocamento - (kmExibido2 !== undefined ? custoAirbnb : custoAirbnbSemComb);
                         const melhorAirbnb = economiaSeDormir > 0 && noitesNecessarias > 0;
                         const seg = sem[0]; const sex = sem[4];
                         const labelSem = `${seg.getDate()}/${seg.getMonth()+1} – ${sex.getDate()}/${sex.getMonth()+1}`;
@@ -4367,9 +4366,12 @@ function LogisticaPage() {
                                     onChange={e => setAirbnbEndereco(prev => ({ ...prev, [chaveSem]: e.target.value }))}
                                     className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 bg-white min-w-0"
                                   />
-                                  {airbnbEndereco[chaveSem] && kmPorSemana[chaveSem] && (
+                                  {(kmReal1 || kmReal2) && (
                                     <button
-                                      onClick={() => setKmPorSemana(prev => { const n = { ...prev }; delete n[chaveSem]; return n; })}
+                                      onClick={() => {
+                                        setKmOpcao1(prev => { const n = { ...prev }; delete n[chaveSem]; return n; });
+                                        setKmOpcao2(prev => { const n = { ...prev }; delete n[chaveSem]; return n; });
+                                      }}
                                       className="text-[9px] text-gray-400 hover:text-red-500"
                                       title="Limpar km calculado para recalcular"
                                     >↺</button>
@@ -4378,11 +4380,11 @@ function LogisticaPage() {
                                 {/* Comparativo em tabela unitário + total */}
                                 {(() => {
                                   const fmtR = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                  const kmReal = kmPorSemana[chaveSem];
-                                  const kmExibido = kmReal ?? (diasComAtend * configCusto.kmBase);
-                                  const custoKmUn = kmExibido * configCusto.custoPorKm / Math.max(diasComAtend, 1);
-                                  const custoAirbnbNoiteUn = configCusto.airbnbPorNoite;
-                                  const custoRefeicaoUn = configCusto.refeicaoFora;
+                                  const custoKmUn1 = kmExibido1 * configCusto.custoPorKm / Math.max(diasComAtend, 1);
+                                  // Comparativo final: opção 2 inclui combustível real do Airbnb (se calculado) + hospedagem + refeições
+                                  const totalOp2Exibir = kmExibido2 !== undefined ? custoAirbnb : custoAirbnbSemComb;
+                                  const diffFinal = custoDeslocamento - totalOp2Exibir;
+                                  const op2MaisBarata = diffFinal > 0 && noitesNecessarias > 0;
                                   return (
                                     <div className="w-full mt-1 overflow-x-auto">
                                       <table className="w-full text-[11px] border-collapse">
@@ -4395,7 +4397,7 @@ function LogisticaPage() {
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                          {/* Bloco deslocamento */}
+                                          {/* ── Opção 1: São Pedro → roteiro → São Pedro ── */}
                                           <tr className="text-gray-600">
                                             <td className="py-1 pr-3 font-medium text-gray-700" colSpan={4}>
                                               <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">🚗 Opção 1 — Deslocamento diário</span>
@@ -4404,21 +4406,21 @@ function LogisticaPage() {
                                           <tr className="text-gray-600">
                                             <td className="py-0.5 pr-3">
                                               Combustível
-                                              {kmReal
-                                                ? <span className="ml-1 text-[9px] text-green-600 font-medium">📍 {kmReal} km reais</span>
+                                              {kmReal1
+                                                ? <span className="ml-1 text-[9px] text-green-600 font-medium">📍 {kmReal1} km reais</span>
                                                 : <span className="ml-1 text-[9px] text-gray-400">({diasComAtend}×{configCusto.kmBase} km est.)</span>
                                               }
                                             </td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">
                                               {estaCalculandoKm
                                                 ? <span className="text-[9px] text-blue-500 animate-pulse">calc…</span>
-                                                : kmReal
-                                                  ? <span className="text-[9px] text-green-600">{kmReal} km</span>
+                                                : kmReal1
+                                                  ? <span className="text-[9px] text-green-600">{kmReal1} km</span>
                                                   : <button onClick={() => calcularKmSemana(chaveSem, atends, airbnbEndereco[chaveSem])} className="text-[9px] text-blue-500 hover:underline">📍 calc</button>
                                               }
                                             </td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn)}/dia</td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(kmExibido * configCusto.custoPorKm)}</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn1)}/dia</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(kmExibido1 * configCusto.custoPorKm)}</td>
                                           </tr>
                                           <tr className="text-gray-600">
                                             <td className="py-0.5 pr-3 text-gray-400 pl-2">↳ Via Lagos (ida + volta)</td>
@@ -4448,32 +4450,58 @@ function LogisticaPage() {
                                           )}
                                           <tr className="text-gray-500 font-semibold border-t border-gray-200">
                                             <td className="pt-1 pr-3" colSpan={3}>Total opção 1</td>
-                                            <td className={cn("pt-1 text-right tabular-nums", !melhorAirbnb ? "text-green-700" : "text-gray-700")}>{fmtR(custoDeslocamento)}</td>
+                                            <td className={cn("pt-1 text-right tabular-nums", !op2MaisBarata ? "text-green-700" : "text-gray-700")}>{fmtR(custoDeslocamento)}</td>
                                           </tr>
-                                          {/* Bloco Airbnb */}
+                                          {/* ── Opção 2: com Airbnb ── */}
                                           {noitesNecessarias > 0 && (<>
                                           <tr className="text-gray-600">
                                             <td className="pt-3 pr-3 font-medium text-gray-700" colSpan={4}>
                                               <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">🏠 Opção 2 — Airbnb na região</span>
                                             </td>
                                           </tr>
+                                          {/* Combustível da opção 2 — só exibe quando km2 calculado */}
+                                          {temAirbnb && (
+                                          <tr className="text-gray-600">
+                                            <td className="py-0.5 pr-3">
+                                              Combustível (a partir do Airbnb)
+                                              {kmReal2
+                                                ? <span className="ml-1 text-[9px] text-green-600 font-medium">📍 {kmReal2} km reais</span>
+                                                : <span className="ml-1 text-[9px] text-gray-400">clique calc ↑</span>
+                                              }
+                                            </td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">
+                                              {estaCalculandoKm
+                                                ? <span className="text-[9px] text-blue-500 animate-pulse">calc…</span>
+                                                : kmReal2
+                                                  ? <span className="text-[9px] text-green-600">{kmReal2} km</span>
+                                                  : <span className="text-[9px] text-gray-400">—</span>
+                                              }
+                                            </td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">
+                                              {kmReal2 ? `${fmtR(kmReal2 * configCusto.custoPorKm / Math.max(diasComAtend,1))}/dia` : "—"}
+                                            </td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">
+                                              {kmReal2 ? fmtR(kmReal2 * configCusto.custoPorKm) : "—"}
+                                            </td>
+                                          </tr>
+                                          )}
                                           <tr className="text-gray-600">
                                             <td className="py-0.5 pr-3">Hospedagem</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{noitesNecessarias} noite{noitesNecessarias !== 1 ? "s" : ""}</td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoAirbnbNoiteUn)}</td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(noitesNecessarias * custoAirbnbNoiteUn)}</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.airbnbPorNoite)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(custoHospedagem)}</td>
                                           </tr>
                                           <tr className="text-gray-600">
                                             <td className="py-0.5 pr-3">Refeições fora</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend} dia{diasComAtend !== 1 ? "s" : ""}</td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoRefeicaoUn)}</td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(diasComAtend * custoRefeicaoUn)}</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.refeicaoFora)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(custoRefeicoes)}</td>
                                           </tr>
                                           <tr className="text-gray-500 font-semibold border-t border-gray-200">
-                                            <td className="pt-1 pr-3" colSpan={3}>Total opção 2</td>
-                                            <td className={cn("pt-1 text-right tabular-nums", melhorAirbnb ? "text-blue-700" : "text-gray-700")}>{fmtR(custoAirbnb)}</td>
+                                            <td className="pt-1 pr-3" colSpan={3}>Total opção 2{!temAirbnb && <span className="ml-1 text-[9px] font-normal text-gray-400">(sem combustível — add endereço)</span>}</td>
+                                            <td className={cn("pt-1 text-right tabular-nums", op2MaisBarata ? "text-blue-700" : "text-gray-700")}>{fmtR(totalOp2Exibir)}</td>
                                           </tr>
-                                          {/* Comparativo entre as duas opções */}
+                                          {/* Comparativo final */}
                                           <tr>
                                             <td colSpan={4} className="pt-3 pb-1">
                                               <div className="rounded-xl border border-gray-200 overflow-hidden">
@@ -4484,22 +4512,22 @@ function LogisticaPage() {
                                                 </div>
                                                 <div className={cn(
                                                   "grid grid-cols-3 px-3 py-2 text-xs font-medium border-b border-gray-100",
-                                                  !melhorAirbnb ? "bg-green-50 text-green-800" : "text-gray-600"
+                                                  !op2MaisBarata ? "bg-green-50 text-green-800" : "text-gray-600"
                                                 )}>
-                                                  <span className="flex items-center gap-1">🚗 Deslocamento{!melhorAirbnb && <span className="text-[9px] font-bold bg-green-200 text-green-800 rounded px-1">✓ Melhor</span>}</span>
+                                                  <span className="flex items-center gap-1">🚗 Deslocamento{!op2MaisBarata && <span className="text-[9px] font-bold bg-green-200 text-green-800 rounded px-1">✓ Melhor</span>}</span>
                                                   <span className="text-right font-bold tabular-nums">{fmtR(custoDeslocamento)}</span>
-                                                  <span className={cn("text-right tabular-nums", !melhorAirbnb ? "text-green-700 font-bold" : "text-red-500")}>
-                                                    {!melhorAirbnb ? `−${fmtR(Math.abs(economiaSeDormir))}` : `+${fmtR(Math.abs(economiaSeDormir))}`}
+                                                  <span className={cn("text-right tabular-nums", !op2MaisBarata ? "text-green-700 font-bold" : "text-red-500")}>
+                                                    {!op2MaisBarata ? `−${fmtR(Math.abs(diffFinal))}` : `+${fmtR(Math.abs(diffFinal))}`}
                                                   </span>
                                                 </div>
                                                 <div className={cn(
                                                   "grid grid-cols-3 px-3 py-2 text-xs font-medium",
-                                                  melhorAirbnb ? "bg-blue-50 text-blue-800" : "text-gray-600"
+                                                  op2MaisBarata ? "bg-blue-50 text-blue-800" : "text-gray-600"
                                                 )}>
-                                                  <span className="flex items-center gap-1">🏠 Airbnb{melhorAirbnb && <span className="text-[9px] font-bold bg-blue-200 text-blue-800 rounded px-1">✓ Melhor</span>}</span>
-                                                  <span className="text-right font-bold tabular-nums">{fmtR(custoAirbnb)}</span>
-                                                  <span className={cn("text-right tabular-nums", melhorAirbnb ? "text-blue-700 font-bold" : "text-red-500")}>
-                                                    {melhorAirbnb ? `−${fmtR(Math.abs(economiaSeDormir))}` : `+${fmtR(Math.abs(economiaSeDormir))}`}
+                                                  <span className="flex items-center gap-1">🏠 Airbnb{op2MaisBarata && <span className="text-[9px] font-bold bg-blue-200 text-blue-800 rounded px-1">✓ Melhor</span>}</span>
+                                                  <span className="text-right font-bold tabular-nums">{fmtR(totalOp2Exibir)}</span>
+                                                  <span className={cn("text-right tabular-nums", op2MaisBarata ? "text-blue-700 font-bold" : "text-red-500")}>
+                                                    {op2MaisBarata ? `−${fmtR(Math.abs(diffFinal))}` : `+${fmtR(Math.abs(diffFinal))}`}
                                                   </span>
                                                 </div>
                                               </div>
