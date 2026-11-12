@@ -1,0 +1,2 @@
+[functions.appsheet-criar-atividade]
+verify_jwt = false
