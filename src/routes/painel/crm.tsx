@@ -1772,6 +1772,7 @@ function PropostaDetalhe({
         ? `${milhar.toLocaleString("pt-BR")} mil e ${centena > 0 ? centena.toLocaleString("pt-BR") : "zero"} reais`
         : `${valorTotal.toLocaleString("pt-BR")} reais`;
       const diaExtenso = diaVencimento === 5 ? "cinco" : diaVencimento === 10 ? "dez" : diaVencimento === 15 ? "quinze" : diaVencimento === 20 ? "vinte" : "vinte e cinco";
+      const portas = c.portas ?? 0;
 
       const html = `<!DOCTYPE html>
 <html lang="pt-BR">
