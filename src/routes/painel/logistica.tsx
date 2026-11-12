@@ -2188,7 +2188,7 @@ function LogisticaPage() {
         atendimento_id: selAtend?.id ?? "novo",
       };
 
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/appsheet-criar-atividade`;
+      const fnUrl = `https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/appsheet-criar-atividade`;
       const res = await fetch(fnUrl, {
         method : "POST",
         headers: {
