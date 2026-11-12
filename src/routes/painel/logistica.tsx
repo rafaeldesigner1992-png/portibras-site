@@ -4419,8 +4419,8 @@ function LogisticaPage() {
                                 {(() => {
                                   const fmtR = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                                   const custoKmUn1 = kmExibido1 * configCusto.custoPorKm / Math.max(diasComAtend, 1);
-                                  // Comparativo final: opção 2 inclui combustível real do Airbnb (se calculado) + hospedagem + refeições
-                                  const totalOp2Exibir = kmExibido2 !== undefined ? custoAirbnb : custoAirbnbSemComb;
+                                  // Comparativo final: usa o melhor Airbnb disponível (menor total)
+                                  const totalOp2Exibir = opcoesAirbnb.length > 0 ? melhorTotal : custoAirbnb;
                                   const diffFinal = custoDeslocamento - totalOp2Exibir;
                                   const op2MaisBarata = diffFinal > 0 && noitesNecessarias > 0;
                                   return (
