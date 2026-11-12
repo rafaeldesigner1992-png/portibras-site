@@ -5182,10 +5182,6 @@ function LogisticaPage() {
                       <input className="input-field" value={formAtend.atividade} onChange={e => setFormAtend(f => ({ ...f, atividade: e.target.value }))} placeholder="O que será feito?" />
                     )}
                   </div>
-                  <div>
-                    <label className="label-field">Descrição / Observações</label>
-                    <textarea className="input-field" rows={3} value={formAtend.descricao} onChange={e => setFormAtend(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhes adicionais..." />
-                  </div>
                   <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={formAtend.agendado_com_cliente} onChange={e => setFormAtend(f => ({ ...f, agendado_com_cliente: e.target.checked }))} className="rounded" />
