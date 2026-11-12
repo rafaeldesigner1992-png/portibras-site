@@ -2050,9 +2050,6 @@ function LogisticaPage() {
     setGerandoAppSheet(tipo);
     setAppSheetStatus(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
       // Tenta encontrar o cliente_id pelo título/nome
       const nomeCliente = formAtend.titulo || formAtend.cliente_nome || "";
       let idCliente: string | null = null;
@@ -2078,19 +2075,11 @@ function LogisticaPage() {
         atendimento_id: selAtend?.id ?? "novo",
       };
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/appsheet-criar-atividade`,
-        {
-          method : "POST",
-          headers: {
-            "Content-Type" : "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-        }
+      const { data: json, error: fnError } = await supabase.functions.invoke(
+        "appsheet-criar-atividade",
+        { body: payload }
       );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Erro desconhecido");
+      if (fnError) throw new Error(fnError.message ?? "Erro desconhecido");
 
       setAppSheetStatus({
         tipo,
