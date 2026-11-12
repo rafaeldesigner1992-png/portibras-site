@@ -1008,13 +1008,10 @@ function LogisticaPage() {
   const [modalConfigCusto, setModalConfigCusto] = useState(false);
   // Opção 1: km real partindo de São Pedro (sempre)
   const [kmOpcao1, setKmOpcao1] = useState<Record<string, number>>({});
-  // Opção 2: km real partindo do Airbnb (só quando endereço preenchido)
-  const [kmOpcao2, setKmOpcao2] = useState<Record<string, number>>({});
   const [calculandoKm, setCalculandoKm] = useState<Record<string, boolean>>({});
-  // Endereço do Airbnb por semana (chave ISO → endereço)
-  const [airbnbEndereco, setAirbnbEndereco] = useState<Record<string, string>>({});
-  // Valor real da hospedagem por semana (chave ISO → valor total em reais)
-  const [airbnbValor, setAirbnbValor] = useState<Record<string, string>>({});
+  // Opções de Airbnb por semana: array de {endereco, valor, km}
+  type AirbnbOpcao = { endereco: string; valor: string; km?: number };
+  const [airbnbOpcoes, setAirbnbOpcoes] = useState<Record<string, AirbnbOpcao[]>>({});
 
   const GMAPS_KEY = "AIzaSyBFAgV8Sz31uMReMajxQEJuqJFbXmlcF8E";
   const ORIGEM_BASE = "São Pedro da Aldeia, RJ, Brasil";
@@ -1022,7 +1019,7 @@ function LogisticaPage() {
   // Calcula km real de uma semana usando Google Routes API
   // Sempre calcula Opção 1 (São Pedro → roteiro → São Pedro por dia).
   // Se airbnbAddr estiver preenchido, calcula também Opção 2 (com Airbnb como base).
-  async function calcularKmSemana(chaveSem: string, atends: Atendimento[], airbnbAddr?: string) {
+  async function calcularKmSemana(chaveSem: string, atends: Atendimento[], airbnbAddr?: string, airbnbIdx?: number) {
     const endsPorDia: Record<string, string[]> = {};
     atends.forEach(a => {
       if (a.data_agendada && a.endereco) {
@@ -1094,7 +1091,13 @@ function LogisticaPage() {
         const destino = temAmanha ? airbnbAddr   : ORIGEM_BASE;
         kmOp2 += await rotaAberta(origem, endsDia, destino);
       }
-      setKmOpcao2(prev => ({ ...prev, [chaveSem]: Math.round(kmOp2) }));
+      if (airbnbIdx !== undefined) {
+        setAirbnbOpcoes(prev => {
+          const arr = [...(prev[chaveSem] ?? [])];
+          if (arr[airbnbIdx]) arr[airbnbIdx] = { ...arr[airbnbIdx], km: Math.round(kmOp2) };
+          return { ...prev, [chaveSem]: arr };
+        });
+      }
     }
 
     setCalculandoKm(prev => ({ ...prev, [chaveSem]: false }));
@@ -4293,32 +4296,25 @@ function LogisticaPage() {
                         // Opção 1: sempre São Pedro → roteiro → São Pedro por dia
                         const kmReal1 = kmOpcao1[chaveSem];
                         const kmExibido1 = kmReal1 ?? (diasComAtend * configCusto.kmBase);
-                        // Opção 2: com Airbnb (só quando endereço preenchido e calc feito)
-                        const temAirbnb = !!(airbnbEndereco[chaveSem]?.trim());
-                        const kmReal2 = kmOpcao2[chaveSem];
-                        const kmExibido2 = kmReal2 ?? (temAirbnb ? undefined : kmExibido1);
                         const estaCalculandoKm = calculandoKm[chaveSem] ?? false;
                         const custoPedagios = diasComAtend * pedagioDiario;
-                        // Custo total opção 1: combustível (São Pedro) + pedágios todos os dias
                         const custoDeslocamento = kmExibido1 * configCusto.custoPorKm + custoPedagios;
-                        // Custo total opção 2: combustível (Airbnb) + hospedagem + refeições
-                        // + pedágio só 1º dia (ida: Via Lagos + Manilha) e último dia (volta: Ponte + Via Lagos)
-                        const custoCombustivel2 = (kmExibido2 ?? 0) * configCusto.custoPorKm;
-                        // Hospedagem: valor real digitado (total) ou estimativa por noite
-                        const airbnbValorReal = airbnbValor[chaveSem] ? parseFloat(airbnbValor[chaveSem].replace(',', '.')) : NaN;
-                        const temValorAirbnb = !isNaN(airbnbValorReal) && airbnbValorReal > 0;
-                        const custoHospedagem = temValorAirbnb ? airbnbValorReal : noitesNecessarias * configCusto.airbnbPorNoite;
-                        const custoRefeicoes = diasComAtend * configCusto.refeicaoFora;
-                        // Pedágio opção 2: somente ida no 1º dia e volta no último dia
+                        // Pedágio opção Airbnb: somente ida no 1º dia e volta no último dia
                         const pedagioIda2 = configCusto.pedagioViaLagos + configCusto.pedagioManilha;
                         const pedagioVolta2 = configCusto.pedagogioPonte + configCusto.pedagioViaLagos;
                         const pedagioLinhaAmarela2 = configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0;
                         const custoPedagios2 = diasComAtend > 0 ? pedagioIda2 + pedagioVolta2 + pedagioLinhaAmarela2 : 0;
-                        const custoAirbnb = custoCombustivel2 + custoHospedagem + custoRefeicoes + custoPedagios2;
-                        // Sem combustível calculado ainda (para exibição parcial)
-                        const custoAirbnbSemComb = custoHospedagem + custoRefeicoes + custoPedagios2;
-                        const economiaSeDormir = custoDeslocamento - (kmExibido2 !== undefined ? custoAirbnb : custoAirbnbSemComb);
-                        const melhorAirbnb = economiaSeDormir > 0 && noitesNecessarias > 0;
+                        // Array de opções Airbnb com custos calculados
+                        const opcoesAirbnb = (airbnbOpcoes[chaveSem] ?? []).map(op => {
+                          const valNum = op.valor ? parseFloat(op.valor.replace(',', '.')) : NaN;
+                          const temValor = !isNaN(valNum) && valNum > 0;
+                          const hospedagem = temValor ? valNum : noitesNecessarias * configCusto.airbnbPorNoite;
+                          const refeicoes = diasComAtend * configCusto.refeicaoFora;
+                          const comb = op.km !== undefined ? op.km * configCusto.custoPorKm : undefined;
+                          const total = comb !== undefined ? comb + hospedagem + refeicoes + custoPedagios2 : hospedagem + refeicoes + custoPedagios2;
+                          return { ...op, valNum, temValor, hospedagem, refeicoes, comb, total };
+                        });
+                        const melhorTotal = opcoesAirbnb.length > 0 ? Math.min(...opcoesAirbnb.map(o => o.total)) : Infinity;
                         const seg = sem[0]; const sex = sem[4];
                         const labelSem = `${seg.getDate()}/${seg.getMonth()+1} – ${sex.getDate()}/${sex.getMonth()+1}`;
                         // Clientes da semana
@@ -4340,45 +4336,85 @@ function LogisticaPage() {
                                 </div>
                                 {/* Campos Airbnb: endereço (para cálculo de km) + valor real da hospedagem */}
                                 <div className="flex flex-col gap-1 mb-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] text-gray-400 shrink-0 w-[52px]">🏠 Endereço:</span>
-                                    <input
-                                      type="text"
-                                      placeholder="Endereço do Airbnb (para calc. km)…"
-                                      value={airbnbEndereco[chaveSem] ?? ""}
-                                      onChange={e => setAirbnbEndereco(prev => ({ ...prev, [chaveSem]: e.target.value }))}
-                                      className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 bg-white min-w-0"
-                                    />
-                                    {(kmReal1 || kmReal2) && (
-                                      <button
-                                        onClick={() => {
-                                          setKmOpcao1(prev => { const n = { ...prev }; delete n[chaveSem]; return n; });
-                                          setKmOpcao2(prev => { const n = { ...prev }; delete n[chaveSem]; return n; });
-                                        }}
-                                        className="text-[9px] text-gray-400 hover:text-red-500"
-                                        title="Limpar km calculado para recalcular"
-                                      >↺</button>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] text-gray-400 shrink-0 w-[52px]">💰 Valor:</span>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      placeholder={noitesNecessarias > 0 ? `Estimado: R$ ${(noitesNecessarias * configCusto.airbnbPorNoite).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} (${noitesNecessarias} noite${noitesNecessarias !== 1 ? "s" : ""})` : "Total real da hospedagem (R$)"}
-                                      value={airbnbValor[chaveSem] ?? ""}
-                                      onChange={e => setAirbnbValor(prev => ({ ...prev, [chaveSem]: e.target.value }))}
-                                      className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-400 bg-white min-w-0"
-                                    />
-                                    {airbnbValor[chaveSem] && (
-                                      <button
-                                        onClick={() => setAirbnbValor(prev => { const n = { ...prev }; delete n[chaveSem]; return n; })}
-                                        className="text-[9px] text-gray-400 hover:text-red-500"
-                                        title="Limpar valor para usar estimativa"
-                                      >✕</button>
-                                    )}
-                                  </div>
+                                  {/* Lista dinâmica de opções Airbnb */}
+                                  {(airbnbOpcoes[chaveSem] ?? []).map((op, idx) => (
+                                    <div key={idx} className="rounded-lg border border-orange-100 bg-orange-50/40 p-1.5 flex flex-col gap-1">
+                                      <div className="flex items-center gap-1 text-[9px] font-semibold text-orange-500 uppercase tracking-wide mb-0.5">
+                                        <span>🏠 Airbnb {(airbnbOpcoes[chaveSem] ?? []).length > 1 ? idx + 1 : ""}</span>
+                                        <button
+                                          onClick={() => setAirbnbOpcoes(prev => {
+                                            const arr = (prev[chaveSem] ?? []).filter((_, i) => i !== idx);
+                                            return { ...prev, [chaveSem]: arr };
+                                          })}
+                                          className="ml-auto text-orange-300 hover:text-red-500"
+                                          title="Remover esta opção"
+                                        >✕</button>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-gray-400 shrink-0 w-[52px]">Endereço:</span>
+                                        <input
+                                          type="text"
+                                          placeholder="Endereço (para calc. km)…"
+                                          value={op.endereco}
+                                          onChange={e => setAirbnbOpcoes(prev => {
+                                            const arr = [...(prev[chaveSem] ?? [])];
+                                            arr[idx] = { ...arr[idx], endereco: e.target.value, km: undefined };
+                                            return { ...prev, [chaveSem]: arr };
+                                          })}
+                                          className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-orange-400 bg-white min-w-0"
+                                        />
+                                        {op.km && (
+                                          <button
+                                            onClick={() => setAirbnbOpcoes(prev => {
+                                              const arr = [...(prev[chaveSem] ?? [])];
+                                              arr[idx] = { ...arr[idx], km: undefined };
+                                              return { ...prev, [chaveSem]: arr };
+                                            })}
+                                            className="text-[9px] text-gray-400 hover:text-red-500"
+                                            title="Recalcular km"
+                                          >↺</button>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-gray-400 shrink-0 w-[52px]">Valor:</span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          placeholder={noitesNecessarias > 0 ? `Estimado: R$ ${(noitesNecessarias * configCusto.airbnbPorNoite).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} (${noitesNecessarias} noite${noitesNecessarias !== 1 ? "s" : ""})` : "Total real (R$)"}
+                                          value={op.valor}
+                                          onChange={e => setAirbnbOpcoes(prev => {
+                                            const arr = [...(prev[chaveSem] ?? [])];
+                                            arr[idx] = { ...arr[idx], valor: e.target.value };
+                                            return { ...prev, [chaveSem]: arr };
+                                          })}
+                                          className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-orange-400 bg-white min-w-0"
+                                        />
+                                        {op.valor && (
+                                          <button
+                                            onClick={() => setAirbnbOpcoes(prev => {
+                                              const arr = [...(prev[chaveSem] ?? [])];
+                                              arr[idx] = { ...arr[idx], valor: "" };
+                                              return { ...prev, [chaveSem]: arr };
+                                            })}
+                                            className="text-[9px] text-gray-400 hover:text-red-500"
+                                          >✕</button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {/* Botão adicionar Airbnb */}
+                                  {kmReal1 !== undefined || (airbnbOpcoes[chaveSem] ?? []).length === 0 ? (
+                                  <button
+                                    onClick={() => setAirbnbOpcoes(prev => ({
+                                      ...prev,
+                                      [chaveSem]: [...(prev[chaveSem] ?? []), { endereco: "", valor: "" }]
+                                    }))}
+                                    className="text-[10px] text-orange-500 hover:text-orange-700 border border-dashed border-orange-300 rounded-lg px-2 py-1 w-full text-center"
+                                  >
+                                    + Adicionar opção Airbnb
+                                  </button>
+                                  ) : null}
                                 </div>
                                 {/* Comparativo em tabela unitário + total */}
                                 {(() => {
@@ -4419,7 +4455,7 @@ function LogisticaPage() {
                                                 ? <span className="text-[9px] text-blue-500 animate-pulse">calc…</span>
                                                 : kmReal1
                                                   ? <span className="text-[9px] text-green-600">{kmReal1} km</span>
-                                                  : <button onClick={() => calcularKmSemana(chaveSem, atends, airbnbEndereco[chaveSem])} className="text-[9px] text-blue-500 hover:underline">📍 calc</button>
+                                                  : <button onClick={() => calcularKmSemana(chaveSem, atends)} className="text-[9px] text-blue-500 hover:underline">📍 calc</button>
                                               }
                                             </td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(custoKmUn1)}/dia</td>
@@ -4455,83 +4491,73 @@ function LogisticaPage() {
                                             <td className="pt-1 pr-3" colSpan={3}>Total opção 1</td>
                                             <td className={cn("pt-1 text-right tabular-nums", !op2MaisBarata ? "text-green-700" : "text-gray-700")}>{fmtR(custoDeslocamento)}</td>
                                           </tr>
-                                          {/* ── Opção 2: com Airbnb ── */}
-                                          {noitesNecessarias > 0 && (<>
-                                          <tr className="text-gray-600">
+                                          {/* ── Opções Airbnb (dinâmico) ── */}
+                                          {noitesNecessarias > 0 && opcoesAirbnb.map((op, idx) => (<>
+                                          <tr key={`airbnb-header-${idx}`} className="text-gray-600">
                                             <td className="pt-3 pr-3 font-medium text-gray-700" colSpan={4}>
-                                              <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">🏠 Opção 2 — Airbnb na região</span>
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-[10px] uppercase tracking-wide text-orange-400 font-semibold">
+                                                  🏠 {opcoesAirbnb.length > 1 ? `Airbnb ${idx + 1}` : "Airbnb na região"}
+                                                  {op.endereco && <span className="ml-1 text-[9px] font-normal text-gray-400 normal-case tracking-normal truncate max-w-[180px] inline-block align-bottom">{op.endereco.split(',')[0]}</span>}
+                                                </span>
+                                                {/* Botão calc km desta opção */}
+                                                {op.endereco?.trim() && !op.km && (
+                                                  <button
+                                                    onClick={() => calcularKmSemana(chaveSem, atends, op.endereco, idx)}
+                                                    disabled={estaCalculandoKm}
+                                                    className="text-[9px] text-orange-500 hover:underline disabled:opacity-50"
+                                                  >
+                                                    {estaCalculandoKm ? "calc…" : "📍 calc km"}
+                                                  </button>
+                                                )}
+                                              </div>
                                             </td>
                                           </tr>
-                                          {/* Combustível da opção 2 — só exibe quando km2 calculado */}
-                                          {temAirbnb && (
-                                          <tr className="text-gray-600">
+                                          {op.endereco?.trim() && (
+                                          <tr key={`airbnb-comb-${idx}`} className="text-gray-600">
                                             <td className="py-0.5 pr-3">
                                               Combustível (a partir do Airbnb)
-                                              {kmReal2
-                                                ? <span className="ml-1 text-[9px] text-green-600 font-medium">📍 {kmReal2} km reais</span>
-                                                : <span className="ml-1 text-[9px] text-gray-400">clique calc ↑</span>
-                                              }
+                                              {op.km ? <span className="ml-1 text-[9px] text-green-600 font-medium">📍 {op.km} km reais</span> : <span className="ml-1 text-[9px] text-gray-400">clique calc ↑</span>}
                                             </td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">
-                                              {estaCalculandoKm
-                                                ? <span className="text-[9px] text-blue-500 animate-pulse">calc…</span>
-                                                : kmReal2
-                                                  ? <span className="text-[9px] text-green-600">{kmReal2} km</span>
-                                                  : <span className="text-[9px] text-gray-400">—</span>
-                                              }
+                                              {op.km ? <span className="text-[9px] text-green-600">{op.km} km</span> : <span className="text-[9px] text-gray-400">—</span>}
                                             </td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums">
-                                              {kmReal2 ? `${fmtR(kmReal2 * configCusto.custoPorKm / Math.max(diasComAtend,1))}/dia` : "—"}
-                                            </td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">
-                                              {kmReal2 ? fmtR(kmReal2 * configCusto.custoPorKm) : "—"}
-                                            </td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums">{op.km ? `${fmtR(op.km * configCusto.custoPorKm / Math.max(diasComAtend,1))}/dia` : "—"}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{op.comb !== undefined ? fmtR(op.comb) : "—"}</td>
                                           </tr>
                                           )}
-                                          {/* Pedágios opção 2: ida no 1º dia + volta no último dia */}
-                                          <tr className="text-gray-600">
-                                            <td className="py-0.5 pr-3 text-gray-500">
-                                              Pedágios (ida 1º dia + volta último)
-                                            </td>
-                                            <td className="py-0.5 pr-3 text-right tabular-nums text-[9px] text-gray-400">
-                                              <span title="Ida: Via Lagos + Manilha | Volta: Ponte + Via Lagos">1×ida + 1×volta</span>
-                                            </td>
+                                          <tr key={`airbnb-ped-${idx}`} className="text-gray-600">
+                                            <td className="py-0.5 pr-3 text-gray-500">Pedágios (ida 1º dia + volta último)</td>
+                                            <td className="py-0.5 pr-3 text-right tabular-nums text-[9px] text-gray-400"><span title="Ida: Via Lagos + Manilha | Volta: Ponte + Via Lagos">1×ida + 1×volta</span></td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums text-[9px] text-gray-400">{fmtR(pedagioIda2 + pedagioVolta2 + (configCusto.temAtendBarra ? configCusto.pedagioLinhaAmarela * 2 : 0))}</td>
                                             <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(custoPedagios2)}</td>
                                           </tr>
-                                          <tr className="text-gray-600">
+                                          <tr key={`airbnb-hosp-${idx}`} className="text-gray-600">
                                             <td className="py-0.5 pr-3">
                                               Hospedagem
-                                              {temValorAirbnb
-                                                ? <span className="ml-1 text-[9px] text-blue-600 font-medium">✎ valor real</span>
-                                                : <span className="ml-1 text-[9px] text-gray-400">est.</span>
-                                              }
+                                              {op.temValor ? <span className="ml-1 text-[9px] text-blue-600 font-medium">✎ valor real</span> : <span className="ml-1 text-[9px] text-gray-400">est.</span>}
                                             </td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">
-                                              {temValorAirbnb
-                                                ? <span className="text-[9px] text-blue-600">total</span>
-                                                : <span>{noitesNecessarias} noite{noitesNecessarias !== 1 ? "s" : ""}</span>
-                                              }
+                                              {op.temValor ? <span className="text-[9px] text-blue-600">total</span> : <span>{noitesNecessarias} noite{noitesNecessarias !== 1 ? "s" : ""}</span>}
                                             </td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">
-                                              {temValorAirbnb
-                                                ? <span className="text-[9px] text-blue-600">{fmtR(airbnbValorReal / Math.max(noitesNecessarias, 1))}/noite</span>
-                                                : fmtR(configCusto.airbnbPorNoite)
-                                              }
+                                              {op.temValor ? <span className="text-[9px] text-blue-600">{fmtR(op.valNum / Math.max(noitesNecessarias,1))}/noite</span> : fmtR(configCusto.airbnbPorNoite)}
                                             </td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(custoHospedagem)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(op.hospedagem)}</td>
                                           </tr>
-                                          <tr className="text-gray-600">
+                                          <tr key={`airbnb-ref-${idx}`} className="text-gray-600">
                                             <td className="py-0.5 pr-3">Refeições fora</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{diasComAtend} dia{diasComAtend !== 1 ? "s" : ""}</td>
                                             <td className="py-0.5 pr-3 text-right tabular-nums">{fmtR(configCusto.refeicaoFora)}</td>
-                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(custoRefeicoes)}</td>
+                                            <td className="py-0.5 text-right tabular-nums font-semibold">{fmtR(op.refeicoes)}</td>
                                           </tr>
-                                          <tr className="text-gray-500 font-semibold border-t border-gray-200">
-                                            <td className="pt-1 pr-3" colSpan={3}>Total opção 2{!temAirbnb && <span className="ml-1 text-[9px] font-normal text-gray-400">(sem combustível — add endereço)</span>}</td>
-                                            <td className={cn("pt-1 text-right tabular-nums", op2MaisBarata ? "text-blue-700" : "text-gray-700")}>{fmtR(totalOp2Exibir)}</td>
+                                          <tr key={`airbnb-total-${idx}`} className="text-gray-500 font-semibold border-t border-gray-200">
+                                            <td className="pt-1 pr-3" colSpan={3}>Total {opcoesAirbnb.length > 1 ? `Airbnb ${idx+1}` : "Airbnb"}{!op.endereco?.trim() && <span className="ml-1 text-[9px] font-normal text-gray-400">(sem combustível — add endereço)</span>}</td>
+                                            <td className={cn("pt-1 text-right tabular-nums", op.total < custoDeslocamento ? "text-orange-600" : "text-gray-700")}>{fmtR(op.total)}</td>
                                           </tr>
-                                          {/* Comparativo final */}
+                                          </>))}
+                                          {/* ── Comparativo final ── */}
+                                          {noitesNecessarias > 0 && opcoesAirbnb.length > 0 && (
                                           <tr>
                                             <td colSpan={4} className="pt-3 pb-1">
                                               <div className="rounded-xl border border-gray-200 overflow-hidden">
@@ -4540,30 +4566,42 @@ function LogisticaPage() {
                                                   <span className="text-right">Total</span>
                                                   <span className="text-right">Diferença</span>
                                                 </div>
-                                                <div className={cn(
-                                                  "grid grid-cols-3 px-3 py-2 text-xs font-medium border-b border-gray-100",
-                                                  !op2MaisBarata ? "bg-green-50 text-green-800" : "text-gray-600"
-                                                )}>
-                                                  <span className="flex items-center gap-1">🚗 Deslocamento{!op2MaisBarata && <span className="text-[9px] font-bold bg-green-200 text-green-800 rounded px-1">✓ Melhor</span>}</span>
-                                                  <span className="text-right font-bold tabular-nums">{fmtR(custoDeslocamento)}</span>
-                                                  <span className={cn("text-right tabular-nums", !op2MaisBarata ? "text-green-700 font-bold" : "text-red-500")}>
-                                                    {!op2MaisBarata ? `−${fmtR(Math.abs(diffFinal))}` : `+${fmtR(Math.abs(diffFinal))}`}
-                                                  </span>
-                                                </div>
-                                                <div className={cn(
-                                                  "grid grid-cols-3 px-3 py-2 text-xs font-medium",
-                                                  op2MaisBarata ? "bg-blue-50 text-blue-800" : "text-gray-600"
-                                                )}>
-                                                  <span className="flex items-center gap-1">🏠 Airbnb{op2MaisBarata && <span className="text-[9px] font-bold bg-blue-200 text-blue-800 rounded px-1">✓ Melhor</span>}</span>
-                                                  <span className="text-right font-bold tabular-nums">{fmtR(totalOp2Exibir)}</span>
-                                                  <span className={cn("text-right tabular-nums", op2MaisBarata ? "text-blue-700 font-bold" : "text-red-500")}>
-                                                    {op2MaisBarata ? `−${fmtR(Math.abs(diffFinal))}` : `+${fmtR(Math.abs(diffFinal))}`}
-                                                  </span>
-                                                </div>
+                                                {/* Linha Opção 1 */}
+                                                {(() => {
+                                                  const melhorGlobal = Math.min(custoDeslocamento, melhorTotal);
+                                                  const isMelhor1 = custoDeslocamento <= melhorTotal;
+                                                  return (
+                                                  <div className={cn("grid grid-cols-3 px-3 py-2 text-xs font-medium border-b border-gray-100", isMelhor1 ? "bg-green-50 text-green-800" : "text-gray-600")}>
+                                                    <span className="flex items-center gap-1">🚗 Deslocamento{isMelhor1 && <span className="text-[9px] font-bold bg-green-200 text-green-800 rounded px-1">✓ Melhor</span>}</span>
+                                                    <span className="text-right font-bold tabular-nums">{fmtR(custoDeslocamento)}</span>
+                                                    <span className={cn("text-right tabular-nums", isMelhor1 ? "text-green-700 font-bold" : "text-red-500")}>
+                                                      {isMelhor1 ? `−${fmtR(custoDeslocamento - melhorGlobal)}` : `+${fmtR(custoDeslocamento - melhorGlobal)}`}
+                                                    </span>
+                                                  </div>
+                                                  );
+                                                })()}
+                                                {/* Linhas Airbnbs */}
+                                                {opcoesAirbnb.map((op, idx) => {
+                                                  const melhorGlobal = Math.min(custoDeslocamento, melhorTotal);
+                                                  const isMelhor = op.total === melhorTotal && op.total < custoDeslocamento;
+                                                  const isLast = idx === opcoesAirbnb.length - 1;
+                                                  return (
+                                                  <div key={idx} className={cn("grid grid-cols-3 px-3 py-2 text-xs font-medium", !isLast && "border-b border-gray-100", isMelhor ? "bg-orange-50 text-orange-800" : "text-gray-600")}>
+                                                    <span className="flex items-center gap-1 truncate">
+                                                      🏠 {opcoesAirbnb.length > 1 ? `Airbnb ${idx+1}` : "Airbnb"}
+                                                      {isMelhor && <span className="text-[9px] font-bold bg-orange-200 text-orange-800 rounded px-1 shrink-0">✓ Melhor</span>}
+                                                    </span>
+                                                    <span className="text-right font-bold tabular-nums">{fmtR(op.total)}</span>
+                                                    <span className={cn("text-right tabular-nums", isMelhor ? "text-orange-700 font-bold" : "text-red-500")}>
+                                                      {op.total <= melhorGlobal ? `−${fmtR(melhorGlobal - op.total)}` : `+${fmtR(op.total - melhorGlobal)}`}
+                                                    </span>
+                                                  </div>
+                                                  );
+                                                })}
                                               </div>
                                             </td>
                                           </tr>
-                                          </>)}
+                                          )}
                                           {noitesNecessarias === 0 && (
                                           <tr>
                                             <td colSpan={4} className="pt-2">
