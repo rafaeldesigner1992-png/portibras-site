@@ -4358,11 +4358,20 @@ function LogisticaPage() {
                                           type="text"
                                           placeholder="Endereço (para calc. km)…"
                                           value={op.endereco}
-                                          onChange={e => setAirbnbOpcoes(prev => {
-                                            const arr = [...(prev[chaveSem] ?? [])];
-                                            arr[idx] = { ...arr[idx], endereco: e.target.value, km: undefined };
-                                            return { ...prev, [chaveSem]: arr };
-                                          })}
+                                          onChange={e => {
+                                            const novoEndereco = e.target.value;
+                                            setAirbnbOpcoes(prev => {
+                                              const arr = [...(prev[chaveSem] ?? [])];
+                                              arr[idx] = { ...arr[idx], endereco: novoEndereco, km: undefined };
+                                              return { ...prev, [chaveSem]: arr };
+                                            });
+                                          }}
+                                          onBlur={e => {
+                                            const addr = e.target.value.trim();
+                                            if (addr.length > 10) {
+                                              calcularKmSemana(chaveSem, atends, addr, idx);
+                                            }
+                                          }}
                                           className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-orange-400 bg-white min-w-0"
                                         />
                                         {op.km && (
