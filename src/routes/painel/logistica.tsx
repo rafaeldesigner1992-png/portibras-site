@@ -1946,14 +1946,16 @@ function LogisticaPage() {
       automatico: false,
     };
     if (custoEditando) {
-      await supabase.from("pedido_custos").update(payload).eq("id", custoEditando.id);
-      setCustosPedido(cs => cs.map(c => c.id === custoEditando.id ? { ...c, ...payload } : c));
+      const { error } = await supabase.from("pedido_custos").update(payload).eq("id", custoEditando.id);
+      if (error) { console.error("[custos] update error:", error); alert("Erro ao salvar: " + error.message); setSalvandoCusto(false); return; }
       setCustoEditando(null);
     } else {
-      const { data } = await supabase.from("pedido_custos").insert(payload).select().single();
-      if (data) setCustosPedido(cs => [data as PedidoCusto, ...cs]);
+      const { error } = await supabase.from("pedido_custos").insert(payload);
+      if (error) { console.error("[custos] insert error:", error); alert("Erro ao salvar: " + error.message); setSalvandoCusto(false); return; }
     }
     setFormCusto({ categoria: "material", descricao: "", valor: "", quantidade: "1", obs: "" });
+    // Recarrega direto do banco para garantir lista atualizada
+    await carregarCustos(pedidoAberto.id);
     setSalvandoCusto(false);
   }
 
