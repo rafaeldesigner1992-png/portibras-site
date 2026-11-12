@@ -2071,6 +2071,7 @@ function LogisticaPage() {
         titulo      : formAtend.titulo,
         id_cliente  : idCliente,
         tecnico     : formAtend.responsaveis[0] ?? null,
+        tecnico_nome: formAtend.responsaveis?.join(", ") || null,
         descricao   : formAtend.atividade || formAtend.descricao || null,
         atendimento_id: selAtend?.id ?? "novo",
       };

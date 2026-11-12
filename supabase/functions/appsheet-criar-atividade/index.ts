@@ -105,15 +105,16 @@ serve(async (req) => {
 
   try {
     const body = await req.json() as {
-      tipo       : "servico" | "vistoria";
-      data        : string | null;        // YYYY-MM-DD
-      hora_inicio : string | null;        // HH:MM
-      endereco    : string | null;
-      titulo      : string;              // nome do condomínio / título do atendimento
-      id_cliente  : string | null;       // ID_Cliente da MASTER_CLIENTES
-      tecnico     : string | null;       // nome do responsável principal
-      descricao   : string | null;       // atividade / descrição
-      atendimento_id: string;            // ID do atendimento no Supabase (para rastreio)
+      tipo          : "servico" | "vistoria";
+      data          : string | null;        // YYYY-MM-DD
+      hora_inicio   : string | null;        // HH:MM
+      endereco      : string | null;
+      titulo        : string;               // nome do condomínio / título do atendimento
+      id_cliente    : string | null;        // ID_Cliente da MASTER_CLIENTES
+      tecnico       : string | null;        // nome do responsável principal (pode ser UUID)
+      tecnico_nome  : string | null;        // nome legível do responsável principal
+      descricao     : string | null;        // atividade / descrição
+      atendimento_id: string;               // ID do atendimento no Supabase (para rastreio)
     };
 
     const { tipo } = body;
@@ -126,10 +127,12 @@ serve(async (req) => {
       //          Descricao_servico, Tecnico_Responsavel, Total_Manutencao,
       //          Total_Execucoes, Total_Inviabilidade, Total_Condenacoes, Resumo_Materiais_DTE
       const id = gerarId();
+      const nomeCondominio = body.titulo;
+      const nomeTecnico    = body.tecnico_nome ?? body.tecnico ?? "";
       const row = [
         id,                                                   // ID_Execucao
         formatarData(body.data),                              // Data
-        body.id_cliente ?? body.titulo,                      // Condominio (ID_Cliente ou nome)
+        nomeCondominio,                                       // Condominio (nome do condomínio)
         body.endereco ?? "",                                  // Endereco_Completo
         formatarHorarioExecucao(body.data, body.hora_inicio), // Hora_Inicio
         "",                                                   // Hora_Termino
@@ -137,8 +140,8 @@ serve(async (req) => {
         "",                                                   // Nome_Acompanhante
         "Em Andamento 🚧",                                    // Status
         "",                                                   // Trigger_Bot
-        body.descricao ?? body.titulo,                        // Descricao_servico
-        body.tecnico ?? "",                                   // Tecnico_Responsavel
+        body.descricao ?? "",                                 // Descricao_servico
+        nomeTecnico,                                          // Tecnico_Responsavel
         "0", "0", "0", "0",                                   // Totais
         "",                                                   // Resumo_Materiais_DTE
       ];
@@ -155,12 +158,13 @@ serve(async (req) => {
       // Colunas: Numero_Laudo, ID_Vistoria, ID_Cliente, Data_Vistoria,
       //          Tecnico_Responsavel, Status_DTS, Arquivo_DTS, Gatilho_DTS, Resumo_Materiais_DTS
       const id = gerarId();
+      const nomeTecnicoV = body.tecnico_nome ?? body.tecnico ?? "";
       const row = [
         "",                              // Numero_Laudo (AppSheet preenche)
         id,                              // ID_Vistoria
-        body.id_cliente ?? body.titulo,  // ID_Cliente
+        body.titulo,                     // ID_Cliente (nome do condomínio)
         formatarData(body.data),         // Data_Vistoria
-        body.tecnico ?? "",              // Tecnico_Responsavel
+        nomeTecnicoV,                    // Tecnico_Responsavel
         "Aguardando DTS",                // Status_DTS
         "",                              // Arquivo_DTS
         "",                              // Gatilho_DTS
