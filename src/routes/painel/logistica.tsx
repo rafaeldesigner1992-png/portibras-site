@@ -1014,24 +1014,36 @@ function LogisticaPage() {
   // chave: "YYYY-WNN" (ano + número da semana ISO)
   const [semanasFechadas, setSemanasFechadas] = useState<Record<string, boolean>>({});
   const [carregandoSemanas, setCarregandoSemanas] = useState(false);
-  // Parâmetros de custo logístico (configuráveis)
-  const [configCusto, setConfigCusto] = useState({
-    kmBase: 180,          // km São Pedro da Aldeia → Região Lagos (ida+volta)
-    kmPorLitro: 10,       // média de consumo do veículo (km/L)
-    precoCombustivel: 6.50, // preço médio do combustível (R$/L)
-    custoPorKm: 0.65,     // R$/km — calculado automaticamente: precoCombustivel / kmPorLitro
-    airbnbPorNoite: 150,  // R$/noite (média Airbnb região)
-    refeicaoFora: 60,     // R$/dia extra em alimentação quando fora
-    // Pedágios rota padrão:
-    // IDA:   Via Lagos + Manilha (Niterói→Itaboraí)
-    // VOLTA: Ponte Rio-Niterói + Via Lagos
-    pedagioViaLagos: 36.80,  // Via Lagos RJ-124 (1 praça, 2 eixos, dias úteis, ago/2025)
-    pedagioManilha: 10.80,   // BR-101 praça São Gonçalo/Manilha (Arteris Fluminense, set/2026)
-    pedagogioPonte: 6.60,    // Ponte Rio-Niterói (mar/2026)
-    // Linha Amarela: apenas quando há atendimento na Barra da Tijuca (ida+volta)
+  // Parâmetros de custo logístico — carregados do localStorage na primeira renderização
+  const CONFIG_CUSTO_KEY = "portibras_config_custo_v1";
+  const configCustoDefault = {
+    kmBase: 180,
+    kmPorLitro: 10,
+    precoCombustivel: 6.50,
+    custoPorKm: 0.65,
+    airbnbPorNoite: 150,
+    refeicaoFora: 60,
+    pedagioViaLagos: 36.80,
+    pedagioManilha: 10.80,
+    pedagogioPonte: 6.60,
     pedagioLinhaAmarela: 7.50,
-    temAtendBarra: false,    // flag: semana tem cliente na Barra?
-  });
+    temAtendBarra: false,
+  };
+  function carregarConfigCusto() {
+    try {
+      const raw = localStorage.getItem(CONFIG_CUSTO_KEY);
+      if (raw) return { ...configCustoDefault, ...JSON.parse(raw) };
+    } catch {}
+    return configCustoDefault;
+  }
+  const [configCusto, setConfigCustoState] = useState(carregarConfigCusto);
+  function setConfigCusto(update: typeof configCustoDefault | ((prev: typeof configCustoDefault) => typeof configCustoDefault)) {
+    setConfigCustoState(prev => {
+      const next = typeof update === "function" ? update(prev) : update;
+      try { localStorage.setItem(CONFIG_CUSTO_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
   const [modalConfigCusto, setModalConfigCusto] = useState(false);
   // Opção 1: km real partindo de São Pedro (sempre)
   const [kmOpcao1, setKmOpcao1] = useState<Record<string, number>>({});
