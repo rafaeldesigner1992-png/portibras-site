@@ -378,6 +378,81 @@ async function syncContratos(token: string) {
   return rows.length;
 }
 
+// ─── Sync: NFS-e emitidas ────────────────────────────────────────────────────
+// Endpoint: GET /v1/fiscal/nfs-e — filtra por data_emissao e situacao=EMITIDA
+// Fonte de verdade para o "Realizado" da meta comercial.
+async function syncNFSe(token: string) {
+  const hoje = new Date();
+  // Busca 2 anos de histórico
+  const inicio = new Date(hoje.getFullYear() - 2, 0, 1).toISOString().slice(0, 10);
+  const fim = hoje.toISOString().slice(0, 10);
+
+  let notas: unknown[] = [];
+  try {
+    // Tenta endpoint mais específico com filtro de situação
+    let data: unknown;
+    try {
+      data = await apiCA(
+        `/v1/fiscal/nfs-e?data_emissao_de=${inicio}&data_emissao_ate=${fim}&situacao=EMITIDA&pagina=1&tamanho_pagina=500`,
+        token
+      );
+    } catch {
+      // Fallback sem filtro de situação
+      data = await apiCA(
+        `/v1/fiscal/nfs-e?data_emissao_de=${inicio}&data_emissao_ate=${fim}&pagina=1&tamanho_pagina=500`,
+        token
+      );
+    }
+    notas = Array.isArray(data)
+      ? data
+      : (data as any)?.itens ?? (data as any)?.content ?? (data as any)?.items ?? (data as any)?.data ?? [];
+
+    // Pagina se necessário
+    const totalItens: number = (data as any)?.itens_totais ?? (data as any)?.total ?? notas.length;
+    if (totalItens > 500) {
+      let pagina = 2;
+      while (notas.length < totalItens && pagina <= 20) {
+        const extra = await apiCA(
+          `/v1/fiscal/nfs-e?data_emissao_de=${inicio}&data_emissao_ate=${fim}&situacao=EMITIDA&pagina=${pagina}&tamanho_pagina=500`,
+          token
+        );
+        const items: unknown[] = Array.isArray(extra)
+          ? extra
+          : (extra as any)?.itens ?? (extra as any)?.content ?? (extra as any)?.items ?? (extra as any)?.data ?? [];
+        if (items.length === 0) break;
+        notas.push(...items);
+        pagina++;
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao buscar NFS-e:", e);
+    return 0;
+  }
+
+  if (notas.length === 0) return 0;
+
+  // Log do primeiro item para diagnóstico
+  console.log("[syncNFSe] Exemplo de NFS-e recebida:", JSON.stringify(notas[0], null, 2));
+
+  const rows = (notas as any[]).map((n) => ({
+    id: String(n.id ?? n.numero_rps ?? n.numero),
+    numero: n.numero ?? n.numero_nfse ?? n.numero_rps ?? null,
+    numero_rps: n.numero_rps ?? null,
+    cliente_nome: n.tomador?.nome ?? n.cliente?.nome ?? n.customer?.name ?? "—",
+    cliente_documento: n.tomador?.documento ?? n.tomador?.cnpj ?? n.tomador?.cpf ?? n.cliente?.documento ?? null,
+    valor_servicos: Number(n.valor_servicos ?? n.valor_total ?? n.totalValue ?? n.total ?? 0),
+    situacao: n.situacao ?? n.status ?? "EMITIDA",
+    data_emissao: n.data_emissao ?? n.emissionDate ?? n.data ?? null,
+    numero_nota: n.numero_nota ?? n.numero_nfse ?? null,
+    codigo_verificacao: n.codigo_verificacao ?? null,
+    sincronizado_em: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase.from("ca_nfse").upsert(rows, { onConflict: "id" });
+  if (error) console.error("Erro ao salvar NFS-e:", error);
+  return rows.length;
+}
+
 // ─── Handler principal ───────────────────────────────────────────────────────
 serve(async (req) => {
   const corsHeaders = {
@@ -429,12 +504,13 @@ serve(async (req) => {
       });
     }
 
-    const [nVendas, nCobrancas, nContratos, nSaldos, nContasPagar] = await Promise.all([
+    const [nVendas, nCobrancas, nContratos, nSaldos, nContasPagar, nNFSe] = await Promise.all([
       syncVendas(token),
       syncCobrancas(token),
       syncContratos(token),
       syncSaldos(token),
       syncContasPagar(token),
+      syncNFSe(token),
     ]);
 
     await supabase.from("configuracoes").upsert(
@@ -443,7 +519,7 @@ serve(async (req) => {
     );
 
     return new Response(
-      JSON.stringify({ ok: true, vendas: nVendas, cobrancas: nCobrancas, contratos: nContratos, saldos: nSaldos, contas_pagar: nContasPagar }),
+      JSON.stringify({ ok: true, vendas: nVendas, cobrancas: nCobrancas, contratos: nContratos, saldos: nSaldos, contas_pagar: nContasPagar, nfse: nNFSe }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {

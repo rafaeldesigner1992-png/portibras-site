@@ -67,17 +67,27 @@ serve(async (req) => {
       // Meta = ponto_equilíbrio × (1 + margem/100)
       const metaVendas = pontoEquilibrio * (1 + margemPct / 100);
 
-      // Receitas do mês atual (campo data é tipo DATE — comparar como YYYY-MM-DD)
+      // Receitas do mês atual = NFS-e emitidas no Conta Azul (fonte de verdade)
       const agora = new Date();
       const anoMes = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
       const inicioMesStr = `${anoMes}-01`;
+      // Fim do mês: primeiro dia do próximo mês
+      const fimMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 1);
+      const fimMesStr = fimMes.toISOString().slice(0, 10);
 
-      const { data: lancamentos } = await sb
-        .from("financeiro_lancamentos")
-        .select("valor")
-        .eq("tipo", "receita")
-        .gte("data", inicioMesStr);
-      const receitaAtual = (lancamentos ?? []).reduce((s: number, l: { valor: number }) => s + l.valor, 0);
+      const { data: nfse } = await sb
+        .from("ca_nfse")
+        .select("valor_servicos, situacao")
+        .gte("data_emissao", inicioMesStr)
+        .lt("data_emissao", fimMesStr);
+
+      // Conta apenas NFS-e com situação EMITIDA (exclui canceladas, em processamento, etc.)
+      const receitaAtual = (nfse ?? [])
+        .filter((n: { situacao: string }) => {
+          const s = (n.situacao ?? "").toUpperCase();
+          return s === "EMITIDA" || s === "NORMAL" || s === "PROCESSADO" || s === "GERADA";
+        })
+        .reduce((s: number, n: { valor_servicos: number }) => s + (n.valor_servicos ?? 0), 0);
 
       return { totalCustos, totalDividas, pontoEquilibrio, margemPct, metaVendas, receitaAtual };
     }
