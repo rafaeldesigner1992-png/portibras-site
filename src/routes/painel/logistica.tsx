@@ -1054,21 +1054,24 @@ function LogisticaPage() {
     // Rota circular: base → paradas → base (mesma origem e destino)
     async function rotaCircular(base: string, paradas: string[]): Promise<number> {
       if (paradas.length === 0) return 0;
-      if (paradas.length === 1) return (await distanciaKm(base, paradas[0])) * 2;
       try {
+        const body: Record<string, unknown> = {
+          origin: { address: base },
+          destination: { address: base },
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_UNAWARE",
+          computeAlternativeRoutes: false,
+        };
+        if (paradas.length > 0) {
+          body.intermediates = paradas.map(e => ({ location: { address: e }, via: false }));
+          body.optimizeWaypointOrder = false;
+        }
         const resp = await fetch(
           `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
-            body: JSON.stringify({
-              origin: { address: base },
-              destination: { address: base },
-              intermediates: paradas.map(e => ({ location: { address: e } })),
-              travelMode: "DRIVE",
-              routingPreference: "TRAFFIC_UNAWARE",
-              computeAlternativeRoutes: false,
-            }),
+            body: JSON.stringify(body),
           }
         );
         const data = await resp.json();
@@ -1078,24 +1081,24 @@ function LogisticaPage() {
 
     // Rota aberta: origem → paradas → destino (pontos de saída e chegada diferentes)
     async function rotaAberta(origem: string, paradas: string[], destino: string): Promise<number> {
-      if (paradas.length === 0) return distanciaKm(origem, destino);
-      if (paradas.length === 1) {
-        return (await distanciaKm(origem, paradas[0])) + (await distanciaKm(paradas[0], destino));
-      }
       try {
+        const body: Record<string, unknown> = {
+          origin: { address: origem },
+          destination: { address: destino },
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_UNAWARE",
+          computeAlternativeRoutes: false,
+        };
+        if (paradas.length > 0) {
+          body.intermediates = paradas.map(e => ({ location: { address: e }, via: false }));
+          body.optimizeWaypointOrder = false;
+        }
         const resp = await fetch(
           `https://routes.googleapis.com/directions/v2:computeRoutes?key=${GMAPS_KEY}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Goog-FieldMask": "routes.distanceMeters" },
-            body: JSON.stringify({
-              origin: { address: origem },
-              destination: { address: destino },
-              intermediates: paradas.map(e => ({ location: { address: e } })),
-              travelMode: "DRIVE",
-              routingPreference: "TRAFFIC_UNAWARE",
-              computeAlternativeRoutes: false,
-            }),
+            body: JSON.stringify(body),
           }
         );
         const data = await resp.json();
