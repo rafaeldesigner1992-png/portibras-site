@@ -312,7 +312,7 @@ serve(async (req) => {
         body.titulo,     // ID_Cliente (nome do condomínio)
         dataFormatada,   // Data_Vistoria
         nomeTecnicoV,    // Tecnico_Responsavel
-        "Pendente",      // Status_DTS
+        "Aguardando DTS", // Status_DTS
         "",              // Arquivo_DTS
         "",              // Gatilho_DTS
         "",              // Resumo_Materiais_DTS
