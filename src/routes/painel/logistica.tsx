@@ -2162,25 +2162,33 @@ function LogisticaPage() {
     setGerandoAppSheet(tipo);
     setAppSheetStatus(null);
     try {
-      // Tenta encontrar o cliente_id pelo título/nome
+      // Tenta encontrar o cliente_id e razão social pelo título/nome
       const nomeCliente = formAtend.titulo || formAtend.cliente_nome || "";
       let idCliente: string | null = null;
+      let razaoSocial: string | null = null;
       if (nomeCliente) {
         const { data: clienteMatch } = await supabase
           .from("clientes")
-          .select("id")
+          .select("id, razao_social, nome")
           .ilike("nome", `%${nomeCliente.split("—")[0].trim()}%`)
           .limit(1)
           .maybeSingle();
         idCliente = clienteMatch?.id ?? null;
+        razaoSocial = clienteMatch?.razao_social || clienteMatch?.nome || null;
       }
+
+      // Monta título: "Vistoria — [Razão Social ou Nome]"
+      const nomeParaUsar = razaoSocial || nomeCliente.split("—").pop()?.trim() || nomeCliente;
+      const tituloVistoria = tipo === "vistoria"
+        ? `Vistoria — ${nomeParaUsar}`
+        : formAtend.titulo;
 
       const payload = {
         tipo,
         data        : formAtend.data_agendada || null,
         hora_inicio : formAtend.hora_inicio || null,
         endereco    : formAtend.endereco || null,
-        titulo      : formAtend.titulo,
+        titulo      : tituloVistoria,
         id_cliente  : idCliente,
         tecnico     : formAtend.responsaveis[0] ?? null,
         tecnico_nome: formAtend.responsaveis?.join(", ") || null,

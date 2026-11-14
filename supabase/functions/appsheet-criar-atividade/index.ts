@@ -316,6 +316,7 @@ serve(async (req) => {
         "",              // Arquivo_DTS
         "",              // Gatilho_DTS
         "",              // Resumo_Materiais_DTS
+        body.endereco ?? "", // Endereco
       ];
 
       await appendRow(token, SHEET_VISTORIA_ID, ABA_VISTORIA, row);
