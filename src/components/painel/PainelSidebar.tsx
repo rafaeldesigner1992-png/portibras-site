@@ -21,6 +21,7 @@ import {
   Search,
   AlertTriangle,
   Settings,
+  Smartphone,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -41,6 +42,7 @@ const MENU = [
   { modulo: "organograma", label: "Organograma / RH",  href: "/painel/organograma",   icon: GitBranch },
   { modulo: "crm",         label: "Script de Vendas",  href: "/painel/script-vendas", icon: BookOpen },
   { modulo: "marketing",   label: "Marketing / Ads",   href: "/painel/marketing",     icon: Megaphone },
+  { modulo: "dashboard",   label: "📱 Mobile",          href: "/painel/mobile",        icon: Smartphone },
 ];
 
 const STORAGE_KEY = "portibras_sidebar_collapsed";
