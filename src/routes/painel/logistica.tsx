@@ -4395,6 +4395,153 @@ function LogisticaPage() {
             );
           })()}
 
+          {/* ── Painel por Bairro ── */}
+          {(() => {
+            // Função para parsear endereço BR: "Rua X, 123 - Bairro, Cidade - UF" ou "Rua X, Bairro - Cidade/UF"
+            function parsearEndereco(end: string | null): { rua: string; bairro: string; cidade: string; estado: string; zona: string } {
+              const vazio = { rua: "", bairro: "", cidade: "", estado: "", zona: "" };
+              if (!end || !end.trim()) return vazio;
+              const str = end.trim();
+
+              // Padrão: "Rua X, N - Bairro, Cidade - UF" ou "Rua X - Bairro - Cidade/UF"
+              const matchCompleto = str.match(/^(.+?),?\s*[-–]\s*(.+?),\s*(.+?)\s*[-–]\s*([A-Z]{2})\s*(?:,.*)?$/);
+              if (matchCompleto) {
+                const [, ruaNum, bairro, cidade, uf] = matchCompleto;
+                return { rua: ruaNum.trim(), bairro: bairro.trim(), cidade: cidade.trim(), estado: uf.trim(), zona: inferirZona(bairro.trim(), cidade.trim()) };
+              }
+              // Padrão: "Bairro, Cidade - UF" (sem rua)
+              const matchSimples = str.match(/^(.+?),\s*(.+?)\s*[-–]\s*([A-Z]{2})\s*(?:,.*)?$/);
+              if (matchSimples) {
+                const [, bairro, cidade, uf] = matchSimples;
+                return { rua: "", bairro: bairro.trim(), cidade: cidade.trim(), estado: uf.trim(), zona: inferirZona(bairro.trim(), cidade.trim()) };
+              }
+              // Padrão: só cidade ou bairro sem separadores claros
+              const partes = str.split(/[-–,]/);
+              if (partes.length >= 2) {
+                return { rua: partes[0]?.trim() || "", bairro: partes[1]?.trim() || "", cidade: partes[2]?.trim() || "", estado: partes[3]?.trim() || "", zona: "" };
+              }
+              return { ...vazio, bairro: str };
+            }
+
+            // Mapeamento de zonas para Rio de Janeiro (expandível)
+            function inferirZona(bairro: string, cidade: string): string {
+              const b = bairro.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+              const cidadeRio = cidade.toLowerCase().includes("rio de janeiro") || cidade.toLowerCase().includes("rio");
+
+              if (!cidadeRio) return "";
+
+              const zonas: Record<string, string[]> = {
+                "Zona Sul": ["ipanema","leblon","copacabana","leme","flamengo","laranjeiras","catete","gloria","botafogo","humaita","jardim botanico","gavea","lagoa","sao conrado","barra da tijuca","recreio","grumari","vidigal","rocinha","urca","cosme velho","santa teresa"],
+                "Zona Norte": ["tijuca","vila isabel","andarai","grajaú","maracana","sao cristovao","meier","riachuelo","ramos","penha","madureira","oswaldo cruz","bangu","campo grande","santa cruz","ilha do governador","brás de pina","olaria","irajá","coelho neto","pavuna","cordovil","guadalupe","deodoro","realengo","padre miguel","senador camara","sepetiba","guaratiba"],
+                "Zona Oeste": ["barra da tijuca","recreio dos bandeirantes","recreio","jacarepagua","anil","freguesia","taquara","curicica","pechincha","tanque","vargem grande","vargem pequena","grumari","barra","itanhangá","itanhanga","prainha","joatinga","camorim","varginha","campo grande","santa cruz","bangu","realengo","deodoro","cosmos","paciencia","sepetiba","guaratiba","Ilha de Guaratiba"],
+                "Centro": ["centro","lapa","santa teresa","estacio","cidade nova","sao cristovao","catumbi","rio comprido"],
+              };
+
+              for (const [zona, bairros] of Object.entries(zonas)) {
+                if (bairros.some(bz => b.includes(bz) || bz.includes(b))) return zona;
+              }
+              return "Outras regiões";
+            }
+
+            // Montar lista de atendimentos ativos com localização
+            const atendAtivos = atendimentos.filter(a => a.status !== "Concluído" && a.status !== "Cancelado");
+            const comEndereco = atendAtivos.filter(a => a.endereco);
+            if (comEndereco.length === 0) return null;
+
+            // Agrupar por Estado > Cidade > Zona > Bairro
+            type GrupoLocal = { atend: Atendimento; parsed: ReturnType<typeof parsearEndereco> };
+            const grupos: Record<string, Record<string, Record<string, Record<string, GrupoLocal[]>>>> = {};
+
+            comEndereco.forEach(a => {
+              const p = parsearEndereco(a.endereco);
+              const estado = p.estado || "Sem estado";
+              const cidade = p.cidade || "Sem cidade";
+              const zona = p.zona || (cidade ? "" : "");
+              const bairro = p.bairro || "Sem bairro";
+
+              if (!grupos[estado]) grupos[estado] = {};
+              if (!grupos[estado][cidade]) grupos[estado][cidade] = {};
+              const zonaKey = zona || "—";
+              if (!grupos[estado][cidade][zonaKey]) grupos[estado][cidade][zonaKey] = {};
+              if (!grupos[estado][cidade][zonaKey][bairro]) grupos[estado][cidade][zonaKey][bairro] = [];
+              grupos[estado][cidade][zonaKey][bairro].push({ atend: a, parsed: p });
+            });
+
+            const estados = Object.keys(grupos).sort();
+
+            return (
+              <div className="mb-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-blue-500" />
+                  <h2 className="text-sm font-semibold text-gray-700">Clientes por Região</h2>
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{comEndereco.length} com endereço</span>
+                  <span className="text-[10px] text-gray-400">— ideal para roteirizar agendamentos por proximidade</span>
+                </div>
+                <div className="space-y-3">
+                  {estados.map(estado => (
+                    <div key={estado} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                      {/* Estado */}
+                      <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">🗺️ {estado}</span>
+                      </div>
+                      {Object.keys(grupos[estado]).sort().map(cidade => (
+                        <div key={cidade}>
+                          {/* Cidade */}
+                          <div className="flex items-center gap-2 px-4 py-1.5 bg-blue-50 border-b border-blue-100">
+                            <span className="text-[11px] font-semibold text-blue-700">🏙️ {cidade}</span>
+                          </div>
+                          {Object.keys(grupos[estado][cidade]).sort((a, b) => a === "—" ? 1 : b === "—" ? -1 : a.localeCompare(b)).map(zona => (
+                            <div key={zona}>
+                              {/* Zona */}
+                              {zona !== "—" && (
+                                <div className="flex items-center gap-2 px-5 py-1 bg-indigo-50/50 border-b border-indigo-100/50">
+                                  <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">📍 {zona}</span>
+                                </div>
+                              )}
+                              {/* Bairros */}
+                              <div className="divide-y divide-gray-50">
+                                {Object.keys(grupos[estado][cidade][zona]).sort().map(bairro => {
+                                  const itens = grupos[estado][cidade][zona][bairro];
+                                  return (
+                                    <div key={bairro} className="px-5 py-2 hover:bg-gray-50 transition-colors">
+                                      <div className="flex items-start gap-3">
+                                        <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-[9px] font-bold text-blue-700 shrink-0">{itens.length}</div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-semibold text-gray-800 mb-1">{bairro}</p>
+                                          <div className="space-y-1">
+                                            {itens.map(({ atend: a, parsed: p }) => (
+                                              <div key={a.id} className="flex items-start gap-2 flex-wrap">
+                                                <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                                                  a.status === "Programado" ? "bg-emerald-100 text-emerald-700" :
+                                                  a.status === "Em andamento" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-500"
+                                                )}>{a.status}</span>
+                                                <span className="text-xs text-gray-700 font-medium truncate flex-1">{a.cliente_nome || a.titulo || "—"}</span>
+                                                {p.rua && <span className="text-[10px] text-gray-400 truncate max-w-[200px]">{p.rua}</span>}
+                                                {a.data_agendada && (
+                                                  <span className="text-[10px] text-emerald-600 shrink-0 tabular-nums">
+                                                    {new Date(a.data_agendada + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── Tickets em Aberto ── */}
           {/* ── Vistorias aguardando agendamento ── */}
           {(() => {
