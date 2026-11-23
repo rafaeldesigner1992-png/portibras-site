@@ -1016,6 +1016,12 @@ function LogisticaPage() {
   // chave: "YYYY-WNN" (ano + número da semana ISO)
   const [semanasFechadas, setSemanasFechadas] = useState<Record<string, boolean>>({});
   const [carregandoSemanas, setCarregandoSemanas] = useState(false);
+  // Função auxiliar de calendário — definida no nível do componente para ser acessível nos modais
+  const atendPorDiaGlobal = (dia: Date) => atendimentos.filter(a => {
+    if (!a.data_agendada) return false;
+    const ad = new Date(a.data_agendada + "T00:00:00");
+    return ad.toDateString() === dia.toDateString();
+  });
   // Parâmetros de custo logístico — carregados do localStorage na primeira renderização
   const CONFIG_CUSTO_KEY = "portibras_config_custo_v1";
   const configCustoDefault = {
@@ -5340,7 +5346,7 @@ function LogisticaPage() {
 
           {/* Modal: todos os atendimentos do dia */}
           {calDiaPopup && (() => {
-            const eventosDia = atendPorDia(calDiaPopup);
+            const eventosDia = atendPorDiaGlobal(calDiaPopup);
             const dataLabel = calDiaPopup.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
             return (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCalDiaPopup(null)}>
