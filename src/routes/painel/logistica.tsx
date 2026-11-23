@@ -634,6 +634,7 @@ const EMPTY_ATEND = {
   responsaveis: [] as string[], endereco: "", atividade: "", descricao: "",
   agendado_com_cliente: false, em_sistema: false,
   cliente_email: "", cliente_nome: "", cliente_email_cc: "",
+  cliente_id: "" as string,
 };
 
 const EMPTY_MAT = {
@@ -1750,21 +1751,17 @@ function LogisticaPage() {
     if (data) setAtendimentos(data as Atendimento[]);
     if (tickets) setTicketsAbertos(tickets as PedidoLogistico[]);
 
-    // Buscar bairros dos clientes vinculados
+    // Buscar bairros de todos os clientes, indexando por id
     if (data) {
-      const ids = [...new Set((data as Atendimento[]).map(a => a.cliente_id).filter(Boolean))] as string[];
-      if (ids.length > 0) {
-        const { data: clientes } = await supabase
-          .from("clientes")
-          .select("id, bairro, logradouro")
-          .in("id", ids);
-        if (clientes) {
-          const mapa: Record<string, { bairro: string; logradouro: string }> = {};
-          for (const c of clientes) {
-            mapa[c.id] = { bairro: c.bairro ?? "", logradouro: c.logradouro ?? "" };
-          }
-          setClientesBairros(mapa);
+      const { data: clientes } = await supabase
+        .from("clientes")
+        .select("id, bairro, endereco");
+      if (clientes) {
+        const mapa: Record<string, { bairro: string; logradouro: string }> = {};
+        for (const c of clientes) {
+          mapa[c.id] = { bairro: c.bairro ?? "", logradouro: c.endereco ?? "" };
         }
+        setClientesBairros(mapa);
       }
     }
 
@@ -2109,6 +2106,7 @@ function LogisticaPage() {
         cliente_email: (atend as any).cliente_email || "",
         cliente_nome: (atend as any).cliente_nome || "",
         cliente_email_cc: (atend as any).cliente_email_cc || "",
+        cliente_id: atend.cliente_id || "",
       });
     } else {
       setSelAtend(null);
@@ -2136,6 +2134,7 @@ function LogisticaPage() {
       cliente_nome: formAtend.cliente_nome?.trim() || null,
       cliente_email: formAtend.cliente_email?.trim() || null,
       cliente_email_cc: formAtend.cliente_email_cc?.trim() || null,
+      cliente_id: formAtend.cliente_id || null,
     };
 
     // Detecta reagendamento: se edição e data mudou
@@ -4442,16 +4441,12 @@ function LogisticaPage() {
             }
 
             const atendAtivos = atendimentos.filter(a => a.status !== "Concluído" && a.status !== "Cancelado");
-            // Incluir atendimentos que tenham cliente_id com bairro cadastrado OU endereco preenchido
-            const comLocalizacao = atendAtivos.filter(a =>
-              (a.cliente_id && clientesBairros[a.cliente_id]?.bairro) || a.endereco
-            );
-            if (comLocalizacao.length === 0) return null;
+            if (atendAtivos.length === 0) return null;
 
             // Agrupar por: Zona > Bairro > lista de atendimentos
             type ItemLoc = { atend: Atendimento; rua: string; bairro: string; zona: string };
-            const itensLocalizados: ItemLoc[] = comLocalizacao.map(a => {
-              // Preferir campo bairro do cadastro do cliente
+            const itensLocalizados: ItemLoc[] = atendAtivos.map(a => {
+              // Buscar bairro pelo cliente_id (campo direto do cadastro)
               const dadosCliente = a.cliente_id ? clientesBairros[a.cliente_id] : null;
               const bairroRaw = dadosCliente?.bairro || "";
               const logradouro = dadosCliente?.logradouro || a.endereco || "";
@@ -5907,12 +5902,19 @@ function LogisticaPage() {
                                   if ((!emailResolvido || !enderecoResolvido) && item.cliente) {
                                     const { data: cliData } = await supabase
                                       .from("clientes")
-                                      .select("email, endereco")
+                                      .select("id, email, endereco, bairro")
                                       .ilike("nome", `%${item.cliente}%`)
                                       .limit(1)
                                       .maybeSingle();
                                     if (cliData?.email && !emailResolvido) emailResolvido = cliData.email;
                                     if (cliData?.endereco && !enderecoResolvido) enderecoResolvido = cliData.endereco;
+                                    if (cliData?.id) {
+                                      setFormAtend(f => ({ ...f, cliente_id: cliData.id }));
+                                      // Atualizar mapa de bairros em memória
+                                      if (cliData.bairro) {
+                                        setClientesBairros(prev => ({ ...prev, [cliData.id]: { bairro: cliData.bairro ?? "", logradouro: cliData.endereco ?? "" } }));
+                                      }
+                                    }
                                   }
                                   setFormAtend(f => ({
                                     ...f,
