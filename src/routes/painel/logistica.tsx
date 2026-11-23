@@ -2949,7 +2949,81 @@ function LogisticaPage() {
                             : daysLeft === 0 ? "vence hoje" : `${daysLeft}d restante${daysLeft > 1 ? "s" : ""}`;
                         }
 
+                        // SLA atendimento: tempo em aberto (para tickets concluídos)
+                        const isTicketConcluido = isTicket && p.etapa === "concluido";
+                        let tempoAbertoLabel = "";
+                        let dentroDoSla = false;
+                        if (isTicketConcluido && p.criado_em) {
+                          const abertoEm = new Date(p.criado_em).getTime();
+                          const concluidoEm = p.atualizado_em ? new Date(p.atualizado_em).getTime() : Date.now();
+                          const diffMs = concluidoEm - abertoEm;
+                          const totalHoras = Math.floor(diffMs / 3_600_000);
+                          const totalDias = Math.floor(totalHoras / 24);
+                          const horas = totalHoras % 24;
+                          if (totalDias > 0) {
+                            tempoAbertoLabel = horas > 0 ? `${totalDias}d ${horas}h` : `${totalDias}d`;
+                          } else {
+                            tempoAbertoLabel = `${totalHoras}h`;
+                          }
+                          // Verificar se foi atendido dentro do SLA
+                          if (p.ticket_sla_at) {
+                            dentroDoSla = concluidoEm <= new Date(p.ticket_sla_at).getTime();
+                          } else {
+                            dentroDoSla = true; // sem SLA definido, considerar dentro
+                          }
+                        }
+
                         if (isTicket) {
+                          // Card VERDE para tickets concluídos
+                          if (isTicketConcluido) {
+                            return (
+                              <div
+                                key={p.id}
+                                className="group rounded-xl border-2 border-green-500 bg-green-600 p-3 shadow-md transition-all cursor-pointer hover:border-green-400 hover:shadow-lg"
+                                onClick={() => abrirPedido(p)}
+                              >
+                                {/* Badge CONCLUÍDO + tempo */}
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wide bg-white/20 text-white">
+                                    ✅ CONCLUÍDO
+                                  </span>
+                                  {tempoAbertoLabel && (
+                                    <span className={cn("text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded-full",
+                                      dentroDoSla ? "bg-white/20 text-white" : "bg-orange-400/80 text-white"
+                                    )}>
+                                      {dentroDoSla ? "⏱" : "⚠️"} {tempoAbertoLabel}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Nome cliente */}
+                                <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1.5 text-white">{cliente}</p>
+
+                                {/* Motivo */}
+                                {p.ticket_motivo && (
+                                  <p className="text-[10px] leading-tight line-clamp-2 mb-2 text-white/80">
+                                    {p.ticket_motivo}
+                                  </p>
+                                )}
+
+                                {/* SLA label */}
+                                <div className="flex items-center justify-between">
+                                  {tempoAbertoLabel && (
+                                    <span className={cn("text-[9px] font-medium text-white/90")}>
+                                      {dentroDoSla ? "Atendido no prazo" : "Atendido fora do prazo"}
+                                    </span>
+                                  )}
+                                  {p.ticket_prioridade && (
+                                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold bg-white/20 text-white">
+                                      {p.ticket_prioridade === "alta" ? "Alta" : p.ticket_prioridade === "media" ? "Média" : "Baixa"}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // Card padrão (vermelho) para tickets em aberto
                           return (
                             <div
                               key={p.id}
