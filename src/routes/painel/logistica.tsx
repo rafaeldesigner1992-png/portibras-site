@@ -4475,7 +4475,7 @@ function LogisticaPage() {
                 >
                   <MapPin className="h-4 w-4 text-blue-500 shrink-0" />
                   <span className="text-sm font-semibold text-blue-800">Clientes por Região</span>
-                  <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">{comLocalizacao.length}</span>
+                  <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">{itensLocalizados.length}</span>
                   <span className="text-[10px] text-blue-500 flex-1">— roteirize por bairro antes de agendar</span>
                   <svg className={cn("h-4 w-4 text-blue-400 shrink-0 transition-transform duration-200", painelBairroAberto && "rotate-180")} fill="none" viewBox="0 0 16 16">
                     <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
