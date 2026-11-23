@@ -3813,7 +3813,7 @@ function CrmPage() {
       setOrcamentoCA(data.orcamento);
       // Salva o ID no lead para persistência
       const uuid = data.orcamento.id;
-      await supabase.from("leads").update({ orcamento_conta_azul_id: uuid }).eq("id", leadId);
+      await supabase.from("crm_leads").update({ orcamento_conta_azul_id: uuid }).eq("id", leadId);
       setCardAberto(prev => prev ? { ...prev, orcamento_conta_azul_id: uuid } : prev);
     } catch (e: any) {
       setErroOrcamentoCA(e.message ?? "Erro inesperado");
@@ -3829,7 +3829,7 @@ function CrmPage() {
   }
 
   async function desvincularOrcamentoCA(leadId: string) {
-    await supabase.from("leads").update({ orcamento_conta_azul_id: null }).eq("id", leadId);
+    await supabase.from("crm_leads").update({ orcamento_conta_azul_id: null }).eq("id", leadId);
     setOrcamentoCA(null);
     setLinkOrcamentoCA("");
     setCardAberto(prev => prev ? { ...prev, orcamento_conta_azul_id: null } : prev);
