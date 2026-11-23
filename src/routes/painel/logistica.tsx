@@ -1011,6 +1011,7 @@ function LogisticaPage() {
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
   const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
   const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
+  const [calDiaPopup, setCalDiaPopup] = useState<Date | null>(null);
   // ── Semanas fechadas + análise de custo ───────────────────────────────────
   // chave: "YYYY-WNN" (ano + número da semana ISO)
   const [semanasFechadas, setSemanasFechadas] = useState<Record<string, boolean>>({});
@@ -4580,7 +4581,11 @@ function LogisticaPage() {
                                   </div>
                                 ))}
                                 {eventos.length > 3 && (
-                                  <div className="text-[9px] text-gray-400 pl-1">+{eventos.length - 3} mais</div>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); if (!fechada) setCalDiaPopup(dia); }}
+                                    className="text-[9px] text-blue-500 hover:text-blue-700 pl-1 font-medium cursor-pointer">
+                                    +{eventos.length - 3} mais
+                                  </button>
                                 )}
                               </div>
                             </div>
@@ -5333,6 +5338,54 @@ function LogisticaPage() {
           )}
 
 
+          {/* Modal: todos os atendimentos do dia */}
+          {calDiaPopup && (() => {
+            const eventosDia = atendPorDia(calDiaPopup);
+            const dataLabel = calDiaPopup.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCalDiaPopup(null)}>
+                <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm capitalize">{dataLabel}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{eventosDia.length} atendimento{eventosDia.length !== 1 ? "s" : ""} agendado{eventosDia.length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <button onClick={() => setCalDiaPopup(null)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
+                  </div>
+                  <div className="max-h-[60vh] overflow-y-auto divide-y divide-gray-100">
+                    {eventosDia.map(a => (
+                      <div key={a.id}
+                        className="px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => { setCalEventoPopup(a); setCalDiaPopup(null); }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{a.titulo}</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold border", STATUS_ATEND_COR[a.status])}>{a.status}</span>
+                              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", CLASS_COR[a.classificacao])}>{a.classificacao}</span>
+                            </div>
+                            {(a.hora_inicio || a.hora_fim) && (
+                              <p className="text-xs text-gray-500 mt-1">🕐 {a.hora_inicio || "—"}{a.hora_fim ? ` → ${a.hora_fim}` : ""}</p>
+                            )}
+                            {a.endereco && (
+                              <p className="text-xs text-gray-400 mt-0.5 truncate">📍 {a.endereco}</p>
+                            )}
+                            {a.responsaveis?.length > 0 && (
+                              <p className="text-xs text-gray-400 mt-0.5">👤 {a.responsaveis.join(", ")}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-100 px-5 py-3">
+                    <p className="text-[10px] text-gray-400 text-center">Clique em um atendimento para ver detalhes</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Popup evento do calendário */}
           {calEventoPopup && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCalEventoPopup(null)}>
@@ -5566,22 +5619,24 @@ function LogisticaPage() {
                             ) : filtrados.map(item => (
                               <button key={item.tipo + item.id} type="button"
                                 onClick={async () => {
-                                  // Tenta buscar email na tabela clientes se não vier no pedido
+                                  // Tenta buscar email e endereço na tabela clientes se não vier no pedido/vistoria
                                   let emailResolvido = item.cliente_email || "";
-                                  if (!emailResolvido && item.cliente) {
+                                  let enderecoResolvido = item.endereco || "";
+                                  if ((!emailResolvido || !enderecoResolvido) && item.cliente) {
                                     const { data: cliData } = await supabase
                                       .from("clientes")
-                                      .select("email")
+                                      .select("email, endereco")
                                       .ilike("nome", `%${item.cliente}%`)
                                       .limit(1)
                                       .maybeSingle();
-                                    if (cliData?.email) emailResolvido = cliData.email;
+                                    if (cliData?.email && !emailResolvido) emailResolvido = cliData.email;
+                                    if (cliData?.endereco && !enderecoResolvido) enderecoResolvido = cliData.endereco;
                                   }
                                   setFormAtend(f => ({
                                     ...f,
                                     titulo: f.titulo || item.cliente,
                                     classificacao: item.classificacao,
-                                    endereco: f.endereco || item.endereco || "",
+                                    endereco: f.endereco || enderecoResolvido || "",
                                     descricao: f.descricao || item.descricao || "",
                                     cliente_nome: f.cliente_nome || item.cliente,
                                     cliente_email: f.cliente_email || emailResolvido,
