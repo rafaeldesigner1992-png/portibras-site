@@ -4417,9 +4417,27 @@ function LogisticaPage() {
                       </div>
                       <div className="shrink-0 flex items-center gap-2">
                         <button
-                          onClick={() => abrirPedido(t)}
+                          onClick={() => {
+                            // Abre o modal de agendamento de atendimento pré-preenchido com dados do ticket
+                            setBuscaVinculo("");
+                            setAppSheetStatus(null);
+                            setPedidoVinculadoId(null);
+                            setTarefasPedidoVinculado([]);
+                            setTarefasSelecionadas([]);
+                            setSelAtend(null);
+                            setFormAtend({
+                              ...EMPTY_ATEND,
+                              titulo: t.cliente_empresa || t.cliente_nome || "",
+                              classificacao: "Retorno",
+                              cliente_nome: t.cliente_empresa || t.cliente_nome || "",
+                              cliente_email: t.cliente_email || "",
+                              endereco: t.cliente_endereco || "",
+                              descricao: t.ticket_motivo || "",
+                            });
+                            setModalAtend(true);
+                          }}
                           className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600"
-                          title="Abrir ticket para editar / agendar"
+                          title="Agendar atendimento para este ticket"
                         >
                           <CalendarIcon className="h-3.5 w-3.5" /> Agendar
                         </button>
