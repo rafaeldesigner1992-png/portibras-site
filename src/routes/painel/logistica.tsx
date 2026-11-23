@@ -1752,18 +1752,18 @@ function LogisticaPage() {
     if (tickets) setTicketsAbertos(tickets as PedidoLogistico[]);
 
     // Buscar bairros de todos os clientes, indexando por id
-    if (data) {
-      const { data: clientes } = await supabase
+    try {
+      const { data: clientes, error: errCli } = await supabase
         .from("clientes")
         .select("id, bairro, endereco");
-      if (clientes) {
+      if (!errCli && clientes) {
         const mapa: Record<string, { bairro: string; logradouro: string }> = {};
         for (const c of clientes) {
           mapa[c.id] = { bairro: c.bairro ?? "", logradouro: c.endereco ?? "" };
         }
         setClientesBairros(mapa);
       }
-    }
+    } catch (_) { /* silencioso — painel de bairros fica vazio */ }
 
     setCarregandoAtend(false);
     return (data as Atendimento[]) ?? [];
@@ -2134,7 +2134,6 @@ function LogisticaPage() {
       cliente_nome: formAtend.cliente_nome?.trim() || null,
       cliente_email: formAtend.cliente_email?.trim() || null,
       cliente_email_cc: formAtend.cliente_email_cc?.trim() || null,
-      cliente_id: formAtend.cliente_id || null,
     };
 
     // Detecta reagendamento: se edição e data mudou
