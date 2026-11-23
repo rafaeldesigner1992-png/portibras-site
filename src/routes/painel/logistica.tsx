@@ -4423,6 +4423,7 @@ function LogisticaPage() {
               const partes = str.split(",").map(p => p.trim()).filter(Boolean);
               let bairro = "";
               let rua = "";
+              let cidade = "";
 
               if (partes.length >= 2) {
                 // Último campo = bairro. Verificar se parece UF (2 letras) — se sim, usar penúltimo
