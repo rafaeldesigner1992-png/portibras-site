@@ -1008,6 +1008,8 @@ function LogisticaPage() {
   const [atendAberto, setAtendAberto] = useState<string | null>(null);
   const [subAbaAtend, setSubAbaAtend] = useState<"lista" | "calendario">("calendario");
   const [kpiAtendExp, setKpiAtendExp] = useState<"todos" | "programados" | "semdata" | null>(null);
+  const [painelBairroAberto, setPainelBairroAberto] = useState(false);
+  const [bairrosAbertos, setBairrosAbertos] = useState<Record<string, boolean>>({});
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
   const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
   const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
@@ -4397,147 +4399,152 @@ function LogisticaPage() {
 
           {/* ── Painel por Bairro ── */}
           {(() => {
-            // Função para parsear endereço BR: "Rua X, 123 - Bairro, Cidade - UF" ou "Rua X, Bairro - Cidade/UF"
-            function parsearEndereco(end: string | null): { rua: string; bairro: string; cidade: string; estado: string; zona: string } {
-              const vazio = { rua: "", bairro: "", cidade: "", estado: "", zona: "" };
-              if (!end || !end.trim()) return vazio;
+            // Normaliza string para comparação: minúsculo sem acentos
+            function norm(s: string) {
+              return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+            }
+
+            // Parse do formato real cadastrado: "número, BAIRRO, Cidade" ou "CEPRua N, N, BAIRRO, Cidade"
+            // Exemplos reais: "226, BARRA DA TIJUCA, RIO DE JANEIRO"
+            //                 "22630-010LUCIO COSTA 3300, 3300, BARRA DA TIJUCA, Rio de Janeiro"
+            function parsearEndereco(end: string | null): { rua: string; bairro: string; cidade: string; zona: string } {
+              if (!end || !end.trim()) return { rua: "", bairro: "Sem bairro", cidade: "", zona: "" };
               const str = end.trim();
+              const partes = str.split(",").map(p => p.trim()).filter(Boolean);
 
-              // Padrão: "Rua X, N - Bairro, Cidade - UF" ou "Rua X - Bairro - Cidade/UF"
-              const matchCompleto = str.match(/^(.+?),?\s*[-–]\s*(.+?),\s*(.+?)\s*[-–]\s*([A-Z]{2})\s*(?:,.*)?$/);
-              if (matchCompleto) {
-                const [, ruaNum, bairro, cidade, uf] = matchCompleto;
-                return { rua: ruaNum.trim(), bairro: bairro.trim(), cidade: cidade.trim(), estado: uf.trim(), zona: inferirZona(bairro.trim(), cidade.trim()) };
+              let bairro = "";
+              let cidade = "";
+              let rua = "";
+
+              if (partes.length >= 3) {
+                // Formato: "..., BAIRRO, Cidade" — bairro é o penúltimo, cidade o último
+                cidade = partes[partes.length - 1] || "";
+                bairro = partes[partes.length - 2] || "";
+                rua = partes.slice(0, partes.length - 2).join(", ");
+              } else if (partes.length === 2) {
+                bairro = partes[0] || "";
+                cidade = partes[1] || "";
+              } else {
+                bairro = str;
               }
-              // Padrão: "Bairro, Cidade - UF" (sem rua)
-              const matchSimples = str.match(/^(.+?),\s*(.+?)\s*[-–]\s*([A-Z]{2})\s*(?:,.*)?$/);
-              if (matchSimples) {
-                const [, bairro, cidade, uf] = matchSimples;
-                return { rua: "", bairro: bairro.trim(), cidade: cidade.trim(), estado: uf.trim(), zona: inferirZona(bairro.trim(), cidade.trim()) };
-              }
-              // Padrão: só cidade ou bairro sem separadores claros
-              const partes = str.split(/[-–,]/);
-              if (partes.length >= 2) {
-                return { rua: partes[0]?.trim() || "", bairro: partes[1]?.trim() || "", cidade: partes[2]?.trim() || "", estado: partes[3]?.trim() || "", zona: "" };
-              }
-              return { ...vazio, bairro: str };
+
+              // Capitalizar bairro e cidade (vêm em maiúsculas no banco)
+              const cap = (s: string) => s.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+              bairro = cap(bairro);
+              cidade = cap(cidade);
+
+              return { rua, bairro: bairro || "Sem bairro", cidade, zona: inferirZona(bairro) };
             }
 
-            // Mapeamento de zonas para Rio de Janeiro (expandível)
-            function inferirZona(bairro: string, cidade: string): string {
-              const b = bairro.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-              const cidadeRio = cidade.toLowerCase().includes("rio de janeiro") || cidade.toLowerCase().includes("rio");
-
-              if (!cidadeRio) return "";
-
-              const zonas: Record<string, string[]> = {
-                "Zona Sul": ["ipanema","leblon","copacabana","leme","flamengo","laranjeiras","catete","gloria","botafogo","humaita","jardim botanico","gavea","lagoa","sao conrado","barra da tijuca","recreio","grumari","vidigal","rocinha","urca","cosme velho","santa teresa"],
-                "Zona Norte": ["tijuca","vila isabel","andarai","grajaú","maracana","sao cristovao","meier","riachuelo","ramos","penha","madureira","oswaldo cruz","bangu","campo grande","santa cruz","ilha do governador","brás de pina","olaria","irajá","coelho neto","pavuna","cordovil","guadalupe","deodoro","realengo","padre miguel","senador camara","sepetiba","guaratiba"],
-                "Zona Oeste": ["barra da tijuca","recreio dos bandeirantes","recreio","jacarepagua","anil","freguesia","taquara","curicica","pechincha","tanque","vargem grande","vargem pequena","grumari","barra","itanhangá","itanhanga","prainha","joatinga","camorim","varginha","campo grande","santa cruz","bangu","realengo","deodoro","cosmos","paciencia","sepetiba","guaratiba","Ilha de Guaratiba"],
-                "Centro": ["centro","lapa","santa teresa","estacio","cidade nova","sao cristovao","catumbi","rio comprido"],
-              };
-
-              for (const [zona, bairros] of Object.entries(zonas)) {
-                if (bairros.some(bz => b.includes(bz) || bz.includes(b))) return zona;
+            function inferirZona(bairro: string): string {
+              const b = norm(bairro);
+              const zonas: [string, string[]][] = [
+                ["Zona Sul", ["ipanema","leblon","copacabana","leme","flamengo","laranjeiras","catete","gloria","botafogo","humaita","jardim botanico","gavea","lagoa","sao conrado","vidigal","rocinha","urca","cosme velho","santa teresa"]],
+                ["Zona Norte", ["tijuca","vila isabel","andarai","grajau","maracana","sao cristovao","meier","riachuelo","ramos","penha","madureira","oswaldo cruz","brás de pina","bras de pina","olaria","iraja","coelho neto","pavuna","cordovil","guadalupe","todos os santos","encantado","cachambi","lins","agua santa","del castilho","inhauma","pilares","rocha"]],
+                ["Zona Oeste", ["barra da tijuca","barra","recreio","jacarepagua","anil","freguesia","taquara","curicica","pechincha","tanque","vargem grande","vargem pequena","grumari","itanhanga","prainha","joatinga","camorim","campo grande","santa cruz","bangu","realengo","deodoro","cosmos","paciencia","sepetiba","guaratiba","padre miguel","senador camara"]],
+                ["Centro", ["centro","lapa","estacio","cidade nova","catumbi","rio comprido","gamboa","saude","santo cristo","caju"]],
+              ];
+              for (const [zona, bairros] of zonas) {
+                if (bairros.some(bz => b === bz || b.includes(bz) || bz.includes(b))) return zona;
               }
-              return "Outras regiões";
+              return "";
             }
 
-            // Montar lista de atendimentos ativos com localização
             const atendAtivos = atendimentos.filter(a => a.status !== "Concluído" && a.status !== "Cancelado");
             const comEndereco = atendAtivos.filter(a => a.endereco);
             if (comEndereco.length === 0) return null;
 
-            // Agrupar por Estado > Cidade > Zona > Bairro
-            type GrupoLocal = { atend: Atendimento; parsed: ReturnType<typeof parsearEndereco> };
-            const grupos: Record<string, Record<string, Record<string, Record<string, GrupoLocal[]>>>> = {};
+            // Agrupar por: Zona > Bairro > lista de atendimentos
+            type ItemLoc = { atend: Atendimento; rua: string; bairro: string; cidade: string; zona: string };
+            const itensLocalizados: ItemLoc[] = comEndereco.map(a => ({ atend: a, ...parsearEndereco(a.endereco) }));
 
-            comEndereco.forEach(a => {
-              const p = parsearEndereco(a.endereco);
-              const estado = p.estado || "Sem estado";
-              const cidade = p.cidade || "Sem cidade";
-              const zona = p.zona || (cidade ? "" : "");
-              const bairro = p.bairro || "Sem bairro";
-
-              if (!grupos[estado]) grupos[estado] = {};
-              if (!grupos[estado][cidade]) grupos[estado][cidade] = {};
-              const zonaKey = zona || "—";
-              if (!grupos[estado][cidade][zonaKey]) grupos[estado][cidade][zonaKey] = {};
-              if (!grupos[estado][cidade][zonaKey][bairro]) grupos[estado][cidade][zonaKey][bairro] = [];
-              grupos[estado][cidade][zonaKey][bairro].push({ atend: a, parsed: p });
+            const porZona: Record<string, Record<string, ItemLoc[]>> = {};
+            itensLocalizados.forEach(item => {
+              const zona = item.zona || "Outras regiões";
+              const bairro = item.bairro;
+              if (!porZona[zona]) porZona[zona] = {};
+              if (!porZona[zona][bairro]) porZona[zona][bairro] = [];
+              porZona[zona][bairro].push(item);
             });
 
-            const estados = Object.keys(grupos).sort();
+            const ordemZonas = ["Zona Sul", "Zona Norte", "Zona Oeste", "Centro", "Outras regiões"];
+            const zonas = [...new Set([...ordemZonas.filter(z => porZona[z]), ...Object.keys(porZona).filter(z => !ordemZonas.includes(z))])];
 
             return (
-              <div className="mb-6">
-                <div className="mb-3 flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-blue-500" />
-                  <h2 className="text-sm font-semibold text-gray-700">Clientes por Região</h2>
-                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{comEndereco.length} com endereço</span>
-                  <span className="text-[10px] text-gray-400">— ideal para roteirizar agendamentos por proximidade</span>
-                </div>
-                <div className="space-y-3">
-                  {estados.map(estado => (
-                    <div key={estado} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                      {/* Estado */}
-                      <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">🗺️ {estado}</span>
-                      </div>
-                      {Object.keys(grupos[estado]).sort().map(cidade => (
-                        <div key={cidade}>
-                          {/* Cidade */}
-                          <div className="flex items-center gap-2 px-4 py-1.5 bg-blue-50 border-b border-blue-100">
-                            <span className="text-[11px] font-semibold text-blue-700">🏙️ {cidade}</span>
-                          </div>
-                          {Object.keys(grupos[estado][cidade]).sort((a, b) => a === "—" ? 1 : b === "—" ? -1 : a.localeCompare(b)).map(zona => (
-                            <div key={zona}>
-                              {/* Zona */}
-                              {zona !== "—" && (
-                                <div className="flex items-center gap-2 px-5 py-1 bg-indigo-50/50 border-b border-indigo-100/50">
-                                  <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">📍 {zona}</span>
-                                </div>
-                              )}
-                              {/* Bairros */}
-                              <div className="divide-y divide-gray-50">
-                                {Object.keys(grupos[estado][cidade][zona]).sort().map(bairro => {
-                                  const itens = grupos[estado][cidade][zona][bairro];
-                                  return (
-                                    <div key={bairro} className="px-5 py-2 hover:bg-gray-50 transition-colors">
-                                      <div className="flex items-start gap-3">
-                                        <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-[9px] font-bold text-blue-700 shrink-0">{itens.length}</div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-semibold text-gray-800 mb-1">{bairro}</p>
-                                          <div className="space-y-1">
-                                            {itens.map(({ atend: a, parsed: p }) => (
-                                              <div key={a.id} className="flex items-start gap-2 flex-wrap">
-                                                <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
-                                                  a.status === "Programado" ? "bg-emerald-100 text-emerald-700" :
-                                                  a.status === "Em andamento" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-500"
-                                                )}>{a.status}</span>
-                                                <span className="text-xs text-gray-700 font-medium truncate flex-1">{a.cliente_nome || a.titulo || "—"}</span>
-                                                {p.rua && <span className="text-[10px] text-gray-400 truncate max-w-[200px]">{p.rua}</span>}
-                                                {a.data_agendada && (
-                                                  <span className="text-[10px] text-emerald-600 shrink-0 tabular-nums">
-                                                    {new Date(a.data_agendada + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
+              <div className="mb-4">
+                {/* Header recolhível */}
+                <button
+                  onClick={() => setPainelBairroAberto(v => !v)}
+                  className="w-full flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-left hover:bg-blue-100 transition-colors"
+                >
+                  <MapPin className="h-4 w-4 text-blue-500 shrink-0" />
+                  <span className="text-sm font-semibold text-blue-800">Clientes por Região</span>
+                  <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">{comEndereco.length}</span>
+                  <span className="text-[10px] text-blue-500 flex-1">— roteirize por bairro antes de agendar</span>
+                  <svg className={cn("h-4 w-4 text-blue-400 shrink-0 transition-transform duration-200", painelBairroAberto && "rotate-180")} fill="none" viewBox="0 0 16 16">
+                    <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+
+                {/* Conteúdo recolhível */}
+                {painelBairroAberto && (
+                  <div className="mt-2 rounded-xl border border-gray-200 bg-white overflow-hidden">
+                    {zonas.map((zona, zi) => (
+                      <div key={zona} className={cn(zi > 0 && "border-t border-gray-100")}>
+                        {/* Zona — clicável para expandir/recolher */}
+                        <button
+                          onClick={() => setBairrosAbertos(prev => ({ ...prev, [zona]: !prev[zona] }))}
+                          className="w-full flex items-center gap-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                        >
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 flex-1">
+                            {zona === "Zona Sul" ? "🌊" : zona === "Zona Norte" ? "🏔️" : zona === "Zona Oeste" ? "🌿" : zona === "Centro" ? "🏛️" : "📍"} {zona}
+                          </span>
+                          <span className="text-[10px] font-semibold text-gray-400 tabular-nums">
+                            {Object.values(porZona[zona]).flat().length} cliente{Object.values(porZona[zona]).flat().length !== 1 ? "s" : ""}
+                            {" · "}{Object.keys(porZona[zona]).length} bairro{Object.keys(porZona[zona]).length !== 1 ? "s" : ""}
+                          </span>
+                          <svg className={cn("h-3.5 w-3.5 text-gray-400 ml-1 shrink-0 transition-transform duration-200", bairrosAbertos[zona] && "rotate-180")} fill="none" viewBox="0 0 16 16">
+                            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+
+                        {/* Bairros dentro da zona */}
+                        {bairrosAbertos[zona] && (
+                          <div className="divide-y divide-gray-50">
+                            {Object.keys(porZona[zona]).sort().map(bairro => {
+                              const clientes = porZona[zona][bairro];
+                              return (
+                                <div key={bairro} className="flex gap-3 px-5 py-2.5 hover:bg-gray-50 transition-colors">
+                                  {/* Badge contagem */}
+                                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[9px] font-bold text-blue-700">{clientes.length}</div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-gray-800 mb-1.5">{bairro}</p>
+                                    <div className="space-y-1">
+                                      {clientes.map(({ atend: a, rua }) => (
+                                        <div key={a.id} className="flex items-center gap-2 flex-wrap min-w-0">
+                                          <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none",
+                                            a.status === "Programado" ? "bg-emerald-100 text-emerald-700" :
+                                            a.status === "Em andamento" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-500"
+                                          )}>{a.status}</span>
+                                          <span className="text-xs text-gray-700 font-medium truncate flex-1 min-w-0">{a.cliente_nome || a.titulo || "—"}</span>
+                                          {rua && <span className="text-[10px] text-gray-400 truncate shrink-0 max-w-[180px]">{rua}</span>}
+                                          {a.data_agendada
+                                            ? <span className="text-[10px] text-emerald-600 shrink-0 tabular-nums font-semibold">{new Date(a.data_agendada + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                                            : <span className="text-[10px] text-orange-400 shrink-0">sem data</span>
+                                          }
                                         </div>
-                                      </div>
+                                      ))}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
