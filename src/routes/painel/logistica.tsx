@@ -4408,12 +4408,35 @@ function LogisticaPage() {
                         </div>
                         {t.ticket_motivo && <p className="text-xs text-gray-600 truncate">{t.ticket_motivo}</p>}
                         {t.ticket_contato_nome && <p className="text-xs text-gray-500 mt-0.5">Contato: {t.ticket_contato_nome}{t.ticket_contato_tel ? ` · ${t.ticket_contato_tel}` : ""}</p>}
+                        <div className="mt-1.5">
+                          <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+                            {t.etapa === "tratamento" ? "Em tratamento" : t.etapa === "em_execucao" ? "Em execução" : t.etapa}
+                          </span>
+                          <span className="ml-2 text-[10px] text-gray-400">{new Date(t.criado_em).toLocaleDateString("pt-BR")}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0 text-xs text-gray-400">
-                        <span>{new Date(t.criado_em).toLocaleDateString("pt-BR")}</span>
-                        <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
-                          {t.etapa === "tratamento" ? "Em tratamento" : t.etapa === "em_execucao" ? "Em execução" : t.etapa}
-                        </span>
+                      <div className="shrink-0 flex items-center gap-2">
+                        <button
+                          onClick={() => abrirPedido(t)}
+                          className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600"
+                          title="Abrir ticket para editar / agendar"
+                        >
+                          <CalendarIcon className="h-3.5 w-3.5" /> Agendar
+                        </button>
+                        <button
+                          onClick={() => moverEtapa(t, "concluido")}
+                          className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700"
+                          title="Marcar ticket como concluído"
+                        >
+                          <CheckCircle className="h-3.5 w-3.5" /> Concluir
+                        </button>
+                        <button
+                          onClick={() => excluirPedido(t)}
+                          className="flex items-center justify-center rounded-lg border border-red-200 bg-white p-2 text-red-400 hover:bg-red-50 hover:text-red-600"
+                          title="Excluir ticket"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
                   );
