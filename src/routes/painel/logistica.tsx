@@ -4428,12 +4428,28 @@ function LogisticaPage() {
 
             function inferirZona(bairro: string): string {
               const b = norm(bairro);
+              // Fonte: Instituto Pereira Passos - Prefeitura do Rio de Janeiro (2025)
               const zonas: [string, string[]][] = [
-                ["Zona Sul", ["ipanema","leblon","copacabana","leme","flamengo","laranjeiras","catete","gloria","botafogo","humaita","jardim botanico","gavea","lagoa","sao conrado","vidigal","rocinha","urca","cosme velho","santa teresa","redentor","sorocaba","paissandu"]],
-                ["Zona Norte", ["tijuca","vila isabel","andarai","grajau","maracana","sao cristovao","meier","riachuelo","ramos","penha","madureira","oswaldo cruz","bras de pina","brás de pina","olaria","iraja","coelho neto","pavuna","cordovil","guadalupe","todos os santos","encantado","cachambi","lins","agua santa","del castilho","inhauma","pilares","rocha","bonsucesso","ramos","manguinhos","mangueira","vila da penha","vista alegre","vaz lobo","vicente de carvalho","iria","penha circular","branca","parada de lucas","vigario geral","jardim america","campinho","quintino","quintino bocaiuva","engenho de dentro","engenho novo","meier","piedade","abolição","maria da graca","benfica","caju","catumbi","estacio","estácio","engenho da rainha","tomás coelho","tomas coelho","higienopolis","rocha","riachuelo","sampaio","andaraí","andarai","grajaú","grajau"]],
-                ["Zona Oeste", ["barra da tijuca","barra","recreio","recreio dos bandeirantes","jacarepagua","jacarepaguá","anil","freguesia","taquara","curicica","pechincha","tanque","vargem grande","vargem pequena","grumari","itanhanga","prainha","joatinga","camorim","campo grande","santa cruz","bangu","realengo","deodoro","cosmos","paciencia","sepetiba","guaratiba","padre miguel","senador camara","sulacap","magalhaes bastos","vila militar","campo dos afonsos","jardim sulacap","inhoaiba","santissimo","paciencia","cosmos","sao francisco","campo grande","senador vasconcelos"]],
-                ["Baixada Fluminense", ["nova iguacu","duque de caxias","sao joao de meriti","nilopolis","belford roxo","mesquita","queimados","japeri","seropedica","paracambi","itaguai","guapimirim","magé","mage","nova iguaçu","nilópolis","nilopolis"]],
-                ["Centro", ["centro","lapa","cidade nova","rio comprido","gamboa","saude","santo cristo","estácio","estacio","da quitanda","quitanda","alvaro alvim","alvaro","da amizade"]],
+                ["Centro", [
+                  "saude","gamboa","santo cristo","caju","centro","catumbi","rio comprido","cidade nova","estacio","ilha de sao cristovao","sao cristovao","mangueira","benfica","paqueta","santa teresa","lapa",
+                ]],
+                ["Zona Sul", [
+                  "flamengo","gloria","laranjeiras","catete","cosme velho","botafogo","humaita","urca","leme","copacabana","ipanema","leblon","lagoa","jardim botanico","gavea","vidigal","sao conrado","rocinha","praça da bandeira","alto da boa vista",
+                ]],
+                ["Zona Norte", [
+                  "tijuca","maracana","vila isabel","andarai","grajau",
+                  "manguinhos","bonsucesso","ramos","olaria","penha","penha circular","bras de pina","cordovil","parada de lucas","vigario geral","jardim america","higienopolis","jacare","maria da graca","del castilho","inhauma","engenho da rainha","tomas coelho","sao francisco xavier","rocha","riachuelo","sampaio","engenho novo","lins de vasconcelos","meier","todos os santos","cachambi","engenho de dentro","agua santa","encantado","piedade","abolicao","pilares","vila kosmos","vicente de carvalho","vila da penha","vista alegre","iraja","colegio","campinho","quintino bocaiuva","cavalcanti","engenheiro leal","cascadura","madureira","vaz lobo","turiacu","rocha miranda","honorio gurgel","oswaldo cruz","bento ribeiro","marechal hermes",
+                  "ribeira","zumbi","cacuia","pitangueiras","praia da bandeira","cocota","bancarios","freguesia de ilha","jardim guanabara","jardim carioca","taua","monero","portuguesa","galeao","cidade universitaria",
+                  "guadalupe","anchieta","parque anchieta","ricardo de albuquerque","coelho neto","acari","barros filho","costa barros","pavuna",
+                  "jacarezinho","complexo do alemao","mare","vasco da gama","parque columbia","gericino",
+                ]],
+                ["Zona Oeste", [
+                  "jacarepagua","anil","gardenia azul","cidade de deus","curicica","freguesia de jacarepagua","pechincha","taquara","tanque","praca seca","vila valqueire","joa","itanhanga","barra da tijuca","camorim","vargem pequena","vargem grande","recreio dos bandeirantes","grumari","barra olimpica",
+                  "deodoro","vila militar","campo dos afonsos","jardim sulacap","magalhaes bastos","realengo","padre miguel","bangu","senador camara","santissimo","campo grande","senador vasconcelos","inhoaiba","cosmos","paciencia","santa cruz","sepetiba","guaratiba","barra de guaratiba","pedra de guaratiba","ilha de guaratiba","jabour","vila kennedy","argentino",
+                ]],
+                ["Baixada Fluminense", [
+                  "nova iguacu","duque de caxias","sao joao de meriti","nilopolis","belford roxo","mesquita","queimados","japeri","seropedica","paracambi","itaguai","guapimirim","mage","mangaratiba","sao goncalo","niteroi",
+                ]],
               ];
               for (const [zona, bairros] of zonas) {
                 if (bairros.some(bz => b === bz || b.includes(bz) || bz.includes(b))) return zona;
