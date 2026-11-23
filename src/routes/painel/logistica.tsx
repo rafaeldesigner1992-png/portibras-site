@@ -4874,7 +4874,11 @@ function LogisticaPage() {
                         {sem.map((dia, di) => {
                           const eMes = dia.getMonth() === mes;
                           const eHoje = dia.toDateString() === hoje.toDateString();
-                          const eventos = atendPorDia(dia);
+                          const eventos = atendPorDia(dia).sort((a, b) => {
+                            const ha = a.hora_inicio ?? "99:99";
+                            const hb = b.hora_inicio ?? "99:99";
+                            return ha.localeCompare(hb);
+                          });
                           const feriado = feriadoDia(dia);
                           return (
                             <div key={di} className={cn(
