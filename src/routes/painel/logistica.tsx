@@ -4463,7 +4463,10 @@ function LogisticaPage() {
               return "";
             }
 
-            const atendAtivos = atendimentos.filter(a => a.status !== "Concluído" && a.status !== "Cancelado");
+            const atendAtivos = atendimentos.filter(a =>
+              a.status !== "Concluído" && a.status !== "Concluída" &&
+              a.status !== "Cancelado" && a.status !== "Cancelada"
+            );
             if (atendAtivos.length === 0) return null;
 
             // Agrupar por: Zona > Bairro > lista de atendimentos
