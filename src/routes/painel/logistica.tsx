@@ -4551,6 +4551,11 @@ function LogisticaPage() {
                                             a.status === "Programado" ? "bg-emerald-100 text-emerald-700" :
                                             a.status === "Em andamento" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-500"
                                           )}>{a.status}</span>
+                                          {(a.classificacao === "Vistoria" || a.classificacao === "Retorno") && (
+                                            <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none",
+                                              a.classificacao === "Vistoria" ? "bg-purple-100 text-purple-700" : "bg-red-100 text-red-700"
+                                            )}>{a.classificacao}</span>
+                                          )}
                                           <span className="text-xs text-gray-700 font-medium truncate flex-1 min-w-0">{a.cliente_nome || a.titulo || "—"}</span>
                                           {rua && <span className="text-[10px] text-gray-400 truncate shrink-0 max-w-[180px]">{rua}</span>}
                                           {a.data_agendada
