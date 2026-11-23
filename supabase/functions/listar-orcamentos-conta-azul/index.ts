@@ -84,61 +84,55 @@ serve(async (req) => {
 
     const token = await getAccessToken();
 
-    // Estratégia: busca orçamentos com paginação e filtra pelo cliente
-    // A API do Conta Azul suporta GET /v1/sale/quotes com parâmetros de busca
+    // A API do Conta Azul aceita filtro de texto livre (nome, número, email)
+    // Endpoint de orçamentos: GET /v1/sale/quotes com query params
     const orcamentos: any[] = [];
+    const termoBusca = nome || cnpj;
 
-    // Tenta buscar via customer_name se tiver nome
-    if (nome) {
-      const params = new URLSearchParams({
-        page: "0",
-        size: "50",
-      });
+    // Tenta endpoint de quotes com filtro de texto
+    const tentativas = [
+      // Tentativa 1: endpoint quotes com text_search
+      { url: `${CONTA_AZUL_BASE}/v1/sale/quotes?text_search=${encodeURIComponent(termoBusca)}&page=0&size=50` },
+      // Tentativa 2: endpoint quotes com customer_name
+      { url: `${CONTA_AZUL_BASE}/v1/sale/quotes?customer_name=${encodeURIComponent(termoBusca)}&page=0&size=50` },
+      // Tentativa 3: endpoint sales com filtro (orçamentos são um tipo de venda)
+      { url: `${CONTA_AZUL_BASE}/v1/sales?text_search=${encodeURIComponent(termoBusca)}&type=BUDGET&page=0&size=50` },
+      // Tentativa 4: busca geral de orçamentos sem filtro (fallback, filtra localmente)
+      { url: `${CONTA_AZUL_BASE}/v1/sale/quotes?page=0&size=100`, fallback: true },
+    ];
 
-      const res = await fetch(`${CONTA_AZUL_BASE}/v1/sale/quotes?${params}`, {
+    for (const tentativa of tentativas) {
+      if (orcamentos.length > 0) break;
+
+      const res = await fetch(tentativa.url, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const lista = Array.isArray(data) ? data : (data.content ?? data.items ?? data.data ?? []);
+      if (!res.ok) continue;
 
-        // Filtra pelo nome do cliente (case-insensitive, parcial)
-        const nomeNorm = nome.toLowerCase();
+      const data = await res.json();
+      const lista = Array.isArray(data) ? data : (data.content ?? data.items ?? data.data ?? data.quotes ?? []);
+
+      if (!Array.isArray(lista) || lista.length === 0) continue;
+
+      if (tentativa.fallback) {
+        // Filtra localmente por nome ou CNPJ
+        const termoNorm = termoBusca.toLowerCase().replace(/\D/g, "") || termoBusca.toLowerCase();
         for (const orc of lista) {
-          const clienteNome = (
-            orc.customer?.name ?? orc.cliente?.nome ?? orc.client?.name ?? ""
-          ).toLowerCase();
-          if (clienteNome.includes(nomeNorm)) {
+          const clienteNome = (orc.customer?.name ?? orc.cliente?.nome ?? orc.client?.name ?? "").toLowerCase();
+          const clienteDoc = (orc.customer?.document ?? orc.cliente?.documento ?? "").replace(/\D/g, "");
+          const numOrc = String(orc.number ?? orc.numero ?? "");
+
+          if (
+            clienteNome.includes(termoBusca.toLowerCase()) ||
+            (cnpj && clienteDoc.includes(cnpj)) ||
+            numOrc === termoBusca
+          ) {
             orcamentos.push(orc);
           }
         }
-
-        // Se não encontrou nada, retorna todos (pode ser busca geral)
-        if (orcamentos.length === 0 && nome.length <= 3) {
-          orcamentos.push(...lista.slice(0, 20));
-        }
-      }
-    }
-
-    // Se tem CNPJ, busca por documento
-    if (cnpj && orcamentos.length === 0) {
-      const res = await fetch(`${CONTA_AZUL_BASE}/v1/sale/quotes?page=0&size=50`, {
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const lista = Array.isArray(data) ? data : (data.content ?? data.items ?? data.data ?? []);
-
-        for (const orc of lista) {
-          const doc = (
-            orc.customer?.document ?? orc.cliente?.documento ?? orc.client?.document ?? ""
-          ).replace(/\D/g, "");
-          if (doc === cnpj || doc.includes(cnpj) || cnpj.includes(doc)) {
-            orcamentos.push(orc);
-          }
-        }
+      } else {
+        orcamentos.push(...lista);
       }
     }
 
