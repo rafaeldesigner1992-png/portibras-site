@@ -4404,26 +4404,49 @@ function LogisticaPage() {
               return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
             }
 
-            // Parse do formato real cadastrado: "número, BAIRRO, Cidade" ou "CEPRua N, N, BAIRRO, Cidade"
-            // Exemplos reais: "226, BARRA DA TIJUCA, RIO DE JANEIRO"
-            //                 "22630-010LUCIO COSTA 3300, 3300, BARRA DA TIJUCA, Rio de Janeiro"
+            // Parse do formato real cadastrado: "RUA, NUMERO, BAIRRO"
+            // O BAIRRO é sempre o ÚLTIMO campo separado por vírgula.
+            // Exemplos reais da tela:
+            //   "LEOPOLDO, 637, ANDARAI"       → bairro=Andarai
+            //   "AROAZES, 781, JACAREPAGUA"    → bairro=Jacarepagua
+            //   "SAO CLEMENTE, 25, BOTAFOGO"   → bairro=Botafogo
+            //   "SETE DE SETEMBRO, 00111, CENTRO" → bairro=Centro
+            //   "Rua São Clemente, nº 38 - Botafogo, RJ" → último=RJ, penúltimo tem "Botafogo"
             function parsearEndereco(end: string | null): { rua: string; bairro: string; cidade: string; zona: string } {
               if (!end || !end.trim()) return { rua: "", bairro: "Sem bairro", cidade: "", zona: "" };
               const str = end.trim();
-              const partes = str.split(",").map(p => p.trim()).filter(Boolean);
 
+              // Tratar formato alternativo com traço: "Rua X, nº N - Bairro, Cidade - UF"
+              // Neste caso extrair bairro do trecho antes da última vírgula após o traço
+              const matchTraco = str.match(/[-–]\s*([^,\-–]+?)(?:,\s*[A-Za-z\s]+(?:\s*[-–]\s*[A-Z]{2})?)?$/);
+
+              const partes = str.split(",").map(p => p.trim()).filter(Boolean);
               let bairro = "";
-              let cidade = "";
               let rua = "";
 
-              if (partes.length >= 3) {
-                // Formato: "..., BAIRRO, Cidade" — bairro é o penúltimo, cidade o último
-                cidade = partes[partes.length - 1] || "";
-                bairro = partes[partes.length - 2] || "";
-                rua = partes.slice(0, partes.length - 2).join(", ");
-              } else if (partes.length === 2) {
-                bairro = partes[0] || "";
-                cidade = partes[1] || "";
+              if (partes.length >= 2) {
+                // Último campo = bairro. Verificar se parece UF (2 letras) — se sim, usar penúltimo
+                const ultimo = partes[partes.length - 1] || "";
+                const penultimo = partes[partes.length - 2] || "";
+                // Se o último tem apenas 2 letras maiúsculas (UF) ou "Rio de Janeiro" como cidade
+                const ehUF = /^[A-Z]{2}$/.test(ultimo.trim());
+                const ehCidade = /rio de janeiro|sao paulo|rj|sp/i.test(ultimo.trim());
+                if (ehUF || ehCidade) {
+                  // Formato "RUA, N, BAIRRO, CIDADE/UF" — bairro é o penúltimo
+                  bairro = penultimo;
+                  rua = partes.slice(0, partes.length - 2).join(", ");
+                } else {
+                  // Formato padrão "RUA, N, BAIRRO" — bairro é o último
+                  bairro = ultimo;
+                  rua = partes.slice(0, partes.length - 1).join(", ");
+                }
+                // Limpar bairro: remover sufixos de cidade/UF que vieram junto
+                bairro = bairro.replace(/\s*[-–]\s*[A-Z]{2}$/, "").trim();
+                // Se bairro contém traço (ex: "Botafog..."), pegar só o bairro
+                if (matchTraco && matchTraco[1]) {
+                  const candidato = matchTraco[1].trim();
+                  if (candidato.length > 2) bairro = candidato;
+                }
               } else {
                 bairro = str;
               }
