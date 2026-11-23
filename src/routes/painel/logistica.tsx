@@ -4429,13 +4429,36 @@ function LogisticaPage() {
             function inferirZona(bairro: string): string {
               const b = norm(bairro);
               const zonas: [string, string[]][] = [
-                ["Zona Sul", ["ipanema","leblon","copacabana","leme","flamengo","laranjeiras","catete","gloria","botafogo","humaita","jardim botanico","gavea","lagoa","sao conrado","vidigal","rocinha","urca","cosme velho","santa teresa"]],
-                ["Zona Norte", ["tijuca","vila isabel","andarai","grajau","maracana","sao cristovao","meier","riachuelo","ramos","penha","madureira","oswaldo cruz","brás de pina","bras de pina","olaria","iraja","coelho neto","pavuna","cordovil","guadalupe","todos os santos","encantado","cachambi","lins","agua santa","del castilho","inhauma","pilares","rocha"]],
-                ["Zona Oeste", ["barra da tijuca","barra","recreio","jacarepagua","anil","freguesia","taquara","curicica","pechincha","tanque","vargem grande","vargem pequena","grumari","itanhanga","prainha","joatinga","camorim","campo grande","santa cruz","bangu","realengo","deodoro","cosmos","paciencia","sepetiba","guaratiba","padre miguel","senador camara"]],
-                ["Centro", ["centro","lapa","estacio","cidade nova","catumbi","rio comprido","gamboa","saude","santo cristo","caju"]],
+                ["Zona Sul", ["ipanema","leblon","copacabana","leme","flamengo","laranjeiras","catete","gloria","botafogo","humaita","jardim botanico","gavea","lagoa","sao conrado","vidigal","rocinha","urca","cosme velho","santa teresa","redentor","sorocaba","paissandu"]],
+                ["Zona Norte", ["tijuca","vila isabel","andarai","grajau","maracana","sao cristovao","meier","riachuelo","ramos","penha","madureira","oswaldo cruz","bras de pina","brás de pina","olaria","iraja","coelho neto","pavuna","cordovil","guadalupe","todos os santos","encantado","cachambi","lins","agua santa","del castilho","inhauma","pilares","rocha","bonsucesso","ramos","manguinhos","mangueira","vila da penha","vista alegre","vaz lobo","vicente de carvalho","iria","penha circular","branca","parada de lucas","vigario geral","jardim america","campinho","quintino","quintino bocaiuva","engenho de dentro","engenho novo","meier","piedade","abolição","maria da graca","benfica","caju","catumbi","estacio","estácio","engenho da rainha","tomás coelho","tomas coelho","higienopolis","rocha","riachuelo","sampaio","andaraí","andarai","grajaú","grajau"]],
+                ["Zona Oeste", ["barra da tijuca","barra","recreio","recreio dos bandeirantes","jacarepagua","jacarepaguá","anil","freguesia","taquara","curicica","pechincha","tanque","vargem grande","vargem pequena","grumari","itanhanga","prainha","joatinga","camorim","campo grande","santa cruz","bangu","realengo","deodoro","cosmos","paciencia","sepetiba","guaratiba","padre miguel","senador camara","sulacap","magalhaes bastos","vila militar","campo dos afonsos","jardim sulacap","inhoaiba","santissimo","paciencia","cosmos","sao francisco","campo grande","senador vasconcelos"]],
+                ["Baixada Fluminense", ["nova iguacu","duque de caxias","sao joao de meriti","nilopolis","belford roxo","mesquita","queimados","japeri","seropedica","paracambi","itaguai","guapimirim","magé","mage","nova iguaçu","nilópolis","nilopolis"]],
+                ["Centro", ["centro","lapa","cidade nova","rio comprido","gamboa","saude","santo cristo","estácio","estacio","da quitanda","quitanda","alvaro alvim","alvaro","da amizade"]],
               ];
               for (const [zona, bairros] of zonas) {
                 if (bairros.some(bz => b === bz || b.includes(bz) || bz.includes(b))) return zona;
+              }
+              return "";
+            }
+
+            // Tenta extrair bairro do endereço formatado "LOGRADOURO, Nº, BAIRRO, Cidade - UF"
+            function extrairBairroDoEndereco(endereco: string): string {
+              if (!endereco) return "";
+              // Formato típico: "RUA TAL, 123, BAIRRO, RIO DE JANEIRO - RJ, 00000-000"
+              // ou: "RUA TAL, 123, BAIRRO, Rio de Janeiro - RJ"
+              const partes = endereco.split(",").map(p => p.trim());
+              // O bairro normalmente é a 3ª parte (índice 2), antes de "RIO DE JANEIRO"
+              // Filtra partes que são claramente cidade, estado, CEP
+              for (let i = partes.length - 1; i >= 2; i--) {
+                const p = partes[i];
+                // Pula se parece CEP
+                if (/^\d{5}-?\d{3}$/.test(p)) continue;
+                // Pula se contém "RIO DE JANEIRO" ou "RJ"
+                if (/rio de janeiro|^rj$/i.test(p)) continue;
+                // Pula se é número puro
+                if (/^\d+$/.test(p)) continue;
+                // A parte restante deve ser o bairro
+                return p;
               }
               return "";
             }
@@ -4446,11 +4469,14 @@ function LogisticaPage() {
             // Agrupar por: Zona > Bairro > lista de atendimentos
             type ItemLoc = { atend: Atendimento; rua: string; bairro: string; zona: string };
             const itensLocalizados: ItemLoc[] = atendAtivos.map(a => {
-              // Buscar bairro pelo cliente_id (campo direto do cadastro)
+              // 1º: buscar bairro pelo cliente_id (campo direto do cadastro)
               const dadosCliente = a.cliente_id ? clientesBairros[a.cliente_id] : null;
               const bairroRaw = dadosCliente?.bairro || "";
               const logradouro = dadosCliente?.logradouro || a.endereco || "";
-              const bairro = bairroRaw ? cap(bairroRaw) : "Sem bairro";
+              // 2º fallback: extrair bairro do campo endereco do atendimento
+              const bairroFallback = !bairroRaw && a.endereco ? extrairBairroDoEndereco(a.endereco) : "";
+              const bairroFinal = bairroRaw || bairroFallback;
+              const bairro = bairroFinal ? cap(bairroFinal) : "Sem bairro";
               return { atend: a, rua: logradouro, bairro, zona: inferirZona(bairro) };
             });
 
