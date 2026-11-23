@@ -2134,6 +2134,7 @@ function LogisticaPage() {
       cliente_nome: formAtend.cliente_nome?.trim() || null,
       cliente_email: formAtend.cliente_email?.trim() || null,
       cliente_email_cc: formAtend.cliente_email_cc?.trim() || null,
+      cliente_id: formAtend.cliente_id || null,
     };
 
     // Detecta reagendamento: se edição e data mudou
