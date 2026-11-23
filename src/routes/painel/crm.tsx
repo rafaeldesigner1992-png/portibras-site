@@ -50,6 +50,7 @@ interface Lead {
   cliente_id: string | null;
   data_inicio: string | null;
   data_fechamento: string | null;
+  orcamento_conta_azul_id: string | null;
 }
 
 interface ClienteVinculado {
@@ -3779,6 +3780,62 @@ function CrmPage() {
   const [cardAberto, setCardAberto] = useState<Lead | null>(null);
   const [abaCard, setAbaCard] = useState<"historico" | "orcamento" | "manutencao" | "propostas" | "estrategista">("historico");
 
+  // ── Orçamento Conta Azul ───────────────────────────────────────────────────
+  interface OrcamentoCA {
+    id: string;
+    numero: string | null;
+    status: string;
+    cliente_nome: string;
+    valor_total: number;
+    data_emissao: string | null;
+    data_validade: string | null;
+    observacao: string | null;
+    itens: { descricao: string; quantidade: number; valor_unitario: number; valor_total: number }[];
+    link: string;
+  }
+  const [orcamentoCA, setOrcamentoCA] = useState<OrcamentoCA | null>(null);
+  const [linkOrcamentoCA, setLinkOrcamentoCA] = useState("");
+  const [carregandoOrcamentoCA, setCarregandoOrcamentoCA] = useState(false);
+  const [erroOrcamentoCA, setErroOrcamentoCA] = useState("");
+
+  async function buscarOrcamentoCA(leadId: string, linkOuId: string) {
+    setCarregandoOrcamentoCA(true);
+    setErroOrcamentoCA("");
+    setOrcamentoCA(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("buscar-orcamento-conta-azul", {
+        body: { orcamento_id: linkOuId },
+      });
+      if (error || !data?.ok) {
+        setErroOrcamentoCA(data?.error ?? error?.message ?? "Erro ao buscar orçamento");
+        return;
+      }
+      setOrcamentoCA(data.orcamento);
+      // Salva o ID no lead para persistência
+      const uuid = data.orcamento.id;
+      await supabase.from("leads").update({ orcamento_conta_azul_id: uuid }).eq("id", leadId);
+      setCardAberto(prev => prev ? { ...prev, orcamento_conta_azul_id: uuid } : prev);
+    } catch (e: any) {
+      setErroOrcamentoCA(e.message ?? "Erro inesperado");
+    } finally {
+      setCarregandoOrcamentoCA(false);
+    }
+  }
+
+  async function carregarOrcamentoCASeVinculado(lead: Lead) {
+    if (!lead.orcamento_conta_azul_id) return;
+    setLinkOrcamentoCA(lead.orcamento_conta_azul_id);
+    await buscarOrcamentoCA(lead.id, lead.orcamento_conta_azul_id);
+  }
+
+  async function desvincularOrcamentoCA(leadId: string) {
+    await supabase.from("leads").update({ orcamento_conta_azul_id: null }).eq("id", leadId);
+    setOrcamentoCA(null);
+    setLinkOrcamentoCA("");
+    setCardAberto(prev => prev ? { ...prev, orcamento_conta_azul_id: null } : prev);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   // ── Estrategista Comercial ─────────────────────────────────────────────
   const [analiseEstrategista, setAnaliseEstrategista] = useState<string | null>(null);
   const [carregandoAnalise, setCarregandoAnalise] = useState(false);
@@ -4152,8 +4209,12 @@ function CrmPage() {
     setAnaliseEstrategista(null);
     setChatEstrategista([]);
     setPropostas([]);
+    setOrcamentoCA(null);
+    setLinkOrcamentoCA(lead.orcamento_conta_azul_id ?? "");
+    setErroOrcamentoCA("");
     carregarConversas(lead.id);
     carregarPropostas(lead.id);
+    if (lead.orcamento_conta_azul_id) carregarOrcamentoCASeVinculado(lead);
   }
 
   async function abrirModal(lead?: Lead) {
@@ -5252,8 +5313,114 @@ function CrmPage() {
               )}
 
               {abaCard === "orcamento" && (
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} onPropostaSalva={() => carregarPropostas(cardAberto.id)} />
+                <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+                  {/* Bloco: Orçamento do Conta Azul */}
+                  <div className="border-b border-gray-100 px-5 py-4 bg-gray-50/60 flex-shrink-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+                      </svg>
+                      Orçamento Conta Azul
+                    </p>
+                    {!orcamentoCA ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={linkOrcamentoCA}
+                            onChange={e => { setLinkOrcamentoCA(e.target.value); setErroOrcamentoCA(""); }}
+                            onKeyDown={e => { if (e.key === "Enter" && linkOrcamentoCA.trim()) buscarOrcamentoCA(cardAberto.id, linkOrcamentoCA.trim()); }}
+                            placeholder="Cole o link ou ID do orçamento do Conta Azul…"
+                            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          />
+                          <button
+                            onClick={() => linkOrcamentoCA.trim() && buscarOrcamentoCA(cardAberto.id, linkOrcamentoCA.trim())}
+                            disabled={carregandoOrcamentoCA || !linkOrcamentoCA.trim()}
+                            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                            {carregandoOrcamentoCA ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                            Buscar
+                          </button>
+                        </div>
+                        {erroOrcamentoCA && (
+                          <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />{erroOrcamentoCA}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-blue-100 bg-white p-4 space-y-3">
+                        {/* Cabeçalho do orçamento */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-sm font-bold text-gray-900">
+                                {orcamentoCA.numero ? `Orçamento #${orcamentoCA.numero}` : "Orçamento Conta Azul"}
+                              </span>
+                              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+                                orcamentoCA.status.toLowerCase().includes("aprova") ? "bg-green-100 text-green-700" :
+                                orcamentoCA.status.toLowerCase().includes("cancel") ? "bg-red-100 text-red-700" :
+                                "bg-yellow-100 text-yellow-700"
+                              )}>{orcamentoCA.status}</span>
+                            </div>
+                            <p className="text-xs text-gray-500">{orcamentoCA.cliente_nome}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-lg font-bold text-blue-700">
+                              {orcamentoCA.valor_total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </p>
+                            {orcamentoCA.data_emissao && (
+                              <p className="text-[10px] text-gray-400">
+                                Emitido {new Date(orcamentoCA.data_emissao).toLocaleDateString("pt-BR")}
+                              </p>
+                            )}
+                            {orcamentoCA.data_validade && (
+                              <p className="text-[10px] text-gray-400">
+                                Válido até {new Date(orcamentoCA.data_validade).toLocaleDateString("pt-BR")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {/* Itens */}
+                        {orcamentoCA.itens.length > 0 && (
+                          <div className="border-t border-gray-100 pt-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Itens</p>
+                            <div className="space-y-1.5">
+                              {orcamentoCA.itens.map((item, i) => (
+                                <div key={i} className="flex justify-between text-xs text-gray-700 gap-2">
+                                  <span className="flex-1 truncate">{item.descricao}</span>
+                                  <span className="text-gray-400 flex-shrink-0">{item.quantidade}×</span>
+                                  <span className="font-medium flex-shrink-0 text-right">
+                                    {(item.valor_total || item.valor_unitario * item.quantidade).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* Observação */}
+                        {orcamentoCA.observacao && (
+                          <div className="border-t border-gray-100 pt-2">
+                            <p className="text-xs text-gray-500 italic">{orcamentoCA.observacao}</p>
+                          </div>
+                        )}
+                        {/* Ações */}
+                        <div className="border-t border-gray-100 pt-2 flex gap-2">
+                          <a href={orcamentoCA.link} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors">
+                            <Eye className="h-3.5 w-3.5" /> Ver no Conta Azul
+                          </a>
+                          <button
+                            onClick={() => desvincularOrcamentoCA(cardAberto.id)}
+                            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 hover:text-red-600 transition-colors">
+                            <X className="h-3.5 w-3.5" /> Desvincular
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Calculadora interna */}
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <CalculadoraOrcamento lead={cardAberto} onClose={() => setAbaCard("historico")} onPropostaSalva={() => carregarPropostas(cardAberto.id)} />
+                  </div>
                 </div>
               )}
 
