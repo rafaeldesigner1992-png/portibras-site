@@ -3814,7 +3814,7 @@ function CrmPage() {
         ? { cnpj: nomeBusca }
         : { nome: nomeBusca };
       const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/listar-orcamentos-conta-azul`,
+        `https://odmuutijqikhzlgzjnwv.supabase.co/functions/v1/listar-orcamentos-conta-azul`,
         {
           method: "POST",
           headers: {
