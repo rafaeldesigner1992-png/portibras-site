@@ -1010,6 +1010,7 @@ function LogisticaPage() {
   const [kpiAtendExp, setKpiAtendExp] = useState<"todos" | "programados" | "semdata" | null>(null);
   const [painelBairroAberto, setPainelBairroAberto] = useState(false);
   const [bairrosAbertos, setBairrosAbertos] = useState<Record<string, boolean>>({});
+  const [clientesBairros, setClientesBairros] = useState<Record<string, { bairro: string; logradouro: string }>>({});
   const [calMes, setCalMes] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() }; });
   const [ticketsAbertos, setTicketsAbertos] = useState<PedidoLogistico[]>([]);
   const [calEventoPopup, setCalEventoPopup] = useState<Atendimento | null>(null);
@@ -1748,6 +1749,25 @@ function LogisticaPage() {
     ]);
     if (data) setAtendimentos(data as Atendimento[]);
     if (tickets) setTicketsAbertos(tickets as PedidoLogistico[]);
+
+    // Buscar bairros dos clientes vinculados
+    if (data) {
+      const ids = [...new Set((data as Atendimento[]).map(a => a.cliente_id).filter(Boolean))] as string[];
+      if (ids.length > 0) {
+        const { data: clientes } = await supabase
+          .from("clientes")
+          .select("id, bairro, logradouro")
+          .in("id", ids);
+        if (clientes) {
+          const mapa: Record<string, { bairro: string; logradouro: string }> = {};
+          for (const c of clientes) {
+            mapa[c.id] = { bairro: c.bairro ?? "", logradouro: c.logradouro ?? "" };
+          }
+          setClientesBairros(mapa);
+        }
+      }
+    }
+
     setCarregandoAtend(false);
     return (data as Atendimento[]) ?? [];
   }
@@ -4404,61 +4424,8 @@ function LogisticaPage() {
               return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
             }
 
-            // Parse do formato real cadastrado: "RUA, NUMERO, BAIRRO"
-            // O BAIRRO é sempre o ÚLTIMO campo separado por vírgula.
-            // Exemplos reais da tela:
-            //   "LEOPOLDO, 637, ANDARAI"       → bairro=Andarai
-            //   "AROAZES, 781, JACAREPAGUA"    → bairro=Jacarepagua
-            //   "SAO CLEMENTE, 25, BOTAFOGO"   → bairro=Botafogo
-            //   "SETE DE SETEMBRO, 00111, CENTRO" → bairro=Centro
-            //   "Rua São Clemente, nº 38 - Botafogo, RJ" → último=RJ, penúltimo tem "Botafogo"
-            function parsearEndereco(end: string | null): { rua: string; bairro: string; cidade: string; zona: string } {
-              if (!end || !end.trim()) return { rua: "", bairro: "Sem bairro", cidade: "", zona: "" };
-              const str = end.trim();
-
-              // Tratar formato alternativo com traço: "Rua X, nº N - Bairro, Cidade - UF"
-              // Neste caso extrair bairro do trecho antes da última vírgula após o traço
-              const matchTraco = str.match(/[-–]\s*([^,\-–]+?)(?:,\s*[A-Za-z\s]+(?:\s*[-–]\s*[A-Z]{2})?)?$/);
-
-              const partes = str.split(",").map(p => p.trim()).filter(Boolean);
-              let bairro = "";
-              let rua = "";
-              let cidade = "";
-
-              if (partes.length >= 2) {
-                // Último campo = bairro. Verificar se parece UF (2 letras) — se sim, usar penúltimo
-                const ultimo = partes[partes.length - 1] || "";
-                const penultimo = partes[partes.length - 2] || "";
-                // Se o último tem apenas 2 letras maiúsculas (UF) ou "Rio de Janeiro" como cidade
-                const ehUF = /^[A-Z]{2}$/.test(ultimo.trim());
-                const ehCidade = /rio de janeiro|sao paulo|rj|sp/i.test(ultimo.trim());
-                if (ehUF || ehCidade) {
-                  // Formato "RUA, N, BAIRRO, CIDADE/UF" — bairro é o penúltimo
-                  bairro = penultimo;
-                  rua = partes.slice(0, partes.length - 2).join(", ");
-                } else {
-                  // Formato padrão "RUA, N, BAIRRO" — bairro é o último
-                  bairro = ultimo;
-                  rua = partes.slice(0, partes.length - 1).join(", ");
-                }
-                // Limpar bairro: remover sufixos de cidade/UF que vieram junto
-                bairro = bairro.replace(/\s*[-–]\s*[A-Z]{2}$/, "").trim();
-                // Se bairro contém traço (ex: "Botafog..."), pegar só o bairro
-                if (matchTraco && matchTraco[1]) {
-                  const candidato = matchTraco[1].trim();
-                  if (candidato.length > 2) bairro = candidato;
-                }
-              } else {
-                bairro = str;
-              }
-
-              // Capitalizar bairro e cidade (vêm em maiúsculas no banco)
-              const cap = (s: string) => s.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-              bairro = cap(bairro);
-              cidade = cap(cidade);
-
-              return { rua, bairro: bairro || "Sem bairro", cidade, zona: inferirZona(bairro) };
-            }
+            // Capitalizar: "BARRA DA TIJUCA" → "Barra Da Tijuca"
+            const cap = (s: string) => s.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 
             function inferirZona(bairro: string): string {
               const b = norm(bairro);
@@ -4475,12 +4442,22 @@ function LogisticaPage() {
             }
 
             const atendAtivos = atendimentos.filter(a => a.status !== "Concluído" && a.status !== "Cancelado");
-            const comEndereco = atendAtivos.filter(a => a.endereco);
-            if (comEndereco.length === 0) return null;
+            // Incluir atendimentos que tenham cliente_id com bairro cadastrado OU endereco preenchido
+            const comLocalizacao = atendAtivos.filter(a =>
+              (a.cliente_id && clientesBairros[a.cliente_id]?.bairro) || a.endereco
+            );
+            if (comLocalizacao.length === 0) return null;
 
             // Agrupar por: Zona > Bairro > lista de atendimentos
-            type ItemLoc = { atend: Atendimento; rua: string; bairro: string; cidade: string; zona: string };
-            const itensLocalizados: ItemLoc[] = comEndereco.map(a => ({ atend: a, ...parsearEndereco(a.endereco) }));
+            type ItemLoc = { atend: Atendimento; rua: string; bairro: string; zona: string };
+            const itensLocalizados: ItemLoc[] = comLocalizacao.map(a => {
+              // Preferir campo bairro do cadastro do cliente
+              const dadosCliente = a.cliente_id ? clientesBairros[a.cliente_id] : null;
+              const bairroRaw = dadosCliente?.bairro || "";
+              const logradouro = dadosCliente?.logradouro || a.endereco || "";
+              const bairro = bairroRaw ? cap(bairroRaw) : "Sem bairro";
+              return { atend: a, rua: logradouro, bairro, zona: inferirZona(bairro) };
+            });
 
             const porZona: Record<string, Record<string, ItemLoc[]>> = {};
             itensLocalizados.forEach(item => {
@@ -4503,7 +4480,7 @@ function LogisticaPage() {
                 >
                   <MapPin className="h-4 w-4 text-blue-500 shrink-0" />
                   <span className="text-sm font-semibold text-blue-800">Clientes por Região</span>
-                  <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">{comEndereco.length}</span>
+                  <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">{comLocalizacao.length}</span>
                   <span className="text-[10px] text-blue-500 flex-1">— roteirize por bairro antes de agendar</span>
                   <svg className={cn("h-4 w-4 text-blue-400 shrink-0 transition-transform duration-200", painelBairroAberto && "rotate-180")} fill="none" viewBox="0 0 16 16">
                     <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
