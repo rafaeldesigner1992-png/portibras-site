@@ -4457,32 +4457,31 @@ function LogisticaPage() {
               return "";
             }
 
-            // Tenta extrair bairro do endereço formatado "LOGRADOURO, Nº, BAIRRO, Cidade - UF"
+            // Tenta extrair bairro do endereço formatado "LOGRADOURO, Nº, BAIRRO, Cidade - UF, CEP"
             function extrairBairroDoEndereco(endereco: string): string {
               if (!endereco) return "";
-              // Formato típico: "RUA TAL, 123, BAIRRO, RIO DE JANEIRO - RJ, 00000-000"
-              // ou: "RUA TAL, 123, BAIRRO, Rio de Janeiro - RJ"
               const partes = endereco.split(",").map(p => p.trim());
-              // O bairro normalmente é a 3ª parte (índice 2), antes de "RIO DE JANEIRO"
-              // Filtra partes que são claramente cidade, estado, CEP
               for (let i = partes.length - 1; i >= 2; i--) {
                 const p = partes[i];
-                // Pula se parece CEP
+                // Pula CEP (00000-000 ou 00.000-000)
+                if (/^\d{2}\.?\d{3}-\d{3}$/.test(p)) continue;
                 if (/^\d{5}-?\d{3}$/.test(p)) continue;
-                // Pula se contém "RIO DE JANEIRO" ou "RJ"
-                if (/rio de janeiro|^rj$/i.test(p)) continue;
-                // Pula se é número puro
-                if (/^\d+$/.test(p)) continue;
-                // A parte restante deve ser o bairro
+                // Pula cidade/estado
+                if (/rio de janeiro|^rj$|^sp$|^mg$/i.test(p)) continue;
+                // Pula se contém hífen e dígitos (ex: "RJ, 22.260-900" residual)
+                if (/\d{2}\.\d{3}-\d{3}/.test(p)) continue;
+                // Pula se é número puro ou muito curto (< 3 chars)
+                if (/^\d+$/.test(p) || p.length < 3) continue;
                 return p;
               }
               return "";
             }
 
-            const atendAtivos = atendimentos.filter(a =>
-              a.status !== "Concluído" && a.status !== "Concluída" &&
-              a.status !== "Cancelado" && a.status !== "Cancelada"
-            );
+            const statusExcluidos = ["concluido","concluída","concluida","cancelado","cancelada"];
+            const atendAtivos = atendimentos.filter(a => {
+              const s = (a.status || "").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+              return !statusExcluidos.includes(s);
+            });
             if (atendAtivos.length === 0) return null;
 
             // Agrupar por: Zona > Bairro > lista de atendimentos
