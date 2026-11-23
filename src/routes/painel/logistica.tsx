@@ -1993,6 +1993,10 @@ function LogisticaPage() {
     await supabase.from("logistica_pedidos").update(updates).eq("id", pedido.id);
     setPedidosLog(ps => ps.map(p => p.id === pedido.id ? { ...p, ...updates } : p));
     if (pedidoAberto?.id === pedido.id) setPedidoAberto(p => p ? { ...p, ...updates } : p);
+    // Se for ticket e movido para concluido/cancelado, remove da lista de tickets em aberto
+    if (pedido.is_ticket && (novaEtapa === "concluido" || novaEtapa === "cancelado")) {
+      setTicketsAbertos(ts => ts.filter(t => t.id !== pedido.id));
+    }
     setAtualizandoEtapa(null);
   }
 
@@ -2033,6 +2037,8 @@ function LogisticaPage() {
     await supabase.from("logistica_aquisicoes").delete().eq("pedido_id", pedido.id);
     await supabase.from("logistica_pedidos").delete().eq("id", pedido.id);
     setPedidosLog(ps => ps.filter(p => p.id !== pedido.id));
+    // Se for ticket, remove também da lista de tickets em aberto
+    if (pedido.is_ticket) setTicketsAbertos(ts => ts.filter(t => t.id !== pedido.id));
     setPedidoAberto(null);
   }
 
