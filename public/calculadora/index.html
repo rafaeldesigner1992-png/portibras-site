@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28p -->
+<!-- v2026-11-28q -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -1317,6 +1317,7 @@ const LS_TERC_SERV_KEY = 'portibras_terc_serv_v1';
 const LS_TERC_SERV_VAL_KEY = 'portibras_terc_serv_val_v1';
 const LS_FABRICANTE_KEY = 'portibras_fabricante_v1';
 const LS_LINK_KEY = 'portibras_link_v1';
+const LS_PCF_PRECOS_KEY = 'portibras_pcf_precos_v1';
 
 const PROD_DIARIA = ['CTR-MAR', 'PLA-PCF'];
 
@@ -1389,6 +1390,10 @@ function loadTercs() { try { return JSON.parse(localStorage.getItem(LS_TERC_KEY)
 function saveTerc(key, valor) { const d = loadTercs(); d[key] = { valor: parseFloat(valor), data: new Date().toLocaleDateString('pt-BR') }; try { localStorage.setItem(LS_TERC_KEY, JSON.stringify(d)); } catch(e) {} }
 function getTercAtual(key, padrao) { const d = loadTercs(); return d[key] ? d[key].valor : padrao; }
 function getTercData(key) { const d = loadTercs(); return d[key] ? d[key].data : null; }
+
+function loadPCFPrecos() { try { return JSON.parse(localStorage.getItem(LS_PCF_PRECOS_KEY) || '{}'); } catch(e) { return {}; } }
+function savePCFPreco(tipo, folhas, valor) { const d = loadPCFPrecos(); d[tipo+'-'+folhas] = parseFloat(valor) || 0; try { localStorage.setItem(LS_PCF_PRECOS_KEY, JSON.stringify(d)); } catch(e) {} }
+function getPCFPreco(tipo, folhas) { const d = loadPCFPrecos(); return d[tipo+'-'+folhas] || 0; }
 
 function loadTercServ() { try { return JSON.parse(localStorage.getItem(LS_TERC_SERV_KEY) || '{}'); } catch(e) { return {}; } }
 function isTerceirizado(id) { return !!loadTercServ()[id]; }
@@ -1485,7 +1490,7 @@ function calcItem(prod, qty, params) {
   const usaFrete = tipoOrcamento !== 'instalacao';
   const usaInst  = tipoOrcamento !== 'fornecimento';
 
-  const custoMat = usaMat  ? prod.custo * qty : 0;
+  const custoMat = usaMat  ? getCustoAtual(prod.id, prod.custo) * qty : 0;
   const frete    = usaFrete ? freteTotal : 0;
   const temToggleTerc = ALL_TERC_SERV_IDS.includes(prod.id);
 
@@ -1541,6 +1546,47 @@ function calcVarBase(parentId, v, params) {
   const prod = PRODUTOS.find(p => p.id === parentId);
   if (!prod) return { custoTotal: 0, precoIdeal: 0, precoMin: 0, precoPremium: 0 };
   const qty = v.qty || 1;
+  // Para POR-CF: usar custo específico por tipo/folha se configurado
+  if (parentId === 'POR-CF') {
+    const tipoPCF = v.tipoPCF || 'P60';
+    const folhas = v.folhas || 'simples';
+    const custoPCF = getPCFPreco(tipoPCF, folhas);
+    if (custoPCF > 0) {
+      // Criar prod virtual com custo do tipo específico
+      const prodVirtual = { ...prod, custo: custoPCF };
+      // Usar calcItem com prod virtual mas sobreescrever custoAtual no localStorage temporariamente não é limpo
+      // Melhor: calcular diretamente
+      const mult = getMultAtual(prod.id, params.mult);
+      const freteTotal = getFreteAtual(prod.id);
+      const moUnit = getMOAtual(prod.id);
+      const usaMat = tipoOrcamento !== 'instalacao';
+      const usaFrete = tipoOrcamento !== 'instalacao';
+      const usaInst = tipoOrcamento !== 'fornecimento';
+      const custoMat = usaMat ? custoPCF * qty : 0;
+      const frete = usaFrete ? freteTotal : 0;
+      let custoInst = 0, moPropriaUnit = 0;
+      if (usaInst) {
+        const tercServAtivo = isTerceirizado(prod.id);
+        if (tercServAtivo) {
+          const tercServVal = getTercServVal(prod.id);
+          custoInst = tercServVal > 0 ? tercServVal * qty : (moUnit !== null ? moUnit * qty : 0);
+        } else {
+          custoInst = 0;
+          if (moUnit !== null) moPropriaUnit = moUnit;
+          else if (prod.tempoMin > 0) moPropriaUnit = (prod.tempoMin / 60) * params.hora;
+        }
+      }
+      const custoTotal = custoMat + frete + custoInst;
+      const moPropriaTotal = moPropriaUnit * qty;
+      const baseMin = custoTotal * 1.2 + moPropriaTotal;
+      const baseIdeal = custoTotal * mult + moPropriaTotal;
+      const basePremium = baseIdeal * 1.25;
+      const precoMin = baseMin * (1 + params.aliq / 100);
+      const precoIdeal = baseIdeal * (1 + params.aliq / 100);
+      const precoPremium = basePremium * (1 + params.aliq / 100);
+      return { custoMat, frete, custoInst, custoTotal, moPropriaUnit, moPropriaTotal, precoMin, precoIdeal, precoPremium, mult, freteTotal, moUnit };
+    }
+  }
   return calcItem(prod, qty, params);
 }
 
@@ -1650,7 +1696,16 @@ function renderProducts(list) {
     const modEm = getModificadoEm(p.id);
     const custoAtual = getCustoAtual(p.id, p.custo);
     const multAtual = getMultAtual(p.id, params.mult);
-    const c1 = calcItem(p, 1, params);
+    // Para POR-CF: usar menor custo configurado por tipo como referência dos chips
+    let c1;
+    if (p.id === 'POR-CF') {
+      const precos = TIPOS_PCF.flatMap(t => ['simples','dupla'].map(f => getPCFPreco(t,f))).filter(v => v > 0);
+      const custoRef = precos.length > 0 ? Math.min(...precos) : 0;
+      const prodRef = { ...p, custo: custoRef };
+      c1 = calcItem(prodRef, 1, params);
+    } else {
+      c1 = calcItem(p, 1, params);
+    }
     const freteAtual = getFreteAtual(p.id);
     const precoUnitIdeal = c1.precoIdeal;
     const impostosUnit = precoUnitIdeal - precoUnitIdeal / (1 + params.aliq / 100);
@@ -1702,7 +1757,22 @@ function renderProducts(list) {
       </button>
 
       <div class="edit-panel" id="epanel-${p.id}">
-        ${showMat ? `
+        ${showMat ? (isVar && p.id === 'POR-CF' ? `
+        <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🏗️ Custo de compra por tipo de porta</div>
+        ${TIPOS_PCF.map(t => ['simples','dupla'].map(f => `
+        <div class="edit-field-row">
+          <span class="edit-field-label" style="min-width:90px">${t} ${f.charAt(0).toUpperCase()+f.slice(1)}</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="number" id="pcf-${t}-${f}" value="${getPCFPreco(t,f) > 0 ? getPCFPreco(t,f).toFixed(2) : ''}" placeholder="0,00" step="0.01" min="0"
+              onblur="savePCFPreco('${t}','${f}',this.value||0);renderProducts(PRODUTOS.filter(x=>x.cat===selectedCat||selectedCat==='Todos'));renderOrcamento();">
+          </div>
+        </div>`).join('')).join('')}
+        <div class="edit-field-row">
+          <span class="edit-field-label">Frete R$</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="number" id="frete-${p.id}" value="${freteAtual.toFixed(2)}" step="0.5" min="0">
+          </div>
+        </div>` : `
         <div class="edit-field-row">
           <span class="edit-field-label">Compra R$</span>
           <div class="edit-field-wrap">
@@ -1714,7 +1784,7 @@ function renderProducts(list) {
           <div class="edit-field-wrap">
             <input class="edit-field-input" type="number" id="frete-${p.id}" value="${freteAtual.toFixed(2)}" step="0.5" min="0">
           </div>
-        </div>` : ''}
+        </div>`) : ''}
         ${showInst ? (() => {
           const moAtual = getMOAtual(p.id);
           const moPlaceholder = moAtual !== null ? moAtual.toFixed(2) : ((p.tempoMin / 60) * params.hora).toFixed(2);
