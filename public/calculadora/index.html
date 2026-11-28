@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28l -->
+<!-- v2026-11-28m -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1120,22 +1120,22 @@
 // DADOS DOS PRODUTOS
 // =====================
 const PRODUTOS_BASE = [
-  { id: 'BAR-ANT-D', nome: 'Barra antipânico dupla', cat: 'Antipânico', custo: 760.00, tempoMin: 70, icon: '🔒' },
-  { id: 'BAR-ANT-S', nome: 'Barra antipânico simples', cat: 'Antipânico', custo: 500.00, tempoMin: 0, icon: '🔒' },
-  { id: 'CTR-MAR', nome: 'Contramarco', cat: 'Estrutura', custo: 75.00, tempoMin: 0, icon: '🏗️' },
-  { id: 'DOB-MOL', nome: 'Dobradiça com mola', cat: 'Ferragens', custo: 25.66, tempoMin: 10, icon: '🔧' },
-  { id: 'DOB-HEL-D', nome: 'Dobradiça helicoidal direita', cat: 'Ferragens', custo: 59.98, tempoMin: 15, icon: '🔧' },
-  { id: 'DOB-HEL-E', nome: 'Dobradiça helicoidal esquerda', cat: 'Ferragens', custo: 59.98, tempoMin: 15, icon: '🔧' },
-  { id: 'FEC-CC', nome: 'Fechadura sobrepor com chave', cat: 'Fechaduras', custo: 201.00, tempoMin: 15, icon: '🗝️' },
-  { id: 'FEC-CI', nome: 'Fechadura sobrepor chave invertida', cat: 'Fechaduras', custo: 220.00, tempoMin: 20, icon: '🗝️' },
-  { id: 'FEC-SS', nome: 'Fechadura sobrepor sem chave', cat: 'Fechaduras', custo: 59.98, tempoMin: 15, icon: '🗝️' },
-  { id: 'Manut', nome: 'Manutenção de Porta Corta Fogo', cat: 'Serviços', custo: 7.50, tempoMin: 5, icon: '🛠️' },
-  { id: 'MOL-AER', nome: 'Mola aérea', cat: 'Ferragens', custo: 160.00, tempoMin: 30, icon: '🔧' },
-  { id: 'PIN-POR', nome: 'Pintura de porta', cat: 'Acabamento', custo: 180.00, tempoMin: 20, icon: '🎨' },
-  { id: 'PLA-PAV', nome: 'Placa de pavimento', cat: 'Sinalização', custo: 6.50, tempoMin: 5, icon: '🚪' },
-  { id: 'PLA-SAI', nome: 'Placa de saída', cat: 'Sinalização', custo: 7.00, tempoMin: 5, icon: '🚪' },
-  { id: 'PLA-PCF', nome: 'Placa fotoluminescente porta corta fogo', cat: 'Sinalização', custo: 6.50, tempoMin: 5, icon: '🚪' },
-  { id: 'POR-CF', nome: 'Porta corta fogo', cat: 'Estrutura', custo: 0.00, tempoMin: 0, icon: '🏗️' },
+  { id: 'BAR-ANT-D', nome: 'Barra antipânico dupla',                    cat: 'Barras',               custo: 760.00, tempoMin: 70, icon: '🔒' },
+  { id: 'BAR-ANT-S', nome: 'Barra antipânico simples',                  cat: 'Barras',               custo: 500.00, tempoMin: 0,  icon: '🔒' },
+  { id: 'CTR-MAR',   nome: 'Contramarco',                               cat: 'Estrutura & Acabamento', custo: 75.00, tempoMin: 0,  icon: '🏗️' },
+  { id: 'DOB-MOL',   nome: 'Dobradiça com mola',                        cat: 'Ferragens',            custo: 25.66, tempoMin: 10, icon: '🔧' },
+  { id: 'DOB-HEL-D', nome: 'Dobradiça helicoidal direita',              cat: 'Ferragens',            custo: 59.98, tempoMin: 15, icon: '🔧' },
+  { id: 'DOB-HEL-E', nome: 'Dobradiça helicoidal esquerda',             cat: 'Ferragens',            custo: 59.98, tempoMin: 15, icon: '🔧' },
+  { id: 'FEC-CC',    nome: 'Fechadura sobrepor com chave',              cat: 'Ferragens',            custo: 201.00, tempoMin: 15, icon: '🗝️' },
+  { id: 'FEC-CI',    nome: 'Fechadura sobrepor com chave invertida',    cat: 'Ferragens',            custo: 220.00, tempoMin: 20, icon: '🗝️' },
+  { id: 'FEC-SS',    nome: 'Fechadura sobrepor sem chave',              cat: 'Ferragens',            custo: 59.98, tempoMin: 15, icon: '🗝️' },
+  { id: 'Manut',     nome: 'Manutenção de Porta Corta Fogo',            cat: 'Serviços',             custo: 7.50,  tempoMin: 5,  icon: '🛠️' },
+  { id: 'MOL-AER',   nome: 'Mola aérea',                               cat: 'Ferragens',            custo: 160.00, tempoMin: 30, icon: '🔧' },
+  { id: 'PIN-POR',   nome: 'Pintura de porta',                          cat: 'Estrutura & Acabamento', custo: 180.00, tempoMin: 20, icon: '🎨' },
+  { id: 'PLA-PAV',   nome: 'Placa de pavimento',                        cat: 'Sinalização',          custo: 6.50,  tempoMin: 5,  icon: '🚪' },
+  { id: 'PLA-SAI',   nome: 'Placa de saída',                            cat: 'Sinalização',          custo: 7.00,  tempoMin: 5,  icon: '🚪' },
+  { id: 'PLA-PCF',   nome: 'Placa fotoluminescente porta corta fogo',   cat: 'Sinalização',          custo: 6.50,  tempoMin: 5,  icon: '🚪' },
+  { id: 'POR-CF',    nome: 'Porta corta fogo',                          cat: 'Estrutura & Acabamento', custo: 0.00, tempoMin: 0,  icon: '🏗️' },
 ];
 
 // IDs que usam sistema de VARIAÇÕES (card pai + sub-rows)
