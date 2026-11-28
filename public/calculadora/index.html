@@ -1,0 +1,2242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>PORTIBRAS — Calculadora de Orçamentos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --verde: #1a6b35;
+    --verde-claro: #2d8a4e;
+    --verde-bg: #f0f7f2;
+    --cinza: #f5f5f5;
+    --cinza2: #e8e8e8;
+    --cinza3: #999;
+    --text: #1a1a1a;
+    --text2: #555;
+    --danger: #d9534f;
+    --warning: #f0a500;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #f4f6f4;
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 80px;
+  }
+  .header {
+    background: var(--verde);
+    color: white;
+    padding: 16px 20px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  }
+  .logo { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+  .logo span { font-weight: 400; opacity: 0.75; font-size: 13px; display: block; }
+  .tabs {
+    display: flex;
+    background: white;
+    border-bottom: 2px solid var(--cinza2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 1;
+    padding: 12px 8px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cinza3);
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+  }
+  .tab.active { color: var(--verde); border-bottom-color: var(--verde); }
+  .view { display: none; padding: 16px; }
+  .view.active { display: block; }
+  .card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 16px;
+    background: var(--verde-bg);
+    border-bottom: 1px solid #d8ead1;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--verde);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-body { padding: 14px 16px; }
+  .param-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--cinza);
+  }
+  .param-row:last-child { border-bottom: none; }
+  .param-label { font-size: 14px; color: var(--text2); }
+  .param-input {
+    width: 110px;
+    text-align: right;
+    border: 1.5px solid var(--cinza2);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .param-input:focus { outline: none; border-color: var(--verde); }
+  .search-box {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    margin-bottom: 12px;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .search-box:focus-within { border-color: var(--verde); }
+  .search-icon { font-size: 16px; margin-right: 10px; opacity: 0.5; }
+  .search-input {
+    flex: 1;
+    border: none;
+    padding: 13px 0;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    background: none;
+  }
+  .search-input:focus { outline: none; }
+  .cat-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+    margin-bottom: 12px;
+  }
+  .cat-scroll::-webkit-scrollbar { display: none; }
+  .cat-btn {
+    white-space: nowrap;
+    padding: 7px 14px;
+    border-radius: 20px;
+    border: 2px solid var(--cinza2);
+    background: white;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .cat-btn.active { background: var(--verde); border-color: var(--verde); color: white; }
+  .product-item {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 8px;
+    padding: 12px 14px;
+    transition: all 0.15s;
+    border: 2px solid transparent;
+  }
+  .product-item.in-cart { border-color: var(--verde); background: var(--verde-bg); }
+  .product-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .product-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: var(--cinza);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .product-info { flex: 1; min-width: 0; cursor: pointer; }
+  .product-name { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; }
+  .product-code { font-size: 11px; color: var(--cinza3); margin-top: 2px; font-weight: 600; }
+  .product-price { font-size: 13px; color: var(--text2); margin-top: 3px; }
+  .product-qty {
+    display: flex; align-items: center; gap: 0;
+    background: var(--cinza);
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .qty-btn {
+    width: 38px; height: 38px;
+    border: none;
+    background: none;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--verde);
+  }
+  .qty-btn:active { background: var(--cinza2); }
+  .qty-num {
+    min-width: 34px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .qty-input {
+    width: 44px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    border: none;
+    background: none;
+    font-family: 'Inter', sans-serif;
+    padding: 0;
+  }
+  .qty-input:focus { outline: none; }
+  .tipo-orc-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .tipo-btn {
+    flex: 1;
+    padding: 10px 4px;
+    border-radius: 10px;
+    border: 2px solid var(--cinza2);
+    background: white;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text2);
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.3;
+    transition: all 0.15s;
+    font-family: 'Inter', sans-serif;
+  }
+  .tipo-btn .tipo-icon { font-size: 16px; display: block; margin-bottom: 3px; }
+  .tipo-btn.active { border-color: var(--verde); background: var(--verde); color: white; }
+  .prod-info-chips {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--cinza2);
+    flex-wrap: wrap;
+  }
+  .prod-chip {
+    flex: 1;
+    min-width: 70px;
+    background: var(--cinza);
+    border-radius: 7px;
+    padding: 5px 8px;
+    text-align: center;
+  }
+  .prod-chip.venda { background: var(--verde-bg); }
+  .prod-chip.lucro { background: #fff8ee; }
+  .prod-chip-label { font-size: 9px; color: var(--cinza3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px; }
+  .prod-chip-val { font-size: 12px; font-weight: 700; color: var(--text); }
+  .prod-chip.venda .prod-chip-val { color: var(--verde); }
+  .prod-chip.lucro .prod-chip-val { color: #d07000; }
+  .frete-prod-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .frete-prod-label { font-size: 12px; color: var(--cinza3); font-weight: 600; white-space: nowrap; }
+  .frete-prod-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--cinza);
+    border-radius: 8px;
+    border: 1.5px solid var(--cinza2);
+    overflow: hidden;
+    flex: 1;
+  }
+  .frete-prod-wrap:focus-within { border-color: var(--verde); background: white; }
+  .frete-prod-input {
+    border: none;
+    background: none;
+    padding: 9px 10px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: var(--text);
+    width: 100%;
+    min-width: 0;
+  }
+  .frete-prod-input:focus { outline: none; }
+  .custo-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--cinza2);
+  }
+  .custo-label { font-size: 12px; color: var(--cinza3); font-weight: 600; white-space: nowrap; }
+  .custo-input-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--cinza);
+    border-radius: 8px;
+    border: 1.5px solid var(--cinza2);
+    overflow: hidden;
+    flex: 1;
+  }
+  .custo-input-wrap:focus-within { border-color: var(--verde); background: white; }
+  .custo-prefix { font-size: 13px; font-weight: 700; color: var(--cinza3); padding: 0 6px 0 10px; }
+  .custo-input {
+    border: none;
+    background: none;
+    padding: 9px 10px 9px 0;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: var(--text);
+    width: 100%;
+    min-width: 0;
+  }
+  .custo-input:focus { outline: none; }
+  .custo-save-btn {
+    background: var(--verde);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: 'Inter', sans-serif;
+  }
+  .custo-save-btn:active { opacity: 0.85; }
+  .custo-modified { font-size: 10px; color: var(--cinza3); margin-top: 4px; text-align: right; font-style: italic; }
+  .mult-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .mult-label { font-size: 12px; color: var(--cinza3); font-weight: 600; white-space: nowrap; }
+  .mult-input-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--cinza);
+    border-radius: 8px;
+    border: 1.5px solid var(--cinza2);
+    overflow: hidden;
+    flex: 1;
+  }
+  .mult-input-wrap:focus-within { border-color: var(--verde); background: white; }
+  .mult-input {
+    border: none;
+    background: none;
+    padding: 9px 10px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: var(--text);
+    width: 100%;
+    min-width: 0;
+  }
+  .mult-input:focus { outline: none; }
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--cinza3);
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-text { font-size: 15px; font-weight: 500; }
+
+  /* CART ITEM PADRÃO */
+  .cart-item {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .cart-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px 0;
+  }
+  .cart-item-name { font-size: 14px; font-weight: 600; flex: 1; }
+  .cart-item-remove {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  .cart-item-details {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding: 0 14px 12px;
+  }
+  .cart-item-qty {
+    display: flex; align-items: center; gap: 0;
+    background: var(--cinza);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .cart-item-unit-info {
+    display: flex;
+    gap: 12px;
+    padding: 8px 14px 12px;
+    border-top: 1px dashed var(--cinza2);
+  }
+  .cart-unit-chip {
+    flex: 1;
+    background: var(--cinza);
+    border-radius: 8px;
+    padding: 7px 10px;
+    text-align: center;
+  }
+  .cart-unit-chip.margem { background: #fff8ee; }
+  .cart-unit-chip-label { font-size: 10px; color: var(--cinza3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px; }
+  .cart-unit-chip-val { font-size: 13px; font-weight: 700; color: var(--text); }
+  .cart-unit-chip.margem .cart-unit-chip-val { color: #d07000; }
+
+  /* ITEM PAI (Porta / Contramarco) */
+  .parent-item {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 10px;
+    overflow: hidden;
+    border: 2px solid var(--verde);
+  }
+  .parent-item-header {
+    background: var(--verde-bg);
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .parent-item-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--verde);
+    flex: 1;
+  }
+  .parent-item-total {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--verde);
+  }
+  .parent-item-remove {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+
+  /* SUB-VARIAÇÃO */
+  .subvar-list { padding: 8px 10px; }
+  .subvar-item {
+    background: var(--cinza);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .subvar-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .subvar-badge {
+    background: var(--verde);
+    color: white;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .subvar-desc {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text2);
+    font-style: italic;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .subvar-remove {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .subvar-body { padding: 0 12px 10px; }
+  /* Campo de descrição da sub-variação */
+  .subvar-desc-input {
+    width: 100%;
+    border: 1.5px solid var(--cinza2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    background: white;
+    margin-bottom: 8px;
+  }
+  .subvar-desc-input:focus { outline: none; border-color: var(--verde); }
+  /* Chips de configuração (tipo, folhas, bandeira) */
+  .subvar-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .chip-toggle {
+    padding: 5px 10px;
+    border-radius: 20px;
+    border: 1.5px solid var(--cinza2);
+    background: white;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text2);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    white-space: nowrap;
+  }
+  .chip-toggle.active { background: var(--verde); border-color: var(--verde); color: white; }
+  .chip-toggle.warn.active { background: var(--warning); border-color: var(--warning); color: white; }
+  /* Linha de qty + preço livre */
+  .subvar-price-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .subvar-qty {
+    display: flex;
+    align-items: center;
+    background: white;
+    border-radius: 8px;
+    border: 1.5px solid var(--cinza2);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .subvar-price-wrap {
+    display: flex;
+    align-items: center;
+    background: white;
+    border-radius: 8px;
+    border: 1.5px solid var(--cinza2);
+    overflow: hidden;
+    flex: 1;
+  }
+  .subvar-price-wrap:focus-within { border-color: var(--verde); }
+  .subvar-price-prefix { font-size: 12px; color: var(--cinza3); font-weight: 700; padding: 0 4px 0 8px; }
+  .subvar-price-input {
+    border: none;
+    background: none;
+    padding: 8px 8px 8px 0;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: var(--text);
+    width: 100%;
+    min-width: 0;
+  }
+  .subvar-price-input:focus { outline: none; }
+  /* Chips de custo/preço calculado na sub-variação */
+  .subvar-calc-chips {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .subvar-calc-chip {
+    flex: 1;
+    background: white;
+    border-radius: 7px;
+    padding: 5px 8px;
+    text-align: center;
+    border: 1px solid var(--cinza2);
+  }
+  .subvar-calc-chip.ref { background: var(--verde-bg); border-color: #c8e8d4; }
+  .subvar-calc-chip-label { font-size: 9px; color: var(--cinza3); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .subvar-calc-chip-val { font-size: 12px; font-weight: 700; color: var(--text); }
+  .subvar-calc-chip.ref .subvar-calc-chip-val { color: var(--verde); }
+
+  /* Botão adicionar variação */
+  .add-var-btn {
+    width: 100%;
+    padding: 10px;
+    border: 2px dashed var(--verde);
+    border-radius: 10px;
+    background: var(--verde-bg);
+    color: var(--verde);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: 'Inter', sans-serif;
+    margin: 4px 0 8px;
+  }
+  .add-var-btn:active { opacity: 0.8; }
+
+  /* TOTAL CARD */
+  .total-card {
+    background: var(--verde);
+    border-radius: var(--radius);
+    padding: 16px;
+    color: white;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 16px rgba(26,107,53,0.3);
+  }
+  .total-label { font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .total-value { font-size: 32px; font-weight: 700; }
+  .total-breakdown {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.2);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .total-cell { text-align: center; }
+  .total-cell-label { font-size: 11px; opacity: 0.75; margin-bottom: 2px; }
+  .total-cell-value { font-size: 14px; font-weight: 700; }
+  .composicao { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 12px; }
+  .comp-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--cinza);
+    font-size: 14px;
+  }
+  .comp-row:last-child { border-bottom: none; }
+  .comp-row.total { font-weight: 700; font-size: 15px; background: var(--verde-bg); color: var(--verde); }
+  .comp-label { color: var(--text2); }
+  .comp-value { font-weight: 600; color: var(--text); }
+  .comp-value.plus { color: #e07000; }
+  .share-btn {
+    width: 100%;
+    background: var(--verde);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    padding: 16px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 16px rgba(26,107,53,0.3);
+    margin-bottom: 8px;
+    font-family: 'Inter', sans-serif;
+  }
+  .share-btn:active { transform: scale(0.98); }
+  .copy-btn {
+    width: 100%;
+    background: white;
+    color: var(--verde);
+    border: 2px solid var(--verde);
+    border-radius: var(--radius);
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: 'Inter', sans-serif;
+    margin-bottom: 8px;
+  }
+  .copy-btn:active { background: var(--verde-bg); }
+  .badge {
+    background: var(--danger);
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    min-width: 18px;
+    text-align: center;
+  }
+  .bottom-nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: white;
+    border-top: 1px solid var(--cinza2);
+    display: flex;
+    padding: 8px 0 20px;
+    z-index: 100;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+  }
+  .nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 4px 0;
+    position: relative;
+  }
+  .nav-icon { font-size: 22px; line-height: 1; }
+  .nav-label { font-size: 11px; font-weight: 600; color: var(--cinza3); }
+  .nav-btn.active .nav-label { color: var(--verde); }
+  .nav-badge {
+    position: absolute;
+    top: 0; right: calc(50% - 22px);
+    background: var(--danger);
+    color: white;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    min-width: 16px;
+    text-align: center;
+  }
+  .toast {
+    position: fixed;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #1a1a1a;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 999;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .client-input {
+    width: 100%;
+    border: 2px solid var(--cinza2);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    background: white;
+  }
+  .client-input:focus { outline: none; border-color: var(--verde); }
+  .input-label { font-size: 12px; font-weight: 700; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+    margin-top: 4px;
+    padding: 0 2px;
+  }
+  .frete-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .frete-box {
+    background: white;
+    border-radius: 10px;
+    padding: 10px 10px;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+  .frete-box label { font-size: 11px; font-weight: 700; color: var(--text2); display: block; margin-bottom: 6px; }
+  .frete-box input {
+    width: 100%;
+    border: 1.5px solid var(--cinza2);
+    border-radius: 6px;
+    padding: 6px 4px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    text-align: center;
+    color: var(--text);
+  }
+  .frete-box input:focus { outline: none; border-color: var(--verde); }
+  .cobertura-box {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--cinza);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .cobertura-box.ok { background: #edf7f1; border: 1px solid #b6dfc5; }
+  .cobertura-box.warn { background: #fff8ee; border: 1px solid #f5d08a; }
+  .cobertura-box.danger { background: #fdf0f0; border: 1px solid #f5b8b8; }
+  .cob-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; color: var(--text2); }
+  .cob-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+  .cob-label { color: var(--text2); }
+  .cob-value { font-weight: 700; color: var(--text); }
+  .cob-status { font-size: 12px; font-weight: 700; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.07); }
+  .cob-status.ok { color: #1a7a40; }
+  .cob-status.warn { color: #b07000; }
+  .cob-status.danger { color: #c0392b; }
+  .price-modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .price-mode {
+    border-radius: 10px;
+    padding: 12px 8px;
+    text-align: center;
+    border: 2px solid var(--cinza2);
+    background: white;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .price-mode.selected { border-color: var(--verde); background: var(--verde-bg); }
+  .price-mode-label { font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 4px; }
+  .price-mode-val { font-size: 15px; font-weight: 700; color: var(--verde); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">PORTIBRAS <span>Calculadora de Orçamentos</span></div>
+</div>
+
+<div id="view-produtos" class="view active">
+  <div class="search-box">
+    <span class="search-icon">🔍</span>
+    <input class="search-input" type="text" placeholder="Buscar produto ou serviço…" id="searchInput" oninput="filterProducts()">
+  </div>
+  <div class="cat-scroll" id="catScroll"></div>
+  <div id="productList"></div>
+</div>
+
+<div id="view-orcamento" class="view">
+  <div class="tipo-orc-row">
+    <button class="tipo-btn" id="tipo-fornecimento" onclick="setTipo('fornecimento')">
+      <span class="tipo-icon">📦</span>Fornecimento
+    </button>
+    <button class="tipo-btn active" id="tipo-completo" onclick="setTipo('completo')">
+      <span class="tipo-icon">🔧</span>Completo
+    </button>
+    <button class="tipo-btn" id="tipo-instalacao" onclick="setTipo('instalacao')">
+      <span class="tipo-icon">👷</span>Só Instalação
+    </button>
+  </div>
+  <div id="cartEmpty" class="empty-state" style="display:none">
+    <div class="empty-icon">🛒</div>
+    <div class="empty-text">Nenhum item adicionado<br><small style="font-size:13px;color:#aaa">Vá em Produtos e adicione itens</small></div>
+  </div>
+  <div id="cartContent">
+    <div style="margin-bottom:12px">
+      <div class="input-label">Cliente / Empresa</div>
+      <input class="client-input" type="text" id="clientName" placeholder="Ex: Condomínio Exemplo" oninput="updateResumo()">
+    </div>
+    <div id="cartItems"></div>
+    <div id="totalCard"></div>
+    <div id="composicao"></div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-header">💳 Forma de Pagamento</div>
+      <div class="card-body">
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <button id="btnAvista" onclick="setModoPagamento('avista')" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid var(--cinza2);background:white;font-size:13px;font-weight:700;color:var(--text2);cursor:pointer;font-family:inherit;transition:all 0.15s">💵 À Vista</button>
+          <button id="btnParcelado" onclick="setModoPagamento('parcelado')" style="flex:1;padding:10px 8px;border-radius:10px;border:2px solid var(--verde);background:var(--verde);font-size:13px;font-weight:700;color:white;cursor:pointer;font-family:inherit;transition:all 0.15s">📆 Parcelado</button>
+        </div>
+        <div id="blocoAvista" style="display:none">
+          <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">Momento do pagamento</div>
+          <div style="display:flex;gap:8px;margin-bottom:4px">
+            <button id="btnAntecipado" onclick="setMomento('antecipado')" style="flex:1;padding:9px 6px;border-radius:9px;border:2px solid var(--verde);background:var(--verde);font-size:12px;font-weight:700;color:white;cursor:pointer;font-family:inherit">⬆️ Antecipado</button>
+            <button id="btnAposExec" onclick="setMomento('apos_execucao')" style="flex:1;padding:9px 6px;border-radius:9px;border:2px solid var(--cinza2);background:white;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;font-family:inherit">✅ Após execução</button>
+          </div>
+        </div>
+        <div id="blocoParcelado" style="display:block">
+          <div style="font-size:11px;color:var(--cinza3);font-style:italic;margin-bottom:10px">🔒 Sinal sempre antecipado</div>
+          <div class="param-row">
+            <span class="param-label">Sinal / Entrada (%)</span>
+            <input class="param-input" type="number" id="pEntrada" value="70" step="5" min="0" max="100" oninput="updateResumo()">
+          </div>
+          <div class="param-row">
+            <span class="param-label">Parcelas (restante)</span>
+            <input class="param-input" type="number" id="pParcelas" value="2" step="1" min="1" oninput="updateResumo()">
+          </div>
+        </div>
+        <div id="coberturaBox"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="view-compartilhar" class="view">
+  <div id="shareEmpty" class="empty-state" style="display:none">
+    <div class="empty-icon">📤</div>
+    <div class="empty-text">Nenhum item no orçamento</div>
+  </div>
+  <div id="shareContent">
+    <div class="price-modes" id="priceModes"></div>
+    <button class="share-btn" onclick="shareWhatsApp()">
+      <span style="font-size:18px">💬</span> Compartilhar via WhatsApp
+    </button>
+    <button class="copy-btn" onclick="copyText()">
+      <span>📋</span> Copiar texto do orçamento
+    </button>
+    <button class="copy-btn" onclick="salvarOrcamento()" style="background:var(--verde);color:white;border-color:var(--verde)">
+      <span>💾</span> Salvar orçamento no banco
+    </button>
+    <div class="card" style="margin-top:4px">
+      <div class="card-body" style="font-size:13px; color:var(--text2); line-height:1.7" id="previewText"></div>
+    </div>
+  </div>
+</div>
+
+<div id="view-config" class="view">
+  <div class="card">
+    <div class="card-header">⚙️ Parâmetros do Orçamento</div>
+    <div class="card-body">
+      <div class="param-row">
+        <span class="param-label">Multiplicador (margem)</span>
+        <input class="param-input" type="number" id="pMult" value="4.32" step="0.01" oninput="updateResumo()">
+      </div>
+      <div class="param-row">
+        <span class="param-label">Alíquota tributária (%)</span>
+        <input class="param-input" type="number" id="pAliq" value="8.06" step="0.01" oninput="updateResumo()">
+      </div>
+      <div class="param-row">
+        <span class="param-label">Taxa da hora técnica (R$)</span>
+        <input class="param-input" type="number" id="pHora" value="130" step="1" oninput="updateResumo()">
+      </div>
+    </div>
+  </div>
+  <div class="section-title">Fretes</div>
+  <div class="frete-row">
+    <div class="frete-box">
+      <label>Ferragens</label>
+      <input type="number" id="fFerr" value="0" step="0.5" oninput="updateResumo()">
+    </div>
+    <div class="frete-box">
+      <label>Porta</label>
+      <input type="number" id="fPorta" value="0" step="0.5" oninput="updateResumo()">
+    </div>
+    <div class="frete-box">
+      <label>Placas</label>
+      <input type="number" id="fPlacas" value="0" step="0.5" oninput="updateResumo()">
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-header">🤝 Mão de obra terceirizados</div>
+    <div class="card-body" id="tercBody"></div>
+  </div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-header">🔧 Ferragens — M.O. Terceirizada</div>
+    <div class="card-body" id="ferrBody"></div>
+  </div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-header">🚪 Portas — M.O. Terceirizada</div>
+    <div class="card-body" id="portasBody"></div>
+  </div>
+  <div class="card">
+    <div class="card-header">ℹ️ Sobre</div>
+    <div class="card-body" style="font-size:13px; color:var(--text2); line-height:1.7">
+      <strong>PORTIBRAS — Calculadora de Orçamentos</strong><br>
+      Versão mobile da tabela de preços.<br><br>
+      Suporta múltiplas variações de Porta Corta Fogo e Contramarco por cliente.
+    </div>
+  </div>
+</div>
+
+<div class="bottom-nav">
+  <button class="nav-btn active" id="nav-produtos" onclick="switchView('produtos')">
+    <span class="nav-icon">📦</span>
+    <span class="nav-label">Produtos</span>
+  </button>
+  <button class="nav-btn" id="nav-orcamento" onclick="switchView('orcamento')">
+    <span class="nav-icon">🧾</span>
+    <span class="nav-label">Orçamento</span>
+    <span class="nav-badge" id="cartBadge" style="display:none">0</span>
+  </button>
+  <button class="nav-btn" id="nav-compartilhar" onclick="switchView('compartilhar')">
+    <span class="nav-icon">📤</span>
+    <span class="nav-label">Enviar</span>
+  </button>
+  <button class="nav-btn" id="nav-config" onclick="switchView('config')">
+    <span class="nav-icon">⚙️</span>
+    <span class="nav-label">Config</span>
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// =====================
+// DADOS DOS PRODUTOS
+// =====================
+const PRODUTOS_BASE = [
+  { id: 'BAR-ANT-D', nome: 'Barra antipânico dupla', cat: 'Antipânico', custo: 760.00, tempoMin: 70, icon: '🔒' },
+  { id: 'BAR-ANT-S', nome: 'Barra antipânico simples', cat: 'Antipânico', custo: 500.00, tempoMin: 0, icon: '🔒' },
+  { id: 'CTR-MAR', nome: 'Contramarco', cat: 'Estrutura', custo: 75.00, tempoMin: 0, icon: '🏗️' },
+  { id: 'DOB-MOL', nome: 'Dobradiça com mola', cat: 'Ferragens', custo: 25.66, tempoMin: 10, icon: '🔧' },
+  { id: 'DOB-HEL-D', nome: 'Dobradiça helicoidal direita', cat: 'Ferragens', custo: 59.98, tempoMin: 15, icon: '🔧' },
+  { id: 'DOB-HEL-E', nome: 'Dobradiça helicoidal esquerda', cat: 'Ferragens', custo: 59.98, tempoMin: 15, icon: '🔧' },
+  { id: 'FEC-CC', nome: 'Fechadura sobrepor com chave', cat: 'Fechaduras', custo: 201.00, tempoMin: 15, icon: '🗝️' },
+  { id: 'FEC-CI', nome: 'Fechadura sobrepor chave invertida', cat: 'Fechaduras', custo: 220.00, tempoMin: 20, icon: '🗝️' },
+  { id: 'FEC-SS', nome: 'Fechadura sobrepor sem chave', cat: 'Fechaduras', custo: 59.98, tempoMin: 15, icon: '🗝️' },
+  { id: 'Manut', nome: 'Manutenção de Porta Corta Fogo', cat: 'Serviços', custo: 7.50, tempoMin: 5, icon: '🛠️' },
+  { id: 'MOL-AER', nome: 'Mola aérea', cat: 'Ferragens', custo: 160.00, tempoMin: 30, icon: '🔧' },
+  { id: 'PIN-POR', nome: 'Pintura de porta', cat: 'Acabamento', custo: 180.00, tempoMin: 20, icon: '🎨' },
+  { id: 'PLA-PAV', nome: 'Placa de pavimento', cat: 'Sinalização', custo: 6.50, tempoMin: 5, icon: '🚪' },
+  { id: 'PLA-SAI', nome: 'Placa de saída', cat: 'Sinalização', custo: 7.00, tempoMin: 5, icon: '🚪' },
+  { id: 'PLA-PCF', nome: 'Placa fotoluminescente porta corta fogo', cat: 'Sinalização', custo: 6.50, tempoMin: 5, icon: '🚪' },
+  { id: 'POR-CF', nome: 'Porta corta fogo', cat: 'Estrutura', custo: 0.00, tempoMin: 0, icon: '🏗️' },
+];
+
+// IDs que usam sistema de VARIAÇÕES (card pai + sub-rows)
+const VARIACAO_IDS = ['POR-CF', 'CTR-MAR'];
+
+// =====================
+// SUPABASE
+// =====================
+const SB_URL = 'https://odmuutijqikhzlgzjnwv.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9kbXV1dGlqcWlraHpsZ3pqbnd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNTkzNTYsImV4cCI6MjEwODkzNTM1Nn0.grjNr7wSnvDEvnVT-dzbhezNHdYsDsBLJM-ijoZ4mTE';
+const sb = supabase.createClient(SB_URL, SB_KEY);
+let sbCache = {};
+
+async function loadSupabase() {
+  try {
+    const { data, error } = await sb.from('logistica_suprimentos')
+      .select('codigo,custo_unitario,frete,multiplicador,fabricante,link_compra');
+    if (error) throw error;
+    sbCache = {};
+    (data || []).forEach(r => { sbCache[r.codigo] = r; });
+    PRODUTOS = buildProdutos();
+    renderCats();
+    filterProducts();
+    renderOrcamento();
+    showToast('✓ Dados sincronizados');
+  } catch(e) {
+    console.warn('Supabase offline, usando cache local', e);
+  }
+}
+
+function initRealtime() {
+  // Sincronização acontece na abertura do app (loadSupabase)
+  // e após cada alteração feita pelo usuário (upsertSupabase)
+}
+
+async function upsertSupabase(codigo, fields) {
+  try {
+    const { data, error } = await sb.from('logistica_suprimentos')
+      .update({ ...fields, atualizado_em: new Date().toISOString() })
+      .eq('codigo', codigo)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      showToast('⚠️ Código não encontrado no banco: ' + codigo);
+      return;
+    }
+    if (!sbCache[codigo]) sbCache[codigo] = {};
+    Object.assign(sbCache[codigo], fields);
+    showToast('☁️ Salvo no banco: ' + codigo);
+  } catch(e) {
+    console.error('Erro Supabase:', e);
+    showToast('❌ Erro banco: ' + (e.message || e));
+  }
+}
+
+async function salvarOrcamento() {
+  const params = getParams();
+  const tot = calcTotal(params);
+  const precoFinal = getPrecoSelecionado(tot);
+  const titulo = prompt('Nome do orçamento (ex: Cliente João — 3 portas):');
+  if (!titulo) return;
+  const cliente = prompt('Nome do cliente (opcional):') || '';
+  try {
+    const { error } = await sb.from('portibras_orcamentos').insert({
+      titulo, cliente, tipo: tipoOrcamento,
+      aliquota: params.aliq, hora_tecnico: params.hora, mult_global: params.mult,
+      cart, var_cart: varCart, total_custo: tot.custoTotal, total_preco: precoFinal,
+    });
+    if (error) throw error;
+    showToast('✓ Orçamento salvo!');
+  } catch(e) {
+    showToast('⚠️ Erro ao salvar orçamento');
+    console.error(e);
+  }
+}
+
+// =====================
+// PERSISTÊNCIA
+// =====================
+const LS_KEY = 'portibras_custos_v1';
+const LS_MULT_KEY = 'portibras_mult_v1';
+const LS_FRETE_KEY = 'portibras_fretes_v1';
+const LS_MO_KEY = 'portibras_mo_v1';
+const LS_TERC_KEY = 'portibras_terc_v1';
+const LS_DIARIAS_KEY = 'portibras_diarias_v1';
+const LS_TERC_SERV_KEY = 'portibras_terc_serv_v1';
+const LS_TERC_SERV_VAL_KEY = 'portibras_terc_serv_val_v1';
+const LS_FABRICANTE_KEY = 'portibras_fabricante_v1';
+const LS_LINK_KEY = 'portibras_link_v1';
+
+const PROD_DIARIA = ['CTR-MAR', 'PLA-PCF'];
+
+const FERRAGENS_CONFIG = [
+  { id: 'DOB-MOL',  label: 'Dobradiça com mola',            icon: '🔧' },
+  { id: 'DOB-HEL-D', label: 'Dobradiça helicoidal direita', icon: '🔧' },
+  { id: 'DOB-HEL-E', label: 'Dobradiça helicoidal esquerda',icon: '🔧' },
+  { id: 'FEC-CC',  label: 'Fechadura c/ chave',             icon: '🗝️' },
+  { id: 'FEC-CI',  label: 'Fechadura chave invertida',      icon: '🗝️' },
+  { id: 'FEC-SS',  label: 'Fechadura s/ chave',             icon: '🗝️' },
+  { id: 'BAR-ANT-D', label: 'Barra antipânico dupla',       icon: '🔒' },
+  { id: 'BAR-ANT-S', label: 'Barra antipânico simples',     icon: '🔒' },
+  { id: 'MOL-AER', label: 'Mola aérea',                     icon: '🌀' },
+];
+
+const PORTAS_CONFIG = [
+  { id: 'POR-CF',  label: 'Porta corta fogo',   icon: '🏗️' },
+];
+
+function loadCustos() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch(e) { return {}; } }
+function saveCusto(id, valor) {
+  const data = loadCustos();
+  data[id] = { valor, data: new Date().toLocaleDateString('pt-BR') };
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+}
+function getCustoAtual(id, padrao) {
+  if (sbCache[id] && sbCache[id].custo_unitario !== undefined && sbCache[id].custo_unitario !== null)
+    return Number(sbCache[id].custo_unitario);
+  const d = loadCustos(); return d[id] ? d[id].valor : padrao;
+}
+
+function loadFabricantes() { try { return JSON.parse(localStorage.getItem(LS_FABRICANTE_KEY) || '{}'); } catch(e) { return {}; } }
+function saveFabricante(id, valor) {
+  const data = loadFabricantes();
+  if (valor) data[id] = valor; else delete data[id];
+  try { localStorage.setItem(LS_FABRICANTE_KEY, JSON.stringify(data)); } catch(e) {}
+}
+function getFabricanteAtual(id) {
+  if (sbCache[id] && sbCache[id].fabricante) return sbCache[id].fabricante;
+  const d = loadFabricantes(); return d[id] || '';
+}
+
+function loadLinks() { try { return JSON.parse(localStorage.getItem(LS_LINK_KEY) || '{}'); } catch(e) { return {}; } }
+function saveLink(id, valor) {
+  const data = loadLinks();
+  if (valor) data[id] = valor; else delete data[id];
+  try { localStorage.setItem(LS_LINK_KEY, JSON.stringify(data)); } catch(e) {}
+}
+function getLinkAtual(id) {
+  if (sbCache[id] && sbCache[id].link_compra) return sbCache[id].link_compra;
+  const d = loadLinks(); return d[id] || '';
+}
+function getModificadoEm(id) { const d = loadCustos(); return d[id] ? d[id].data : null; }
+
+function loadFretes() { try { return JSON.parse(localStorage.getItem(LS_FRETE_KEY) || '{}'); } catch(e) { return {}; } }
+function saveFrete(id, valor) { const d = loadFretes(); if (!valor) delete d[id]; else d[id] = valor; try { localStorage.setItem(LS_FRETE_KEY, JSON.stringify(d)); } catch(e) {} }
+function getFreteAtual(id) { const d = loadFretes(); return d[id] !== undefined ? d[id] : 0; }
+
+function loadMOs() { try { return JSON.parse(localStorage.getItem(LS_MO_KEY) || '{}'); } catch(e) { return {}; } }
+function saveMO(id, valor) { const d = loadMOs(); if (!valor) delete d[id]; else d[id] = valor; try { localStorage.setItem(LS_MO_KEY, JSON.stringify(d)); } catch(e) {} }
+function getMOAtual(id) { const d = loadMOs(); return d[id] !== undefined ? d[id] : null; }
+
+function loadTercs() { try { return JSON.parse(localStorage.getItem(LS_TERC_KEY) || '{}'); } catch(e) { return {}; } }
+function saveTerc(key, valor) { const d = loadTercs(); d[key] = { valor: parseFloat(valor), data: new Date().toLocaleDateString('pt-BR') }; try { localStorage.setItem(LS_TERC_KEY, JSON.stringify(d)); } catch(e) {} }
+function getTercAtual(key, padrao) { const d = loadTercs(); return d[key] ? d[key].valor : padrao; }
+function getTercData(key) { const d = loadTercs(); return d[key] ? d[key].data : null; }
+
+function loadTercServ() { try { return JSON.parse(localStorage.getItem(LS_TERC_SERV_KEY) || '{}'); } catch(e) { return {}; } }
+function isTerceirizado(id) { return !!loadTercServ()[id]; }
+function setTerceirizado(id, val) {
+  const d = loadTercServ();
+  if (val) d[id] = true; else delete d[id];
+  try { localStorage.setItem(LS_TERC_SERV_KEY, JSON.stringify(d)); } catch(e) {}
+  renderConfigServicos();
+  updateAll();
+}
+
+function loadTercServVal() { try { return JSON.parse(localStorage.getItem(LS_TERC_SERV_VAL_KEY) || '{}'); } catch(e) { return {}; } }
+function saveTercServVal(id, valor) { const d = loadTercServVal(); d[id] = parseFloat(valor); try { localStorage.setItem(LS_TERC_SERV_VAL_KEY, JSON.stringify(d)); } catch(e) {} }
+function getTercServVal(id) { const d = loadTercServVal(); return d[id] !== undefined ? d[id] : 0; }
+
+let diariasCart = {};
+function getDiarias(id) { return diariasCart[id] !== undefined ? diariasCart[id] : 1; }
+function setDiarias(id, val) { diariasCart[id] = Math.max(0, parseInt(val) || 0); updateAll(); }
+
+function loadMults() { try { return JSON.parse(localStorage.getItem(LS_MULT_KEY) || '{}'); } catch(e) { return {}; } }
+function saveMult(id, valor) { const d = loadMults(); d[id] = valor; try { localStorage.setItem(LS_MULT_KEY, JSON.stringify(d)); } catch(e) {} }
+function getMultAtual(id, padrao) { const d = loadMults(); return d[id] !== undefined ? d[id] : padrao; }
+
+function buildProdutos() { return PRODUTOS_BASE.map(p => ({ ...p, custo: getCustoAtual(p.id, p.custo) })); }
+
+let PRODUTOS = buildProdutos();
+const CATS = ['Todos', ...new Set(PRODUTOS_BASE.map(p => p.cat))];
+
+// =====================
+// CART — suporta itens normais E variações
+// cart[id] = qty (itens normais)
+// varCart[parentId] = [ { vid, desc, qty, tipoPCF, folhas, bandeira, precoLivre } ]
+// =====================
+let cart = {};
+let varCart = {}; // variações de POR-CF e CTR-MAR
+
+let selectedCat = 'Todos';
+let selectedPriceMode = 'ideal';
+let tipoOrcamento = 'completo';
+let modoPagamento = 'parcelado';
+let momentoPagamento = 'antecipado';
+
+let _varId = 0;
+function newVarId() { return 'v' + (++_varId); }
+
+// Tipos PCF disponíveis
+const TIPOS_PCF = ['P60', 'P90', 'P120'];
+
+function getParams() {
+  return {
+    mult: parseFloat(document.getElementById('pMult').value) || 4.32,
+    aliq: parseFloat(document.getElementById('pAliq').value) || 8.06,
+    hora: parseFloat(document.getElementById('pHora').value) || 130,
+    fFerr: parseFloat(document.getElementById('fFerr').value) || 0,
+    fPorta: parseFloat(document.getElementById('fPorta').value) || 0,
+    fPlacas: parseFloat(document.getElementById('fPlacas').value) || 0,
+    entrada: parseFloat(document.getElementById('pEntrada').value) || 70,
+    parcelas: parseInt(document.getElementById('pParcelas').value) || 2,
+  };
+}
+
+// =====================
+// CÁLCULOS
+// =====================
+const ALL_TERC_SERV_IDS = [
+  'DOB-MOL','DOB-HEL-D','DOB-HEL-E',
+  'FEC-CC','FEC-CI','FEC-SS',
+  'BAR-ANT-D','BAR-ANT-S','MOL-AER',
+  'POR-CF'
+];
+
+function calcItem(prod, qty, params) {
+  const mult = getMultAtual(prod.id, params.mult);
+  const freteTotal = getFreteAtual(prod.id);
+  const moUnit = getMOAtual(prod.id);
+
+  const usaMat  = tipoOrcamento !== 'instalacao';
+  const usaFrete = tipoOrcamento !== 'instalacao';
+  const usaInst  = tipoOrcamento !== 'fornecimento';
+
+  const custoMat = usaMat  ? prod.custo * qty : 0;
+  const frete    = usaFrete ? freteTotal : 0;
+  const temToggleTerc = ALL_TERC_SERV_IDS.includes(prod.id);
+
+  let custoInst   = 0;
+  let moPropriaUnit = 0;
+
+  if (usaInst) {
+    if (temToggleTerc) {
+      const tercServAtivo = isTerceirizado(prod.id);
+      if (tercServAtivo) {
+        const tercServVal = getTercServVal(prod.id);
+        custoInst = tercServVal > 0 ? tercServVal * qty : (moUnit !== null ? moUnit * qty : 0);
+      } else {
+        custoInst = 0;
+        if (moUnit !== null) moPropriaUnit = moUnit;
+        else if (prod.tempoMin > 0) moPropriaUnit = (prod.tempoMin / 60) * params.hora;
+      }
+    } else if (prod.id === 'CTR-MAR') {
+      const tercVal  = getTercAtual('CTR-MAR', 0);
+      const diarias  = getDiarias('CTR-MAR');
+      custoInst = tercVal * diarias;
+    } else if (prod.id === 'PLA-PCF') {
+      const tercVal  = getTercAtual('PLA-PCF', 0);
+      const diarias  = getDiarias('PLA-PCF');
+      custoInst = tercVal * diarias;
+    } else if (prod.id === 'PIN-POR') {
+      let tierKey;
+      if (qty <= 3) tierKey = 'PIN-1a3';
+      else if (qty <= 10) tierKey = 'PIN-4a10';
+      else tierKey = 'PIN-10mais';
+      const tierVal = getTercAtual(tierKey, tierKey === 'PIN-1a3' ? 100 : tierKey === 'PIN-4a10' ? 70 : 55);
+      custoInst = tierVal * qty;
+    } else {
+      if (moUnit !== null) { custoInst = 0; moPropriaUnit = moUnit; }
+      else if (prod.tempoMin > 0) { custoInst = 0; moPropriaUnit = (prod.tempoMin / 60) * params.hora; }
+    }
+  }
+
+  const custoTotal = custoMat + frete + custoInst;
+  const moPropriaTotal = moPropriaUnit * qty;
+  const baseMin     = custoTotal * 1.2  + moPropriaTotal;
+  const baseIdeal   = custoTotal * mult + moPropriaTotal;
+  const basePremium = baseIdeal * 1.25;
+  const precoMin     = baseMin     * (1 + params.aliq / 100);
+  const precoIdeal   = baseIdeal   * (1 + params.aliq / 100);
+  const precoPremium = basePremium * (1 + params.aliq / 100);
+
+  return { custoMat, frete, custoInst, custoTotal, moPropriaUnit, moPropriaTotal, precoMin, precoIdeal, precoPremium, mult, freteTotal, moUnit };
+}
+
+// Calcular preço base de uma variação (antes do preço livre)
+function calcVarBase(parentId, v, params) {
+  const prod = PRODUTOS.find(p => p.id === parentId);
+  if (!prod) return { custoTotal: 0, precoIdeal: 0, precoMin: 0, precoPremium: 0 };
+  const qty = v.qty || 1;
+  return calcItem(prod, qty, params);
+}
+
+// Preço efetivo de uma variação (preço livre se definido, senão ideal calculado)
+function getPrecoVarEfetivo(v, calcResult) {
+  if (v.precoLivre && v.precoLivre > 0) return v.precoLivre;
+  if (selectedPriceMode === 'minimo') return calcResult.precoMin;
+  if (selectedPriceMode === 'premium') return calcResult.precoPremium;
+  return calcResult.precoIdeal;
+}
+
+function calcTotal(params) {
+  let custoTotal = 0, precoMin = 0, precoIdeal = 0, precoPremium = 0;
+  let custoMat = 0, custoInst = 0, totalFrete = 0;
+  let custoExecEstrutura = 0;
+  let custoInstServicos = 0;
+  let moPropriaVal = 0;
+
+  // Itens normais (sem variação)
+  for (const [id, qty] of Object.entries(cart)) {
+    if (!qty) continue;
+    if (VARIACAO_IDS.includes(id)) continue; // variações tratadas separado
+    const prod = PRODUTOS.find(p => p.id === id);
+    if (!prod) continue;
+    const c = calcItem(prod, qty, params);
+    custoMat     += c.custoMat;
+    custoInst    += c.custoInst;
+    moPropriaVal += c.moPropriaTotal || 0;
+    if (prod.id === 'CTR-MAR' || prod.id === 'PLA-PCF' || prod.id === 'PIN-POR') custoExecEstrutura += c.custoInst;
+    else if (isTerceirizado(prod.id) && c.custoInst > 0) custoInstServicos += c.custoInst;
+    totalFrete  += c.freteTotal || 0;
+    custoTotal  += c.custoTotal;
+    precoMin    += c.precoMin;
+    precoIdeal  += c.precoIdeal;
+    precoPremium += c.precoPremium;
+  }
+
+  // Itens com variação (POR-CF, CTR-MAR)
+  for (const [parentId, vars] of Object.entries(varCart)) {
+    for (const v of vars) {
+      const c = calcVarBase(parentId, v, params);
+      custoMat     += c.custoMat;
+      custoInst    += c.custoInst;
+      moPropriaVal += c.moPropriaTotal || 0;
+      if (parentId === 'CTR-MAR') custoExecEstrutura += c.custoInst;
+      else if (isTerceirizado(parentId) && c.custoInst > 0) custoInstServicos += c.custoInst;
+      totalFrete   += c.freteTotal || 0;
+      custoTotal   += c.custoTotal;
+      // Para o preço total, usa preço livre se definido
+      const pvEf = getPrecoVarEfetivo(v, c);
+      // acumulamos por modo separado — se tem preço livre, vai no mesmo valor p/ todos os modos
+      const addMin = (v.precoLivre && v.precoLivre > 0) ? v.precoLivre : c.precoMin;
+      const addId  = (v.precoLivre && v.precoLivre > 0) ? v.precoLivre : c.precoIdeal;
+      const addPrem = (v.precoLivre && v.precoLivre > 0) ? v.precoLivre : c.precoPremium;
+      precoMin     += addMin;
+      precoIdeal   += addId;
+      precoPremium += addPrem;
+    }
+  }
+
+  return { custoTotal, custoMat, custoInst, custoExecEstrutura, custoInstServicos, moPropriaVal, totalFrete, precoMin, precoIdeal, precoPremium };
+}
+
+function getPrecoSelecionado(tot) {
+  if (selectedPriceMode === 'minimo') return tot.precoMin;
+  if (selectedPriceMode === 'premium') return tot.precoPremium;
+  return tot.precoIdeal;
+}
+
+// =====================
+// RENDER PRODUTOS
+// =====================
+function renderCats() {
+  document.getElementById('catScroll').innerHTML = CATS.map(c =>
+    `<button class="cat-btn ${c === selectedCat ? 'active' : ''}" onclick="selectCat('${c}')">${c}</button>`
+  ).join('');
+}
+
+function selectCat(cat) { selectedCat = cat; renderCats(); filterProducts(); }
+
+function filterProducts() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const filtered = PRODUTOS.filter(p => {
+    const matchCat = selectedCat === 'Todos' || p.cat === selectedCat;
+    const matchQ = !q || p.nome.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
+    return matchCat && matchQ;
+  });
+  renderProducts(filtered);
+}
+
+function isInCart(id) {
+  if (VARIACAO_IDS.includes(id)) return varCart[id] && varCart[id].length > 0;
+  return (cart[id] || 0) > 0;
+}
+
+function renderProducts(list) {
+  const params = getParams();
+  const el = document.getElementById('productList');
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Nenhum produto encontrado</div></div>';
+    return;
+  }
+  el.innerHTML = list.map(p => {
+    const inCart = isInCart(p.id);
+    const isVar = VARIACAO_IDS.includes(p.id);
+    const qty = isVar ? (varCart[p.id] ? varCart[p.id].length : 0) : (cart[p.id] || 0);
+    const modEm = getModificadoEm(p.id);
+    const custoAtual = getCustoAtual(p.id, p.custo);
+    const multAtual = getMultAtual(p.id, params.mult);
+    const c1 = calcItem(p, 1, params);
+    const freteAtual = getFreteAtual(p.id);
+    const precoUnitIdeal = c1.precoIdeal;
+    const impostosUnit = precoUnitIdeal - precoUnitIdeal / (1 + params.aliq / 100);
+    const lucroUnit = precoUnitIdeal / (1 + params.aliq / 100) - c1.custoTotal;
+    const margemPct = c1.custoTotal > 0 ? ((precoUnitIdeal / c1.custoTotal - 1) * 100).toFixed(0) : 0;
+    const showMat = tipoOrcamento !== 'instalacao';
+    const showInst = tipoOrcamento !== 'fornecimento';
+
+    // Label de quantidade para produtos com variação
+    const qtyLabel = isVar
+      ? (qty === 0 ? '0' : qty + (qty === 1 ? ' var.' : ' var.'))
+      : qty;
+
+    return `
+    <div class="product-item ${inCart ? 'in-cart' : ''}" id="pitem-${p.id}">
+      <div class="product-row">
+        <div class="product-icon">${p.icon}</div>
+        <div class="product-info" onclick="${isVar ? `addVariacao('${p.id}')` : `toggleItem('${p.id}')`}">
+          <div class="product-name">${p.nome}${isVar ? ' <span style="font-size:10px;background:var(--verde-bg);color:var(--verde);padding:2px 6px;border-radius:8px;font-weight:700">variações</span>' : ''}</div>
+          <div class="product-code">${p.id} · ${p.cat}${showInst && p.tempoMin > 0 ? ' · '+p.tempoMin+'min' : ''}</div>
+        </div>
+        ${isVar ? `
+        <button onclick="addVariacao('${p.id}')" style="background:var(--verde);color:white;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">
+          + Variação${qty > 0 ? ' ('+qty+')' : ''}
+        </button>
+        ` : `
+        <div class="product-qty">
+          <button class="qty-btn" onclick="event.stopPropagation();changeQty('${p.id}', -1)">−</button>
+          <input class="qty-input" type="number" id="qty-${p.id}" value="${qty}" min="0" step="1"
+            onclick="event.stopPropagation()"
+            onchange="event.stopPropagation();setQty('${p.id}', this.value)"
+            onkeydown="event.stopPropagation()">
+          <button class="qty-btn" onclick="event.stopPropagation();changeQty('${p.id}', 1)">+</button>
+        </div>
+        `}
+      </div>
+      <div class="prod-info-chips">
+        ${showMat ? `<div class="prod-chip"><span class="prod-chip-label">Compra unit.</span><span class="prod-chip-val">${fmt(p.custo)}</span></div>` : ''}
+        <div class="prod-chip venda"><span class="prod-chip-label">Venda unit.</span><span class="prod-chip-val">${fmt(precoUnitIdeal)}</span></div>
+        <div class="prod-chip"><span class="prod-chip-label">Imposto unit.</span><span class="prod-chip-val">${fmt(impostosUnit)}</span></div>
+        <div class="prod-chip lucro"><span class="prod-chip-label">Lucro +${margemPct}%</span><span class="prod-chip-val">${fmt(lucroUnit)}</span></div>
+      </div>
+      ${showMat ? `
+      <div class="custo-edit-row">
+        <span class="custo-label">Compra R$</span>
+        <div class="custo-input-wrap">
+          <input class="custo-input" type="number" id="custo-${p.id}" value="${custoAtual.toFixed(2)}" step="0.01" min="0"
+            onkeydown="if(event.key==='Enter'){salvarCusto('${p.id}');event.target.blur();}">
+        </div>
+        <button class="custo-save-btn" onclick="salvarCusto('${p.id}')">Salvar</button>
+      </div>
+      <div class="frete-prod-row">
+        <span class="frete-prod-label">Frete R$ (total)</span>
+        <div class="frete-prod-wrap">
+          <input class="frete-prod-input" type="number" id="frete-${p.id}" value="${freteAtual.toFixed(2)}" step="0.5" min="0"
+            onkeydown="if(event.key==='Enter'){salvarFreteProd('${p.id}');this.blur();}"
+            onblur="salvarFreteProd('${p.id}')">
+        </div>
+      </div>` : ''}
+      ${showInst ? (() => {
+        const moAtual = getMOAtual(p.id);
+        const moPlaceholder = moAtual !== null ? moAtual.toFixed(2) : ((p.tempoMin / 60) * params.hora).toFixed(2);
+        const moVal = moAtual !== null ? moAtual.toFixed(2) : '';
+        return `<div class="frete-prod-row">
+        <span class="frete-prod-label">M.O. R$/un</span>
+        <div class="frete-prod-wrap">
+          <input class="frete-prod-input" type="number" id="mo-${p.id}" value="${moVal}" placeholder="${moPlaceholder}" step="0.5" min="0"
+            onkeydown="if(event.key==='Enter'){salvarMOProd('${p.id}');this.blur();}"
+            onblur="salvarMOProd('${p.id}')">
+        </div>
+      </div>`;
+      })() : ''}
+      <div class="mult-edit-row">
+        <span class="mult-label">Multiplicador</span>
+        <div class="mult-input-wrap">
+          <input class="mult-input" type="number" id="mult-${p.id}" value="${multAtual.toFixed(2)}" step="0.01" min="0"
+            onkeydown="if(event.key==='Enter'){salvarMult('${p.id}');this.blur();}"
+            onblur="salvarMult('${p.id}')">
+        </div>
+      </div>
+      <div class="frete-prod-row">
+        <span class="frete-prod-label">Fabricante</span>
+        <div class="frete-prod-wrap" style="flex:1">
+          <input class="frete-prod-input" type="text" id="fab-${p.id}" value="${getFabricanteAtual(p.id)}" placeholder="Nome do fabricante"
+            style="width:100%"
+            onkeydown="if(event.key==='Enter'){salvarFabricante('${p.id}');this.blur();}"
+            onblur="salvarFabricante('${p.id}')">
+        </div>
+      </div>
+      <div class="frete-prod-row" style="align-items:center;gap:6px">
+        <span class="frete-prod-label" style="white-space:nowrap">Link compra</span>
+        <div class="frete-prod-wrap" style="flex:1">
+          <input class="frete-prod-input" type="url" id="link-${p.id}" value="${getLinkAtual(p.id)}" placeholder="https://"
+            style="width:100%"
+            onkeydown="if(event.key==='Enter'){salvarLink('${p.id}');this.blur();}"
+            onblur="salvarLink('${p.id}')">
+        </div>
+        ${getLinkAtual(p.id) ? `<a href="${getLinkAtual(p.id)}" target="_blank" rel="noopener" style="color:var(--verde);font-size:18px;line-height:1;text-decoration:none" title="Abrir link">🔗</a>` : ''}
+      </div>
+      ${modEm ? `<div class="custo-modified">✏️ Última modificação: ${modEm}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// =====================
+// VARIAÇÕES — adicionar / remover / atualizar
+// =====================
+function addVariacao(parentId) {
+  if (!varCart[parentId]) varCart[parentId] = [];
+  const newVar = {
+    vid: newVarId(),
+    desc: '',
+    qty: 1,
+    tipoPCF: 'P60',    // para POR-CF
+    folhas: 'simples', // 'simples' | 'dupla'
+    bandeira: false,
+    precoLivre: 0,
+  };
+  varCart[parentId].push(newVar);
+  updateAll();
+  showToast('✓ Variação adicionada');
+}
+
+function removeVariacao(parentId, vid) {
+  if (!varCart[parentId]) return;
+  varCart[parentId] = varCart[parentId].filter(v => v.vid !== vid);
+  if (varCart[parentId].length === 0) delete varCart[parentId];
+  updateAll();
+}
+
+function removeParent(parentId) {
+  delete varCart[parentId];
+  updateAll();
+}
+
+function salvarFabricante(id) {
+  const val = (document.getElementById('fab-'+id) || {}).value || '';
+  saveFabricante(id, val.trim());
+  upsertSupabase(id, { fabricante: val.trim() || null });
+  updateAll();
+  showToast('✓ Fabricante salvo');
+}
+
+function salvarLink(id) {
+  const val = (document.getElementById('link-'+id) || {}).value || '';
+  saveLink(id, val.trim());
+  upsertSupabase(id, { link_compra: val.trim() || null });
+  updateAll();
+  showToast('✓ Link salvo');
+}
+
+function updateVar(parentId, vid, field, value) {
+  if (!varCart[parentId]) return;
+  const v = varCart[parentId].find(v => v.vid === vid);
+  if (!v) return;
+  if (field === 'qty') value = Math.max(1, parseInt(value) || 1);
+  if (field === 'precoLivre') value = parseFloat(value) || 0;
+  if (field === 'bandeira') value = !!value;
+  v[field] = value;
+  updateAll();
+}
+
+// =====================
+// RENDER ORÇAMENTO
+// =====================
+function renderOrcamento() {
+  const params = getParams();
+
+  // Contagem total de itens (normais + variações)
+  const normalItems = Object.entries(cart).filter(([id, q]) => q > 0 && !VARIACAO_IDS.includes(id));
+  const varItems = Object.entries(varCart).filter(([, vars]) => vars && vars.length > 0);
+  const hasItems = normalItems.length > 0 || varItems.length > 0;
+
+  document.getElementById('cartEmpty').style.display = hasItems ? 'none' : 'block';
+  document.getElementById('cartContent').style.display = hasItems ? 'block' : 'none';
+  if (!hasItems) return;
+
+  const tot = calcTotal(params);
+  const precoFinal = getPrecoSelecionado(tot);
+  const precoSemImposto = precoFinal / (1 + params.aliq / 100);
+  const lucroTotal = precoSemImposto - tot.custoTotal;
+  const margem = tot.custoTotal > 0 ? ((lucroTotal / tot.custoTotal) * 100).toFixed(1) : 0;
+  const impostos = precoFinal - precoSemImposto;
+
+  let cartHtml = '';
+
+  // Itens com variação (POR-CF, CTR-MAR) — card pai
+  for (const [parentId, vars] of Object.entries(varCart)) {
+    if (!vars || vars.length === 0) continue;
+    const prod = PRODUTOS.find(p => p.id === parentId);
+    if (!prod) continue;
+
+    const isPCF = parentId === 'POR-CF';
+    const isCTR = parentId === 'CTR-MAR';
+
+    // Total do pai
+    let totalPai = 0;
+    for (const v of vars) {
+      const c = calcVarBase(parentId, v, params);
+      totalPai += getPrecoVarEfetivo(v, c);
+    }
+
+    cartHtml += `<div class="parent-item" id="parent-${parentId}">
+      <div class="parent-item-header">
+        <div class="parent-item-title">${prod.icon} ${prod.nome}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="parent-item-total">${fmt(totalPai)}</div>
+          <button class="parent-item-remove" onclick="removeParent('${parentId}')">✕</button>
+        </div>
+      </div>
+      <div class="subvar-list">`;
+
+    for (const v of vars) {
+      const c = calcVarBase(parentId, v, params);
+      const precoCalc = selectedPriceMode === 'minimo' ? c.precoMin : selectedPriceMode === 'premium' ? c.precoPremium : c.precoIdeal;
+      const precoEfetivo = getPrecoVarEfetivo(v, c);
+      const temPrecoLivre = v.precoLivre && v.precoLivre > 0;
+
+      // Badge da variação
+      let badge = '';
+      if (isPCF) badge = v.tipoPCF + (v.folhas === 'dupla' ? ' Dupla' : ' Simples');
+      else if (isCTR) badge = 'CTR #' + vars.indexOf(v) + 1;
+
+      // Descrição preview (placeholder)
+      const descPreview = v.desc || (isPCF ? 'Ex: 0,90×2,10m — Pav. 3' : 'Ex: 0,90×2,10m — Pav. 3');
+
+      cartHtml += `<div class="subvar-item">
+        <div class="subvar-header">
+          <div class="subvar-badge">${badge}</div>
+          <div class="subvar-desc">${v.desc || '<span style="opacity:0.5">sem descrição</span>'}</div>
+          <button class="subvar-remove" onclick="removeVariacao('${parentId}', '${v.vid}')">✕</button>
+        </div>
+        <div class="subvar-body">
+          <!-- Campo de descrição -->
+          <input class="subvar-desc-input" type="text" value="${escHtml(v.desc)}"
+            placeholder="${escHtml(descPreview)}"
+            oninput="updateVar('${parentId}', '${v.vid}', 'desc', this.value)"
+          >
+          <!-- Chips de configuração -->
+          <div class="subvar-chips">`;
+
+      if (isPCF) {
+        // Tipo PCF
+        for (const t of TIPOS_PCF) {
+          cartHtml += `<button class="chip-toggle ${v.tipoPCF === t ? 'active' : ''}"
+            onclick="updateVar('${parentId}', '${v.vid}', 'tipoPCF', '${t}')">${t}</button>`;
+        }
+        // Folhas
+        cartHtml += `<button class="chip-toggle ${v.folhas === 'simples' ? 'active' : ''}"
+          onclick="updateVar('${parentId}', '${v.vid}', 'folhas', 'simples')">Simples</button>`;
+        cartHtml += `<button class="chip-toggle ${v.folhas === 'dupla' ? 'active' : ''}"
+          onclick="updateVar('${parentId}', '${v.vid}', 'folhas', 'dupla')">Dupla</button>`;
+        // Bandeira
+        cartHtml += `<button class="chip-toggle warn ${v.bandeira ? 'active' : ''}"
+          onclick="updateVar('${parentId}', '${v.vid}', 'bandeira', ${!v.bandeira})">🏳️ Bandeira</button>`;
+      }
+
+      cartHtml += `</div><!-- /subvar-chips -->
+          <!-- Qty + Preço livre -->
+          <div class="subvar-price-row">
+            <div class="subvar-qty">
+              <button class="qty-btn" style="width:34px;height:34px;font-size:18px" onclick="updateVar('${parentId}','${v.vid}','qty',${v.qty-1})">−</button>
+              <input type="number" value="${v.qty}" min="1" step="1" style="width:38px;text-align:center;font-size:14px;font-weight:700;border:none;background:none;font-family:inherit;color:var(--text)"
+                onchange="updateVar('${parentId}','${v.vid}','qty',this.value)">
+              <button class="qty-btn" style="width:34px;height:34px;font-size:18px" onclick="updateVar('${parentId}','${v.vid}','qty',${v.qty+1})">+</button>
+            </div>
+            <div class="subvar-price-wrap">
+              <span class="subvar-price-prefix">R$</span>
+              <input class="subvar-price-input" type="number" value="${temPrecoLivre ? v.precoLivre.toFixed(2) : ''}"
+                placeholder="${precoCalc.toFixed(2)}"
+                step="0.01" min="0"
+                onchange="updateVar('${parentId}','${v.vid}','precoLivre',this.value)"
+                title="Deixe em branco para usar o preço calculado (${fmt(precoCalc)})">
+            </div>
+          </div>
+          <!-- Chips calculados -->
+          <div class="subvar-calc-chips">
+            <div class="subvar-calc-chip"><span class="subvar-calc-chip-label">Custo</span><span class="subvar-calc-chip-val">${fmt(c.custoTotal)}</span></div>
+            <div class="subvar-calc-chip ref"><span class="subvar-calc-chip-label">Ref. calculado</span><span class="subvar-calc-chip-val">${fmt(precoCalc)}</span></div>
+            <div class="subvar-calc-chip ${temPrecoLivre ? 'ref' : ''}"><span class="subvar-calc-chip-label">${temPrecoLivre ? '✏️ Preço livre' : 'Preço final'}</span><span class="subvar-calc-chip-val">${fmt(precoEfetivo)}</span></div>
+          </div>
+        </div>
+      </div>`; // /subvar-item
+    }
+
+    cartHtml += `<button class="add-var-btn" onclick="addVariacao('${parentId}')">＋ Adicionar outra variação de ${prod.nome}</button>`;
+    cartHtml += `</div></div>`; // /subvar-list /parent-item
+  }
+
+  // Itens normais
+  for (const [id, qty] of normalItems) {
+    const prod = PRODUTOS.find(p => p.id === id);
+    if (!prod) continue;
+    const c = calcItem(prod, qty, params);
+    const preco = selectedPriceMode === 'minimo' ? c.precoMin : selectedPriceMode === 'premium' ? c.precoPremium : c.precoIdeal;
+    const precoUnit = qty > 0 ? preco / qty : 0;
+    const custoUnit = qty > 0 ? c.custoTotal / qty : 0;
+    const margemUnit = custoUnit > 0 ? ((precoUnit / custoUnit - 1) * 100).toFixed(0) : 0;
+
+    cartHtml += `<div class="cart-item">
+      <div class="cart-item-header">
+        <div class="cart-item-name">${prod.icon} ${prod.nome}${PROD_DIARIA.includes(id) ? ' <span style="font-size:10px;background:var(--cinza2);color:var(--text2);padding:2px 6px;border-radius:8px;margin-left:4px">📅 diária</span>' : ''}</div>
+        <button class="cart-item-remove" onclick="removeItem('${id}')">✕</button>
+      </div>
+      <div class="cart-item-details">
+        <div class="cart-item-qty">
+          <button class="qty-btn" onclick="changeQty('${id}', -1)">−</button>
+          <input class="qty-input" type="number" value="${qty}" min="0" step="1"
+            onchange="setQtyOrcamento('${id}', this.value)"
+            style="width:44px;border:none;background:none;text-align:center;font-size:15px;font-weight:700;font-family:inherit;">
+          <button class="qty-btn" onclick="changeQty('${id}', 1)">+</button>
+        </div>
+        <div style="text-align:right">
+          ${PROD_DIARIA.includes(id) && tipoOrcamento !== 'fornecimento' ? `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-bottom:4px">
+            <span style="font-size:11px;color:var(--cinza3)">Diárias:</span>
+            <div style="display:flex;align-items:center;background:var(--cinza);border-radius:8px;overflow:hidden">
+              <button class="qty-btn" style="width:28px;height:28px;font-size:16px" onclick="setDiarias('${id}', getDiarias('${id}') - 1)">−</button>
+              <span style="min-width:24px;text-align:center;font-size:14px;font-weight:700">${getDiarias(id)}</span>
+              <button class="qty-btn" style="width:28px;height:28px;font-size:16px" onclick="setDiarias('${id}', getDiarias('${id}') + 1)">+</button>
+            </div>
+          </div>` : ''}
+          <div style="font-size:11px;color:var(--cinza3)">Custo total: ${fmt(c.custoTotal)}</div>
+          <div style="font-size:15px;font-weight:700;color:var(--verde)">${fmt(preco)}</div>
+        </div>
+      </div>
+      <div class="cart-item-unit-info">
+        <div class="cart-unit-chip">
+          <span class="cart-unit-chip-label">Custo unit.</span>
+          <span class="cart-unit-chip-val">${fmt(custoUnit)}</span>
+        </div>
+        <div class="cart-unit-chip">
+          <span class="cart-unit-chip-label">Venda unit.</span>
+          <span class="cart-unit-chip-val">${fmt(precoUnit)}</span>
+        </div>
+        <div class="cart-unit-chip margem">
+          <span class="cart-unit-chip-label">Margem</span>
+          <span class="cart-unit-chip-val">+${margemUnit}%</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('cartItems').innerHTML = cartHtml;
+
+  // Total card
+  let totalCardHtml = '';
+  if (modoPagamento === 'avista') {
+    const labelMom = momentoPagamento === 'antecipado' ? '⬆️ Antecipado' : '✅ Após execução';
+    totalCardHtml = `<div class="total-card">
+      <div class="total-label">Preço Final — À Vista</div>
+      <div class="total-value">${fmt(precoFinal)}</div>
+      <div class="total-breakdown">
+        <div class="total-cell" style="grid-column:1/-1">
+          <div class="total-cell-label">${labelMom}</div>
+          <div class="total-cell-value" style="font-size:18px">${fmt(precoFinal)}</div>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    const entrada = precoFinal * (params.entrada / 100);
+    const restante = precoFinal - entrada;
+    const parcela = params.parcelas > 1 ? restante / params.parcelas : restante;
+    totalCardHtml = `<div class="total-card">
+      <div class="total-label">Preço Final — Parcelado</div>
+      <div class="total-value">${fmt(precoFinal)}</div>
+      <div class="total-breakdown">
+        <div class="total-cell"><div class="total-cell-label">🔒 Sinal ${params.entrada}%</div><div class="total-cell-value">${fmt(entrada)}</div></div>
+        <div class="total-cell"><div class="total-cell-label">Restante</div><div class="total-cell-value">${fmt(restante)}</div></div>
+        <div class="total-cell"><div class="total-cell-label">${params.parcelas}× de</div><div class="total-cell-value">${fmt(parcela)}</div></div>
+      </div>
+    </div>`;
+  }
+  document.getElementById('totalCard').innerHTML = totalCardHtml;
+
+  if (modoPagamento === 'parcelado') renderCobertura(params, tot, precoFinal);
+  else { const el = document.getElementById('coberturaBox'); if (el) el.innerHTML = ''; }
+
+  document.getElementById('composicao').innerHTML = `
+    <div class="composicao">
+      <div class="card-header">📊 Composição do valor</div>
+      ${tot.custoMat > 0 ? `<div class="comp-row"><span class="comp-label">Custo de materiais</span><span class="comp-value">${fmt(tot.custoMat)}</span></div>` : ''}
+      ${tot.totalFrete > 0 ? `<div class="comp-row"><span class="comp-label">Frete</span><span class="comp-value">${fmt(tot.totalFrete)}</span></div>` : ''}
+      ${tot.custoExecEstrutura > 0 ? `<div class="comp-row"><span class="comp-label">🤝 Execução terceirizada</span><span class="comp-value">${fmt(tot.custoExecEstrutura)}</span></div>` : ''}
+      ${tot.custoInstServicos > 0 ? `<div class="comp-row"><span class="comp-label">🔧 M.O. serviços terceirizados</span><span class="comp-value">${fmt(tot.custoInstServicos)}</span></div>` : ''}
+      ${tot.moPropriaVal > 0 ? `<div class="comp-row"><span class="comp-label" style="color:var(--verde)">👍 M.O. própria (Rafael)</span><span class="comp-value" style="color:var(--cinza3)">incluída na margem</span></div>` : ''}
+      <div class="comp-row"><span class="comp-label">Custo total</span><span class="comp-value">${fmt(tot.custoTotal)}</span></div>
+      <div class="comp-row"><span class="comp-label">Margem (${margem}%)</span><span class="comp-value plus">+${fmt(lucroTotal)}</span></div>
+      <div class="comp-row"><span class="comp-label">Impostos (${params.aliq}%)</span><span class="comp-value plus">+${fmt(impostos)}</span></div>
+      <div class="comp-row total"><span class="comp-label">Preço final</span><span class="comp-value">${fmt(precoFinal)}</span></div>
+    </div>`;
+}
+
+// =====================
+// PAGAMENTO
+// =====================
+function setModoPagamento(modo) {
+  modoPagamento = modo;
+  const btnAv = document.getElementById('btnAvista');
+  const btnPar = document.getElementById('btnParcelado');
+  const blocoAv = document.getElementById('blocoAvista');
+  const blocoPar = document.getElementById('blocoParcelado');
+  if (!btnAv) return;
+  if (modo === 'avista') {
+    btnAv.style.background = 'var(--verde)'; btnAv.style.borderColor = 'var(--verde)'; btnAv.style.color = 'white';
+    btnPar.style.background = 'white'; btnPar.style.borderColor = 'var(--cinza2)'; btnPar.style.color = 'var(--text2)';
+    blocoAv.style.display = 'block'; blocoPar.style.display = 'none';
+  } else {
+    btnPar.style.background = 'var(--verde)'; btnPar.style.borderColor = 'var(--verde)'; btnPar.style.color = 'white';
+    btnAv.style.background = 'white'; btnAv.style.borderColor = 'var(--cinza2)'; btnAv.style.color = 'var(--text2)';
+    blocoAv.style.display = 'none'; blocoPar.style.display = 'block';
+  }
+  updateResumo();
+}
+
+function setMomento(momento) {
+  momentoPagamento = momento;
+  const btnAnt = document.getElementById('btnAntecipado');
+  const btnApos = document.getElementById('btnAposExec');
+  if (!btnAnt) return;
+  if (momento === 'antecipado') {
+    btnAnt.style.background = 'var(--verde)'; btnAnt.style.borderColor = 'var(--verde)'; btnAnt.style.color = 'white';
+    btnApos.style.background = 'white'; btnApos.style.borderColor = 'var(--cinza2)'; btnApos.style.color = 'var(--text2)';
+  } else {
+    btnApos.style.background = 'var(--verde)'; btnApos.style.borderColor = 'var(--verde)'; btnApos.style.color = 'white';
+    btnAnt.style.background = 'white'; btnAnt.style.borderColor = 'var(--cinza2)'; btnAnt.style.color = 'var(--text2)';
+  }
+  updateResumo();
+}
+
+function renderCobertura(params, tot, precoFinal) {
+  const el = document.getElementById('coberturaBox');
+  if (!el) return;
+  const hasItems = Object.values(cart).some(q => q > 0) || Object.values(varCart).some(v => v && v.length > 0);
+  if (!hasItems) { el.innerHTML = ''; return; }
+
+  const entrada = precoFinal * (params.entrada / 100);
+  const custoMat = tot.custoMat + tot.totalFrete;
+  const custoExec = tot.custoInst;
+  const custoTotal = tot.custoTotal;
+  const sobraFinal = entrada - custoTotal;
+
+  let boxClass, statusClass, statusMsg;
+  if (entrada >= custoTotal) {
+    boxClass = 'ok'; statusClass = 'ok';
+    statusMsg = `✅ Entrada cobre todos os custos — sobram ${fmt(sobraFinal)} de margem.`;
+  } else if (entrada >= custoMat) {
+    boxClass = 'warn'; statusClass = 'warn';
+    statusMsg = `⚠️ Entrada cobre materiais/frete, mas faltam ${fmt(custoTotal - entrada)} para cobrir a execução.`;
+  } else {
+    boxClass = 'danger'; statusClass = 'danger';
+    statusMsg = `🔴 Entrada insuficiente — faltam ${fmt(custoMat - entrada)} só para cobrir materiais e frete.`;
+  }
+
+  el.innerHTML = `<div class="cobertura-box ${boxClass}">
+    <div class="cob-title">📋 Análise da entrada</div>
+    ${tipoOrcamento !== 'instalacao' ? `<div class="cob-row"><span class="cob-label">${entrada >= custoMat ? '✅' : '❌'} Materiais + Frete</span><span class="cob-value">${fmt(custoMat)}</span></div>` : ''}
+    ${tipoOrcamento !== 'fornecimento' && custoExec > 0 ? `<div class="cob-row"><span class="cob-label">${entrada >= custoTotal ? '✅' : (entrada >= custoMat ? '⚠️' : '❌')} Execução / M.O.</span><span class="cob-value">${fmt(custoExec)}</span></div>` : ''}
+    <div class="cob-row" style="border-top:1px dashed var(--cinza2);margin-top:4px;padding-top:6px"><span class="cob-label"><strong>Entrada (${params.entrada}%)</strong></span><span class="cob-value"><strong>${fmt(entrada)}</strong></span></div>
+    <div class="cob-status ${statusClass}">${statusMsg}</div>
+  </div>`;
+}
+
+// =====================
+// CONFIG — Terceirizados
+// =====================
+function renderServicoTerc(container, lista) {
+  if (!container) return;
+  let html = `<div style="font-size:12px;color:var(--cinza3);margin-bottom:10px">Ative o toggle para indicar que o serviço é feito por terceirizado.</div>`;
+  for (const item of lista) {
+    const terc = isTerceirizado(item.id);
+    const val = getTercServVal(item.id);
+    html += `<div style="padding:12px 0;border-bottom:1px solid var(--cinza)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${terc?'10px':'0'}">
+        <div style="font-size:14px;font-weight:600;color:var(--text)">${item.icon} ${item.label}</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <span style="font-size:12px;color:${terc?'var(--verde)':'var(--cinza3)'};font-weight:600">${terc?'Terceirizado':'Próprio'}</span>
+          <div onclick="setTerceirizado('${item.id}', ${!terc})" style="width:42px;height:24px;border-radius:12px;background:${terc?'var(--verde)':'var(--cinza2)'};position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0">
+            <div style="width:18px;height:18px;border-radius:50%;background:white;position:absolute;top:3px;${terc?'right:3px':'left:3px'};transition:all 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.2)"></div>
+          </div>
+        </label>
+      </div>
+      ${terc ? `<div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--cinza3);font-weight:600;white-space:nowrap">R$/un</span>
+        <div style="display:flex;align-items:center;background:var(--cinza);border-radius:8px;border:1.5px solid var(--cinza2);overflow:hidden;flex:1">
+          <span style="font-size:13px;font-weight:700;color:var(--cinza3);padding:0 6px 0 10px">R$</span>
+          <input type="number" id="tercserv-${item.id}" value="${val.toFixed(2)}" step="0.5" min="0"
+            style="border:none;background:none;padding:9px 10px 9px 0;font-size:14px;font-family:inherit;font-weight:700;color:var(--text);width:100%;min-width:0"
+            onkeydown="if(event.key==='Enter'){salvarTercServ('${item.id}');this.blur();}"
+            onblur="salvarTercServ('${item.id}')">
+        </div>
+        <button onclick="salvarTercServ('${item.id}')" style="background:var(--verde);color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓</button>
+      </div>
+      <div style="font-size:11px;color:var(--warning);margin-top:6px">⚠️ M.O. contabilizada como custo (não gera lucro próprio)</div>` : ''}
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function salvarTercServ(id) {
+  const input = document.getElementById('tercserv-' + id);
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val < 0) { showToast('Valor inválido'); return; }
+  saveTercServVal(id, val);
+  updateAll();
+  showToast('✓ Valor salvo!');
+}
+
+function renderConfigServicos() {
+  renderServicoTerc(document.getElementById('ferrBody'), FERRAGENS_CONFIG);
+  renderServicoTerc(document.getElementById('portasBody'), PORTAS_CONFIG);
+}
+
+function renderTerceirizados() {
+  const el = document.getElementById('tercBody');
+  if (!el) return;
+  const tercs = [
+    { key: 'CTR-MAR', label: 'Contramarco', padrao: 0 },
+    { key: 'PLA-PCF', label: 'Placa fotoluminescente porta corta fogo', padrao: 0 },
+  ];
+  const pints = [
+    { key: 'PIN-1a3', label: '1–3 folhas', padrao: 100 },
+    { key: 'PIN-4a10', label: '4–10 folhas', padrao: 70 },
+    { key: 'PIN-10mais', label: '10+ folhas', padrao: 55 },
+  ];
+  let html = '';
+  for (const t of tercs) {
+    const val = getTercAtual(t.key, t.padrao);
+    const dt = getTercData(t.key);
+    html += `<div style="padding:10px 0;border-bottom:1px solid var(--cinza)">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">${t.label} <span style="font-size:11px;color:var(--cinza3);font-weight:500;background:var(--cinza2);padding:2px 7px;border-radius:10px;margin-left:4px">📅 por diária</span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--cinza3);font-weight:600;white-space:nowrap">R$/diária</span>
+        <div style="display:flex;align-items:center;background:var(--cinza);border-radius:8px;border:1.5px solid var(--cinza2);overflow:hidden;flex:1">
+          <span style="font-size:13px;font-weight:700;color:var(--cinza3);padding:0 6px 0 10px">R$</span>
+          <input type="number" id="terc-${t.key}" value="${val.toFixed(2)}" step="0.5" min="0"
+            style="border:none;background:none;padding:9px 10px 9px 0;font-size:14px;font-family:inherit;font-weight:700;color:var(--text);width:100%;min-width:0"
+            onkeydown="if(event.key==='Enter'){salvarTerc('${t.key}');this.blur();}"
+            onblur="salvarTerc('${t.key}')">
+        </div>
+        <button onclick="salvarTerc('${t.key}')" style="background:var(--verde);color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓</button>
+      </div>
+      ${dt ? `<div style="font-size:10px;color:var(--cinza3);text-align:right;margin-top:4px;font-style:italic">✏️ Última modificação: ${dt}</div>` : ''}
+    </div>`;
+  }
+  html += `<div style="padding:10px 0 4px"><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">🎨 Pintura de porta (R$/folha)</div>`;
+  for (const p of pints) {
+    const val = getTercAtual(p.key, p.padrao);
+    const dt = getTercData(p.key);
+    html += `<div style="margin-bottom:8px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">${p.label}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;background:var(--cinza);border-radius:8px;border:1.5px solid var(--cinza2);overflow:hidden;flex:1">
+          <span style="font-size:13px;font-weight:700;color:var(--cinza3);padding:0 6px 0 10px">R$</span>
+          <input type="number" id="terc-${p.key}" value="${val.toFixed(2)}" step="0.5" min="0"
+            style="border:none;background:none;padding:9px 10px 9px 0;font-size:14px;font-family:inherit;font-weight:700;color:var(--text);width:100%;min-width:0"
+            onkeydown="if(event.key==='Enter'){salvarTerc('${p.key}');this.blur();}"
+            onblur="salvarTerc('${p.key}')">
+        </div>
+        <button onclick="salvarTerc('${p.key}')" style="background:var(--verde);color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓</button>
+      </div>
+      ${dt ? `<div style="font-size:10px;color:var(--cinza3);text-align:right;margin-top:4px;font-style:italic">✏️ Última modificação: ${dt}</div>` : ''}
+    </div>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function salvarTerc(key) {
+  const input = document.getElementById('terc-' + key);
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val < 0) { showToast('Valor inválido'); return; }
+  saveTerc(key, val);
+  renderTerceirizados();
+  updateAll();
+  showToast('✓ Valor salvo!');
+}
+
+// =====================
+// PRODUTO — interações
+// =====================
+function salvarMOProd(id) {
+  const input = document.getElementById('mo-' + id);
+  if (!input) return;
+  const val = input.value === '' ? 0 : parseFloat(input.value);
+  saveMO(id, isNaN(val) ? 0 : val);
+  updateAll();
+}
+
+function salvarFreteProd(id) {
+  const input = document.getElementById('frete-' + id);
+  if (!input) return;
+  const val = parseFloat(input.value) || 0;
+  saveFrete(id, val);
+  upsertSupabase(id, { frete: val });
+  updateAll();
+}
+
+function salvarCusto(id) {
+  const input = document.getElementById('custo-' + id);
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val < 0) { showToast('Valor inválido'); return; }
+  saveCusto(id, val);
+  upsertSupabase(id, { custo_unitario: val });
+  PRODUTOS = buildProdutos();
+  updateAll();
+  showToast('✓ Custo salvo!');
+}
+
+function salvarMult(id) {
+  const input = document.getElementById('mult-' + id);
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val <= 0) { showToast('Multiplicador inválido'); return; }
+  const params = getParams();
+  if (Math.abs(val - params.mult) < 0.001) {
+    const data = loadMults(); delete data[id];
+    try { localStorage.setItem(LS_MULT_KEY, JSON.stringify(data)); } catch(e) {}
+  } else { saveMult(id, val); }
+  upsertSupabase(id, { multiplicador: val });
+  updateAll();
+}
+
+function setQty(id, val) { cart[id] = Math.max(0, parseInt(val) || 0); updateAll(); }
+function toggleItem(id) { cart[id] = cart[id] ? 0 : 1; updateAll(); }
+function changeQty(id, delta) {
+  const novo = Math.max(0, (cart[id] || 0) + delta);
+  cart[id] = novo;
+  updateAll();
+  if (delta > 0 && novo === 1) showToast('✓ Adicionado ao orçamento');
+}
+function setQtyOrcamento(id, val) { cart[id] = Math.max(0, parseInt(val) || 0); updateAll(); }
+function removeItem(id) { cart[id] = 0; updateAll(); showToast('Item removido'); }
+
+function setTipo(tipo) {
+  tipoOrcamento = tipo;
+  document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tipo-' + tipo).classList.add('active');
+  updateAll();
+}
+
+// =====================
+// COMPARTILHAR
+// =====================
+function renderCompartilhar() {
+  const params = getParams();
+  const hasItems = Object.values(cart).some(q => q > 0) || Object.values(varCart).some(v => v && v.length > 0);
+
+  document.getElementById('shareEmpty').style.display = hasItems ? 'none' : 'block';
+  document.getElementById('shareContent').style.display = hasItems ? 'block' : 'none';
+  if (!hasItems) return;
+
+  const tot = calcTotal(params);
+
+  document.getElementById('priceModes').innerHTML = `
+    <div class="price-mode ${selectedPriceMode === 'minimo' ? 'selected' : ''}" onclick="selectMode('minimo')">
+      <span class="price-mode-label">Mínimo</span>
+      <span class="price-mode-val">${fmt(tot.precoMin)}</span>
+    </div>
+    <div class="price-mode ${selectedPriceMode === 'ideal' ? 'selected' : ''}" onclick="selectMode('ideal')">
+      <span class="price-mode-label">✦ Ideal</span>
+      <span class="price-mode-val">${fmt(tot.precoIdeal)}</span>
+    </div>
+    <div class="price-mode ${selectedPriceMode === 'premium' ? 'selected' : ''}" onclick="selectMode('premium')">
+      <span class="price-mode-label">Premium</span>
+      <span class="price-mode-val">${fmt(tot.precoPremium)}</span>
+    </div>`;
+
+  document.getElementById('previewText').innerHTML = buildText(params, tot).replace(/\n/g, '<br>');
+}
+
+function selectMode(mode) { selectedPriceMode = mode; updateAll(); switchView('compartilhar'); }
+
+function buildText(params, tot) {
+  const precoFinal = getPrecoSelecionado(tot);
+  const cliente = document.getElementById('clientName').value.trim();
+  const data = new Date().toLocaleDateString('pt-BR');
+
+  let txt = `*PORTIBRAS — Orçamento*\n📅 ${data}\n`;
+  if (cliente) txt += `🏢 ${cliente}\n`;
+  txt += `\n*Itens:*\n`;
+
+  // Variações
+  for (const [parentId, vars] of Object.entries(varCart)) {
+    if (!vars || !vars.length) continue;
+    const prod = PRODUTOS.find(p => p.id === parentId);
+    if (!prod) continue;
+    for (const v of vars) {
+      const c = calcVarBase(parentId, v, params);
+      const preco = getPrecoVarEfetivo(v, c);
+      const isPCF = parentId === 'POR-CF';
+      let badge = isPCF ? (v.tipoPCF + ' ' + (v.folhas === 'dupla' ? 'Dupla' : 'Simples') + (v.bandeira ? ' + Bandeira' : '')) : '';
+      const descLine = v.desc ? ` — ${v.desc}` : '';
+      txt += `• ${prod.nome}${badge ? ' (' + badge + ')' : ''}${descLine} × ${v.qty} → ${fmt(preco)}\n`;
+    }
+  }
+
+  // Normais
+  for (const [id, qty] of Object.entries(cart)) {
+    if (!qty || VARIACAO_IDS.includes(id)) continue;
+    const prod = PRODUTOS.find(p => p.id === id);
+    if (!prod) continue;
+    const c = calcItem(prod, qty, params);
+    const preco = selectedPriceMode === 'minimo' ? c.precoMin : selectedPriceMode === 'premium' ? c.precoPremium : c.precoIdeal;
+    const diariaInfo = PROD_DIARIA.includes(id) ? ` (${getDiarias(id)} diária${getDiarias(id)!==1?'s':''})` : '';
+    txt += `• ${prod.nome} × ${qty}${diariaInfo} → ${fmt(preco)}\n`;
+  }
+
+  txt += `\n*Valor total: ${fmt(precoFinal)}*\n`;
+  if (modoPagamento === 'avista') {
+    txt += `💵 À vista (${momentoPagamento === 'antecipado' ? 'antecipado' : 'após execução'}): ${fmt(precoFinal)}\n`;
+  } else {
+    const entrada = precoFinal * (params.entrada / 100);
+    const restante = precoFinal - entrada;
+    const parcela = params.parcelas > 1 ? restante / params.parcelas : restante;
+    txt += `🔒 Sinal ${params.entrada}% (antecipado): ${fmt(entrada)}\n`;
+    txt += params.parcelas > 1 ? `📆 ${params.parcelas}× de ${fmt(parcela)}\n` : `📆 Restante: ${fmt(restante)}\n`;
+  }
+  txt += `\n_PORTIBRAS – Portas Corta-Fogo_`;
+  return txt;
+}
+
+function shareWhatsApp() {
+  const params = getParams();
+  const hasItems = Object.values(cart).some(q => q > 0) || Object.values(varCart).some(v => v && v.length > 0);
+  if (!hasItems) { showToast('Adicione itens primeiro'); return; }
+  const tot = calcTotal(params);
+  window.open(`https://wa.me/?text=${encodeURIComponent(buildText(params, tot))}`, '_blank');
+}
+
+function copyText() {
+  const params = getParams();
+  const hasItems = Object.values(cart).some(q => q > 0) || Object.values(varCart).some(v => v && v.length > 0);
+  if (!hasItems) { showToast('Adicione itens primeiro'); return; }
+  const tot = calcTotal(params);
+  const txt = buildText(params, tot).replace(/\*/g, '').replace(/_/g, '');
+  try { navigator.clipboard.writeText(txt).then(() => showToast('✓ Texto copiado!')); }
+  catch(e) { showToast('Copie o texto manualmente'); }
+}
+
+// =====================
+// HELPERS
+// =====================
+function fmt(v) {
+  return 'R$ ' + (v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function updateCartBadge() {
+  const normalQty = Object.values(cart).reduce((a, b) => a + b, 0);
+  const varQty = Object.values(varCart).reduce((a, vars) => a + (vars ? vars.length : 0), 0);
+  const total = normalQty + varQty;
+  const badge = document.getElementById('cartBadge');
+  badge.textContent = total;
+  badge.style.display = total > 0 ? 'block' : 'none';
+}
+
+function updateAll() {
+  updateCartBadge();
+  updateResumo();
+  filterProducts();
+}
+
+function updateResumo() {
+  renderOrcamento();
+  renderCompartilhar();
+}
+
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'orcamento') renderOrcamento();
+  if (name === 'compartilhar') renderCompartilhar();
+  if (name === 'config') { renderTerceirizados(); renderConfigServicos(); }
+}
+
+// =====================
+// INIT
+// =====================
+renderCats();
+filterProducts();
+renderOrcamento();
+renderTerceirizados();
+renderConfigServicos();
+loadSupabase();
+initRealtime();
+</script>
+</body>
+</html>
