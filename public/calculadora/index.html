@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28s -->
+<!-- v2026-11-28t -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -1673,46 +1673,47 @@ function calcVarBase(parentId, v, params) {
   const prod = PRODUTOS.find(p => p.id === parentId);
   if (!prod) return { custoTotal: 0, precoIdeal: 0, precoMin: 0, precoPremium: 0 };
   const qty = v.qty || 1;
-  // Para POR-CF: usar custo específico por tipo/folha se configurado
-  if (parentId === 'POR-CF') {
+
+  // Determinar custo de compra: custoCustom (do modal) > PCF por tipo > padrão
+  let custoBase = null;
+  if (v.custoCustom != null && v.custoCustom > 0) {
+    custoBase = v.custoCustom;
+  } else if (parentId === 'POR-CF') {
     const tipoPCF = v.tipoPCF || 'P60';
     const folhas = v.folhas || 'simples';
-    const custoPCF = getPCFPreco(tipoPCF, folhas);
-    if (custoPCF > 0) {
-      // Criar prod virtual com custo do tipo específico
-      const prodVirtual = { ...prod, custo: custoPCF };
-      // Usar calcItem com prod virtual mas sobreescrever custoAtual no localStorage temporariamente não é limpo
-      // Melhor: calcular diretamente
-      const mult = getMultAtual(prod.id, params.mult);
-      const freteTotal = getFreteAtual(prod.id);
-      const moUnit = getMOAtual(prod.id);
-      const usaMat = tipoOrcamento !== 'instalacao';
-      const usaFrete = tipoOrcamento !== 'instalacao';
-      const usaInst = tipoOrcamento !== 'fornecimento';
-      const custoMat = usaMat ? custoPCF * qty : 0;
-      const frete = usaFrete ? freteTotal : 0;
-      let custoInst = 0, moPropriaUnit = 0;
-      if (usaInst) {
-        const tercServAtivo = isTerceirizado(prod.id);
-        if (tercServAtivo) {
-          const tercServVal = getTercServVal(prod.id);
-          custoInst = tercServVal > 0 ? tercServVal * qty : (moUnit !== null ? moUnit * qty : 0);
-        } else {
-          custoInst = 0;
-          if (moUnit !== null) moPropriaUnit = moUnit;
-          else if (prod.tempoMin > 0) moPropriaUnit = (prod.tempoMin / 60) * params.hora;
-        }
+    custoBase = getPCFPreco(tipoPCF, folhas) || null;
+  }
+
+  if (custoBase !== null) {
+    const mult = getMultAtual(prod.id, params.mult);
+    const freteTotal = getFreteAtual(prod.id);
+    // MO: custoCustom do modal > localStorage > tempo estimado
+    const moUnit = v.moCustom != null ? v.moCustom : getMOAtual(prod.id);
+    const usaMat = tipoOrcamento !== 'instalacao';
+    const usaFrete = tipoOrcamento !== 'instalacao';
+    const usaInst = tipoOrcamento !== 'fornecimento';
+    const custoMat = usaMat ? custoBase * qty : 0;
+    const frete = usaFrete ? freteTotal : 0;
+    let custoInst = 0, moPropriaUnit = 0;
+    if (usaInst) {
+      const tercServAtivo = isTerceirizado(prod.id);
+      if (tercServAtivo) {
+        const tercServVal = getTercServVal(prod.id);
+        custoInst = tercServVal > 0 ? tercServVal * qty : (moUnit !== null ? moUnit * qty : 0);
+      } else {
+        if (moUnit !== null) moPropriaUnit = moUnit;
+        else if (prod.tempoMin > 0) moPropriaUnit = (prod.tempoMin / 60) * params.hora;
       }
-      const custoTotal = custoMat + frete + custoInst;
-      const moPropriaTotal = moPropriaUnit * qty;
-      const baseMin = custoTotal * 1.2 + moPropriaTotal;
-      const baseIdeal = custoTotal * mult + moPropriaTotal;
-      const basePremium = baseIdeal * 1.25;
-      const precoMin = baseMin * (1 + params.aliq / 100);
-      const precoIdeal = baseIdeal * (1 + params.aliq / 100);
-      const precoPremium = basePremium * (1 + params.aliq / 100);
-      return { custoMat, frete, custoInst, custoTotal, moPropriaUnit, moPropriaTotal, precoMin, precoIdeal, precoPremium, mult, freteTotal, moUnit };
     }
+    const custoTotal = custoMat + frete + custoInst;
+    const moPropriaTotal = moPropriaUnit * qty;
+    const baseMin = custoTotal * 1.2 + moPropriaTotal;
+    const baseIdeal = custoTotal * mult + moPropriaTotal;
+    const basePremium = baseIdeal * 1.25;
+    const precoMin = baseMin * (1 + params.aliq / 100);
+    const precoIdeal = baseIdeal * (1 + params.aliq / 100);
+    const precoPremium = basePremium * (1 + params.aliq / 100);
+    return { custoMat, frete, custoInst, custoTotal, moPropriaUnit, moPropriaTotal, precoMin, precoIdeal, precoPremium, mult, freteTotal, moUnit };
   }
   return calcItem(prod, qty, params);
 }
@@ -2019,6 +2020,16 @@ function addVariacaoConfig(parentId) {
 
   document.getElementById('varModalQtyVal').textContent = _varModalQty;
 
+  // Pré-preencher custo de compra com valor configurado para o tipo atual
+  const custoInicial = isPCF ? getPCFPreco(_varModalTipoPCF, _varModalFolhas) : getCustoAtual(parentId, (prod ? prod.custo : 0));
+  document.getElementById('varModalCusto').value = custoInicial > 0 ? custoInicial.toFixed(2) : '';
+
+  // Pré-preencher MO com valor atual do produto
+  const moAtual = getMOAtual(parentId);
+  const moInst = tipoOrcamento !== 'fornecimento';
+  document.getElementById('varModalSecMO').style.display = moInst ? '' : 'none';
+  document.getElementById('varModalMO').value = (moAtual !== null && moAtual > 0) ? moAtual.toFixed(2) : '';
+
   atualizarVarModalCalc();
   document.getElementById('varModalOverlay').classList.add('open');
   setTimeout(() => document.getElementById('varModalDesc').focus(), 200);
@@ -2034,6 +2045,9 @@ function setVarModalTipo(tipo) {
   document.querySelectorAll('#varModalChipsTipo .var-modal-chip').forEach(b => {
     b.classList.toggle('active', b.textContent === tipo);
   });
+  // Atualizar custo sugerido para o novo tipo
+  const custo = getPCFPreco(tipo, _varModalFolhas);
+  if (custo > 0) document.getElementById('varModalCusto').value = custo.toFixed(2);
   atualizarVarModalCalc();
 }
 
@@ -2041,6 +2055,9 @@ function setVarModalFolhas(folhas) {
   _varModalFolhas = folhas;
   document.getElementById('chipSimples').classList.toggle('active', folhas === 'simples');
   document.getElementById('chipDupla').classList.toggle('active', folhas === 'dupla');
+  // Atualizar custo sugerido para a nova combinação
+  const custo = getPCFPreco(_varModalTipoPCF, folhas);
+  if (custo > 0) document.getElementById('varModalCusto').value = custo.toFixed(2);
   atualizarVarModalCalc();
 }
 
@@ -2058,27 +2075,51 @@ function mudarVarModalQty(delta) {
 function atualizarVarModalCalc() {
   if (!_varModalParentId) return;
   const params = getParams();
-  const tempVar = {
-    vid: 'temp',
-    desc: '',
-    qty: _varModalQty,
-    tipoPCF: _varModalTipoPCF,
-    folhas: _varModalFolhas,
-    bandeira: _varModalBandeira,
-    precoLivre: 0,
-  };
-  const c = calcVarBase(_varModalParentId, tempVar, params);
-  const precoCalc = selectedPriceMode === 'minimo' ? c.precoMin : selectedPriceMode === 'premium' ? c.precoPremium : c.precoIdeal;
+  const prod = PRODUTOS.find(p => p.id === _varModalParentId);
+  if (!prod) return;
+
+  // Ler valores dos campos editáveis
+  const custoInput = parseFloat(document.getElementById('varModalCusto').value) || 0;
+  const moInput = parseFloat(document.getElementById('varModalMO').value) || 0;
+
+  const qty = _varModalQty;
+  const mult = getMultAtual(prod.id, params.mult);
+  const freteTotal = getFreteAtual(prod.id);
+  const usaMat = tipoOrcamento !== 'instalacao';
+  const usaFrete = tipoOrcamento !== 'instalacao';
+  const usaInst = tipoOrcamento !== 'fornecimento';
+
+  const custoMat = usaMat ? custoInput * qty : 0;
+  const frete = usaFrete ? freteTotal : 0;
+  const custoInst = usaInst && isTerceirizado(prod.id)
+    ? (getTercServVal(prod.id) > 0 ? getTercServVal(prod.id) * qty : moInput * qty)
+    : 0;
+  const moPropriaTotal = usaInst && !isTerceirizado(prod.id) ? moInput * qty : 0;
+
+  const custoTotal = custoMat + frete + custoInst;
+  const baseMin = custoTotal * 1.2 + moPropriaTotal;
+  const baseIdeal = custoTotal * mult + moPropriaTotal;
+  const basePremium = baseIdeal * 1.25;
+  const precoMin = baseMin * (1 + params.aliq / 100);
+  const precoIdeal = baseIdeal * (1 + params.aliq / 100);
+  const precoPremium = basePremium * (1 + params.aliq / 100);
+
+  const precoCalc = selectedPriceMode === 'minimo' ? precoMin : selectedPriceMode === 'premium' ? precoPremium : precoIdeal;
   const imposto = precoCalc - precoCalc / (1 + params.aliq / 100);
-  document.getElementById('vmCalcCusto').textContent = c.custoTotal > 0 ? fmt(c.custoTotal) : '—';
+  const lucro = precoCalc / (1 + params.aliq / 100) - custoTotal - moPropriaTotal;
+
+  document.getElementById('vmCalcCusto').textContent = (custoTotal + moPropriaTotal) > 0 ? fmt(custoTotal + moPropriaTotal) : '—';
   document.getElementById('vmCalcVenda').textContent = precoCalc > 0 ? fmt(precoCalc) : '—';
   document.getElementById('vmCalcImposto').textContent = imposto > 0 ? fmt(imposto) : '—';
+  document.getElementById('vmCalcLucro').textContent = lucro > 0 ? fmt(lucro) : '—';
 }
 
 function confirmarVarModal() {
   if (!_varModalParentId) return;
   if (!varCart[_varModalParentId]) varCart[_varModalParentId] = [];
   const desc = document.getElementById('varModalDesc').value.trim();
+  const custoCustom = parseFloat(document.getElementById('varModalCusto').value) || 0;
+  const moCustom = parseFloat(document.getElementById('varModalMO').value) || 0;
   const newVar = {
     vid: newVarId(),
     desc: desc,
@@ -2087,6 +2128,8 @@ function confirmarVarModal() {
     folhas: _varModalFolhas,
     bandeira: _varModalBandeira,
     precoLivre: 0,
+    custoCustom: custoCustom > 0 ? custoCustom : null,  // override custo de compra
+    moCustom: moCustom > 0 ? moCustom : null,            // override MO
   };
   varCart[_varModalParentId].push(newVar);
   document.getElementById('varModalOverlay').classList.remove('open');
@@ -2922,6 +2965,20 @@ document.addEventListener('visibilitychange', () => {
       </div>
     </div>
 
+    <!-- Custo de compra + MO -->
+    <div class="var-modal-section" style="display:flex;gap:10px">
+      <div style="flex:1">
+        <div class="var-modal-label">Custo compra (R$)</div>
+        <input class="var-modal-desc" id="varModalCusto" type="number" min="0" step="0.01"
+          placeholder="0,00" oninput="atualizarVarModalCalc()" style="padding:9px 10px;font-size:14px">
+      </div>
+      <div style="flex:1" id="varModalSecMO">
+        <div class="var-modal-label">Mão de obra (R$)</div>
+        <input class="var-modal-desc" id="varModalMO" type="number" min="0" step="0.01"
+          placeholder="0,00" oninput="atualizarVarModalCalc()" style="padding:9px 10px;font-size:14px">
+      </div>
+    </div>
+
     <!-- Descrição -->
     <div class="var-modal-section">
       <div class="var-modal-label">Descrição / Localização</div>
@@ -2944,9 +3001,10 @@ document.addEventListener('visibilitychange', () => {
     <div class="var-modal-section">
       <div class="var-modal-label">Valores calculados</div>
       <div class="var-modal-calc-chips" id="varModalCalcChips">
-        <div class="var-modal-calc-chip"><span>Custo</span><b id="vmCalcCusto">—</b></div>
+        <div class="var-modal-calc-chip"><span>Custo total</span><b id="vmCalcCusto">—</b></div>
         <div class="var-modal-calc-chip venda"><span>Venda ref.</span><b id="vmCalcVenda">—</b></div>
         <div class="var-modal-calc-chip"><span>Imposto</span><b id="vmCalcImposto">—</b></div>
+        <div class="var-modal-calc-chip"><span>Lucro</span><b id="vmCalcLucro">—</b></div>
       </div>
     </div>
 
