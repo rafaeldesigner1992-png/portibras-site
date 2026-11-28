@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28q -->
+<!-- v2026-11-28r -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -1724,14 +1724,19 @@ function renderProducts(list) {
     <div class="product-item ${inCart ? 'in-cart' : ''}" id="pitem-${p.id}">
       <div class="product-row">
         <div class="product-icon">${p.icon}</div>
-        <div class="product-info" onclick="${isVar ? `addVariacao('${p.id}')` : `toggleItem('${p.id}')`}">
+        <div class="product-info" onclick="${isVar ? `incluirVariacaoDefault('${p.id}')` : `toggleItem('${p.id}')`}">
           <div class="product-name">${p.nome}</div>
           <div class="product-code">${p.id} · ${p.cat}${showInst && p.tempoMin > 0 ? ' · '+p.tempoMin+'min' : ''}</div>
         </div>
         ${isVar ? `
-        <button onclick="addVariacao('${p.id}')" style="background:var(--verde);color:white;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">
-          + Variação${qty > 0 ? ' ('+qty+')' : ''}
-        </button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button onclick="incluirVariacaoDefault('${p.id}')" style="background:var(--verde);color:white;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">
+            ✓ Incluir${qty > 0 ? ' ('+qty+')' : ''}
+          </button>
+          <button onclick="addVariacaoConfig('${p.id}')" style="background:white;color:var(--verde);border:2px solid var(--verde);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">
+            + Variação
+          </button>
+        </div>
         ` : `
         <div class="product-qty">
           <button class="qty-btn" onclick="event.stopPropagation();changeQty('${p.id}', -1)">−</button>
@@ -1750,7 +1755,7 @@ function renderProducts(list) {
         <div class="prod-chip lucro"><span class="prod-chip-label">Lucro +${margemPct}%</span><span class="prod-chip-val">${fmt(lucroUnit)}</span></div>
         ${getFabricanteAtual(p.id) ? `<div class="prod-chip" style="background:#eaf4ff"><span class="prod-chip-label">Fornecedor</span><span class="prod-chip-val" style="color:#1a5fa6">${getFabricanteAtual(p.id)}</span></div>` : ''}
       </div>
-      ${isVar ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:2px">📐 Preço por variação — clique em + Variação para adicionar ao orçamento</div>` : ''}
+      ${isVar ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:2px">📐 <b>✓ Incluir</b> adiciona direto · <b>+ Variação</b> para configurar tipo antes de incluir</div>` : ''}
 
       <button class="edit-toggle-btn" id="etbtn-${p.id}" onclick="toggleEditPanel('${p.id}')">
         ✏️ Editar valores${modEm ? ' · ' + modEm : ''}
@@ -1829,20 +1834,46 @@ function renderProducts(list) {
 // =====================
 // VARIAÇÕES — adicionar / remover / atualizar
 // =====================
-function addVariacao(parentId) {
+// Inclui variação direto com defaults (P60 Simples, qty=1) e vai para o orçamento
+function incluirVariacaoDefault(parentId) {
   if (!varCart[parentId]) varCart[parentId] = [];
   const newVar = {
     vid: newVarId(),
     desc: '',
     qty: 1,
-    tipoPCF: 'P60',    // para POR-CF
-    folhas: 'simples', // 'simples' | 'dupla'
+    tipoPCF: 'P60',
+    folhas: 'simples',
     bandeira: false,
     precoLivre: 0,
   };
   varCart[parentId].push(newVar);
   updateAll();
-  showToast('✓ Variação adicionada');
+  showToast('✓ Variação adicionada ao orçamento');
+  // Muda para aba Orçamento para o usuário ver e ajustar se quiser
+  setTimeout(() => switchView('orcamento'), 300);
+}
+
+// Adiciona variação e vai para o orçamento para configurar (tipo, folhas, etc.)
+function addVariacaoConfig(parentId) {
+  if (!varCart[parentId]) varCart[parentId] = [];
+  const newVar = {
+    vid: newVarId(),
+    desc: '',
+    qty: 1,
+    tipoPCF: 'P60',
+    folhas: 'simples',
+    bandeira: false,
+    precoLivre: 0,
+  };
+  varCart[parentId].push(newVar);
+  updateAll();
+  showToast('✓ Variação adicionada — configure na aba Orçamento');
+  setTimeout(() => switchView('orcamento'), 300);
+}
+
+// Mantém compatibilidade com chamadas antigas
+function addVariacao(parentId) {
+  incluirVariacaoDefault(parentId);
 }
 
 function removeVariacao(parentId, vid) {
