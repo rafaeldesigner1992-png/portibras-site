@@ -942,6 +942,13 @@
 
 <div id="view-config" class="view">
   <div class="card">
+    <div class="card-header">☁️ Sincronização com Banco de Dados</div>
+    <div class="card-body">
+      <div id="sb-status" style="font-size:13px;color:#666;margin-bottom:10px;">Verificando conexão...</div>
+      <button onclick="syncManual()" style="width:100%;padding:10px;background:#1a3a5c;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">🔄 Sincronizar Agora</button>
+    </div>
+  </div>
+  <div class="card">
     <div class="card-header">⚙️ Parâmetros do Orçamento</div>
     <div class="card-body">
       <div class="param-row">
@@ -1051,6 +1058,15 @@ const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const sb = supabase.createClient(SB_URL, SB_KEY);
 let sbCache = {};
 
+function setSbStatus(ok, msg) {
+  const el = document.getElementById('sb-status');
+  if (!el) return;
+  const hora = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  el.innerHTML = ok
+    ? `<span style="color:#2a7a2a">✅ Conectado ao banco · ${hora}</span>`
+    : `<span style="color:#c0392b">❌ Offline — usando dados locais</span><br><small style="color:#999">${msg||''}</small>`;
+}
+
 async function loadSupabase() {
   try {
     const { data, error } = await sb.from('logistica_suprimentos')
@@ -1062,10 +1078,19 @@ async function loadSupabase() {
     renderCats();
     filterProducts();
     renderOrcamento();
+    setSbStatus(true);
     showToast('✓ Dados sincronizados');
   } catch(e) {
     console.warn('Supabase offline, usando cache local', e);
+    setSbStatus(false, e.message || String(e));
   }
+}
+
+async function syncManual() {
+  const btn = document.querySelector('[onclick="syncManual()"]');
+  if (btn) { btn.textContent = '⏳ Sincronizando...'; btn.disabled = true; }
+  await loadSupabase();
+  if (btn) { btn.textContent = '🔄 Sincronizar Agora'; btn.disabled = false; }
 }
 
 function initRealtime() {
@@ -2230,13 +2255,29 @@ function switchView(name) {
 // =====================
 // INIT
 // =====================
-renderCats();
-filterProducts();
-renderOrcamento();
-renderTerceirizados();
-renderConfigServicos();
-loadSupabase();
-initRealtime();
+function initApp() {
+  renderCats();
+  filterProducts();
+  renderOrcamento();
+  renderTerceirizados();
+  renderConfigServicos();
+  setSbStatus(false, 'Aguardando conexão...');
+  loadSupabase();
+  initRealtime();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
+
+// Re-sync quando o PWA volta para foreground
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    loadSupabase();
+  }
+});
 </script>
 </body>
 </html>
