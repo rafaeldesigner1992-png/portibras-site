@@ -1109,10 +1109,8 @@ function setSbStatus(ok, msg) {
 async function loadSupabase() {
   try {
     const data = await sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra');
-    console.log('[Supabase] resposta bruta:', JSON.stringify(data).slice(0, 500));
     sbCache = {};
     (data || []).forEach(r => { sbCache[r.codigo] = r; });
-    console.log('[Supabase] sbCache keys:', Object.keys(sbCache));
     PRODUTOS = buildProdutos();
     renderCats();
     filterProducts();
