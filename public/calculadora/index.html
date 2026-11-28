@@ -8,7 +8,7 @@
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Supabase via fetch nativo — sem dependência de CDN externo -->
 <style>
   :root {
     --verde: #1a6b35;
@@ -1055,7 +1055,41 @@ const VARIACAO_IDS = ['POR-CF', 'CTR-MAR'];
 // =====================
 const SB_URL = 'https://odmuutijqikhzlgzjnwv.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9kbXV1dGlqcWlraHpsZ3pqbnd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNTkzNTYsImV4cCI6MjEwODkzNTM1Nn0.grjNr7wSnvDEvnVT-dzbhezNHdYsDsBLJM-ijoZ4mTE';
-const sb = supabase.createClient(SB_URL, SB_KEY);
+
+// Cliente Supabase: usa supabase-js se disponível, senão fetch nativo
+const SB_HEADERS = {
+  'apikey': SB_KEY,
+  'Authorization': 'Bearer ' + SB_KEY,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation'
+};
+
+// Wrapper fetch nativo para Supabase REST API
+async function sbGet(table, select) {
+  const params = new URLSearchParams({ select });
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, { headers: SB_HEADERS });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + await r.text());
+  return r.json();
+}
+async function sbUpdate(table, match, fields) {
+  const params = new URLSearchParams(match);
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+    method: 'PATCH',
+    headers: SB_HEADERS,
+    body: JSON.stringify(fields)
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + await r.text());
+  return r.json();
+}
+async function sbInsert(table, row) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: SB_HEADERS,
+    body: JSON.stringify(row)
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + await r.text());
+  return r.json();
+}
 let sbCache = {};
 
 function setSbStatus(ok, msg) {
@@ -1069,20 +1103,7 @@ function setSbStatus(ok, msg) {
 
 async function loadSupabase() {
   try {
-    // Força bypass de qualquer cache HTTP para o PWA
-    const ts = Date.now();
-    const url = `${SB_URL}/rest/v1/logistica_suprimentos?select=codigo,custo_unitario,frete,multiplicador,fabricante,link_compra&_=${ts}`;
-    const resp = await fetch(url, {
-      headers: {
-        'apikey': SB_KEY,
-        'Authorization': 'Bearer ' + SB_KEY,
-        'Cache-Control': 'no-cache, no-store',
-        'Pragma': 'no-cache'
-      },
-      cache: 'no-store'
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
+    const data = await sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra');
     sbCache = {};
     (data || []).forEach(r => { sbCache[r.codigo] = r; });
     PRODUTOS = buildProdutos();
@@ -1092,11 +1113,11 @@ async function loadSupabase() {
     renderTerceirizados();
     renderConfigServicos();
     setSbStatus(true);
-    showToast('✓ Dados sincronizados (' + (data||[]).length + ' itens)');
+    showToast('✓ Sincronizados: ' + (data||[]).length + ' itens');
   } catch(e) {
-    console.warn('Supabase offline, usando cache local', e);
+    console.warn('Supabase offline', e);
     setSbStatus(false, e.message || String(e));
-    showToast('⚠️ Sem conexão: ' + (e.message || 'erro desconhecido'));
+    showToast('⚠️ Erro: ' + (e.message || 'sem conexão'));
   }
 }
 
@@ -1114,13 +1135,12 @@ function initRealtime() {
 
 async function upsertSupabase(codigo, fields) {
   try {
-    const { data, error } = await sb.from('logistica_suprimentos')
-      .update({ ...fields, atualizado_em: new Date().toISOString() })
-      .eq('codigo', codigo)
-      .select();
-    if (error) throw error;
+    const data = await sbUpdate('logistica_suprimentos',
+      { 'codigo': `eq.${codigo}` },
+      { ...fields, atualizado_em: new Date().toISOString() }
+    );
     if (!data || data.length === 0) {
-      showToast('⚠️ Código não encontrado no banco: ' + codigo);
+      showToast('⚠️ Código não encontrado: ' + codigo);
       return;
     }
     if (!sbCache[codigo]) sbCache[codigo] = {};
@@ -1140,15 +1160,14 @@ async function salvarOrcamento() {
   if (!titulo) return;
   const cliente = prompt('Nome do cliente (opcional):') || '';
   try {
-    const { error } = await sb.from('portibras_orcamentos').insert({
+    await sbInsert('portibras_orcamentos', {
       titulo, cliente, tipo: tipoOrcamento,
       aliquota: params.aliq, hora_tecnico: params.hora, mult_global: params.mult,
       cart, var_cart: varCart, total_custo: tot.custoTotal, total_preco: precoFinal,
     });
-    if (error) throw error;
     showToast('✓ Orçamento salvo!');
   } catch(e) {
-    showToast('⚠️ Erro ao salvar orçamento');
+    showToast('⚠️ Erro ao salvar: ' + (e.message || e));
     console.error(e);
   }
 }
