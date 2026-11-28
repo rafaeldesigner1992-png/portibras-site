@@ -1065,29 +1065,33 @@ const SB_HEADERS = {
 };
 
 // Wrapper fetch nativo para Supabase REST API
+// PostgREST helper — monta URL sem encoding indevido de vírgulas/operadores
+function sbUrl(table, queryStr) {
+  return `${SB_URL}/rest/v1/${table}${queryStr ? '?' + queryStr : ''}`;
+}
 async function sbGet(table, select) {
-  const params = new URLSearchParams({ select });
-  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, { headers: SB_HEADERS });
-  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + await r.text());
+  // select=col1,col2 — vírgulas NÃO devem ser encodadas
+  const r = await fetch(sbUrl(table, 'select=' + encodeURIComponent(select).replace(/%2C/g, ',')), { headers: SB_HEADERS });
+  if (!r.ok) { const t = await r.text(); throw new Error('GET ' + r.status + ': ' + t); }
   return r.json();
 }
-async function sbUpdate(table, match, fields) {
-  const params = new URLSearchParams(match);
-  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+async function sbUpdate(table, col, val, fields) {
+  // PATCH /rest/v1/table?col=eq.val
+  const r = await fetch(sbUrl(table, col + '=eq.' + encodeURIComponent(val)), {
     method: 'PATCH',
     headers: SB_HEADERS,
     body: JSON.stringify(fields)
   });
-  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + await r.text());
+  if (!r.ok) { const t = await r.text(); throw new Error('PATCH ' + r.status + ': ' + t); }
   return r.json();
 }
 async function sbInsert(table, row) {
-  const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
+  const r = await fetch(sbUrl(table, ''), {
     method: 'POST',
     headers: SB_HEADERS,
     body: JSON.stringify(row)
   });
-  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + await r.text());
+  if (!r.ok) { const t = await r.text(); throw new Error('POST ' + r.status + ': ' + t); }
   return r.json();
 }
 let sbCache = {};
@@ -1136,7 +1140,7 @@ function initRealtime() {
 async function upsertSupabase(codigo, fields) {
   try {
     const data = await sbUpdate('logistica_suprimentos',
-      { 'codigo': `eq.${codigo}` },
+      'codigo', codigo,
       { ...fields, atualizado_em: new Date().toISOString() }
     );
     if (!data || data.length === 0) {
