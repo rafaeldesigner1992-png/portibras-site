@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28o -->
+<!-- v2026-11-28p -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -1670,7 +1670,7 @@ function renderProducts(list) {
       <div class="product-row">
         <div class="product-icon">${p.icon}</div>
         <div class="product-info" onclick="${isVar ? `addVariacao('${p.id}')` : `toggleItem('${p.id}')`}">
-          <div class="product-name">${p.nome}${isVar ? ' <span style="font-size:10px;background:var(--verde-bg);color:var(--verde);padding:2px 6px;border-radius:8px;font-weight:700">variações</span>' : ''}</div>
+          <div class="product-name">${p.nome}</div>
           <div class="product-code">${p.id} · ${p.cat}${showInst && p.tempoMin > 0 ? ' · '+p.tempoMin+'min' : ''}</div>
         </div>
         ${isVar ? `
@@ -1689,12 +1689,13 @@ function renderProducts(list) {
         `}
       </div>
       <div class="prod-info-chips">
-        ${showMat ? `<div class="prod-chip"><span class="prod-chip-label">Compra unit.</span><span class="prod-chip-val">${fmt(p.custo)}</span></div>` : ''}
-        <div class="prod-chip venda"><span class="prod-chip-label">Venda unit.</span><span class="prod-chip-val">${fmt(precoUnitIdeal)}</span></div>
-        <div class="prod-chip"><span class="prod-chip-label">Imposto unit.</span><span class="prod-chip-val">${fmt(impostosUnit)}</span></div>
+        ${showMat ? `<div class="prod-chip"><span class="prod-chip-label">${isVar ? 'Compra ref.' : 'Compra unit.'}</span><span class="prod-chip-val">${fmt(custoAtual)}</span></div>` : ''}
+        <div class="prod-chip venda"><span class="prod-chip-label">${isVar ? 'Venda ref.' : 'Venda unit.'}</span><span class="prod-chip-val">${fmt(precoUnitIdeal)}</span></div>
+        <div class="prod-chip"><span class="prod-chip-label">${isVar ? 'Imposto ref.' : 'Imposto unit.'}</span><span class="prod-chip-val">${fmt(impostosUnit)}</span></div>
         <div class="prod-chip lucro"><span class="prod-chip-label">Lucro +${margemPct}%</span><span class="prod-chip-val">${fmt(lucroUnit)}</span></div>
         ${getFabricanteAtual(p.id) ? `<div class="prod-chip" style="background:#eaf4ff"><span class="prod-chip-label">Fornecedor</span><span class="prod-chip-val" style="color:#1a5fa6">${getFabricanteAtual(p.id)}</span></div>` : ''}
       </div>
+      ${isVar ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding-left:2px">📐 Preço por variação — clique em + Variação para adicionar ao orçamento</div>` : ''}
 
       <button class="edit-toggle-btn" id="etbtn-${p.id}" onclick="toggleEditPanel('${p.id}')">
         ✏️ Editar valores${modEm ? ' · ' + modEm : ''}
