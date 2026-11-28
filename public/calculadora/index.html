@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28n -->
+<!-- v2026-11-28o -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -1654,8 +1654,9 @@ function renderProducts(list) {
     const freteAtual = getFreteAtual(p.id);
     const precoUnitIdeal = c1.precoIdeal;
     const impostosUnit = precoUnitIdeal - precoUnitIdeal / (1 + params.aliq / 100);
-    const lucroUnit = precoUnitIdeal / (1 + params.aliq / 100) - c1.custoTotal;
-    const margemPct = c1.custoTotal > 0 ? ((precoUnitIdeal / c1.custoTotal - 1) * 100).toFixed(0) : 0;
+    const custoBaseUnit = c1.custoTotal + c1.moPropriaUnit;
+    const lucroUnit = precoUnitIdeal / (1 + params.aliq / 100) - custoBaseUnit;
+    const margemPct = custoBaseUnit > 0 ? ((precoUnitIdeal / custoBaseUnit - 1) * 100).toFixed(0) : 0;
     const showMat = tipoOrcamento !== 'instalacao';
     const showInst = tipoOrcamento !== 'fornecimento';
 
@@ -1895,6 +1896,15 @@ function updateVar(parentId, vid, field, value) {
   if (field === 'precoLivre') value = parseFloat(value) || 0;
   if (field === 'bandeira') value = !!value;
   v[field] = value;
+  // Para o campo desc: só salva o estado, sem re-renderizar o carrinho
+  // (evita perda de foco a cada tecla). O render acontece ao sair do campo (onblur/onchange).
+  if (field === 'desc') {
+    // Só atualiza o preview no header da subvar — sem re-render total do carrinho
+    // (evita perda de foco a cada tecla digitada)
+    const descPreview = document.getElementById(`subvar-desc-${vid}`);
+    if (descPreview) descPreview.innerHTML = value || '<span style="opacity:0.5">sem descrição</span>';
+    return;
+  }
   updateAll();
 }
 
@@ -1965,14 +1975,15 @@ function renderOrcamento() {
       cartHtml += `<div class="subvar-item">
         <div class="subvar-header">
           <div class="subvar-badge">${badge}</div>
-          <div class="subvar-desc">${v.desc || '<span style="opacity:0.5">sem descrição</span>'}</div>
+          <div class="subvar-desc" id="subvar-desc-${v.vid}">${v.desc || '<span style="opacity:0.5">sem descrição</span>'}</div>
           <button class="subvar-remove" onclick="removeVariacao('${parentId}', '${v.vid}')">✕</button>
         </div>
         <div class="subvar-body">
           <!-- Campo de descrição -->
           <input class="subvar-desc-input" type="text" value="${escHtml(v.desc)}"
             placeholder="${escHtml(descPreview)}"
-            oninput="updateVar('${parentId}', '${v.vid}', 'desc', this.value)"
+            onchange="updateVar('${parentId}', '${v.vid}', 'desc', this.value)"
+            onblur="updateVar('${parentId}', '${v.vid}', 'desc', this.value)"
           >
           <!-- Chips de configuração -->
           <div class="subvar-chips">`;
