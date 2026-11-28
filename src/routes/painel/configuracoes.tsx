@@ -473,10 +473,17 @@ function SecaoSuprimentos() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">Categoria</label>
-                  <input type="text" value={form.categoria || ""}
+                  <select value={form.categoria || ""}
                     onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
-                    placeholder="Ex: Ferragens"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f] bg-white">
+                    <option value="">— selecione —</option>
+                    <option value="Ferragens">Ferragens</option>
+                    <option value="Barras">Barras</option>
+                    <option value="Serviços">Serviços</option>
+                    <option value="Estrutura & Acabamento">Estrutura &amp; Acabamento</option>
+                    <option value="Sinalização">Sinalização</option>
+                    <option value="outros">outros</option>
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

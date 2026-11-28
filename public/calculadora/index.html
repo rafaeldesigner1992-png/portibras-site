@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28j -->
+<!-- v2026-11-28k -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1407,10 +1407,26 @@ function loadMults() { try { return JSON.parse(localStorage.getItem(LS_MULT_KEY)
 function saveMult(id, valor) { const d = loadMults(); d[id] = valor; try { localStorage.setItem(LS_MULT_KEY, JSON.stringify(d)); } catch(e) {} }
 function getMultAtual(id, padrao) { const d = loadMults(); return d[id] !== undefined ? d[id] : padrao; }
 
-function buildProdutos() { return PRODUTOS_BASE.map(p => ({ ...p, custo: getCustoAtual(p.id, p.custo) })); }
+function buildProdutos() {
+  const base = PRODUTOS_BASE.map(p => ({ ...p, custo: getCustoAtual(p.id, p.custo) }));
+  // Inclui produtos adicionados pelo painel que não existem em PRODUTOS_BASE
+  const baseIds = new Set(PRODUTOS_BASE.map(p => p.id));
+  const dinamicos = Object.values(sbCache)
+    .filter(r => r.codigo && !baseIds.has(r.codigo))
+    .map(r => ({
+      id: r.codigo,
+      nome: r.nome || r.codigo,
+      cat: r.categoria || 'outros',
+      custo: r.custo_unitario || 0,
+      tempoMin: r.tempo_instalacao_min || 0,
+      icon: '📦'
+    }));
+  return [...base, ...dinamicos];
+}
 
 let PRODUTOS = buildProdutos();
-const CATS = ['Todos', ...new Set(PRODUTOS_BASE.map(p => p.cat))];
+// Categorias fixas — alinhadas com o painel de cadastro
+const CATS = ['Todos', 'Ferragens', 'Barras', 'Serviços', 'Estrutura & Acabamento', 'Sinalização', 'outros'];
 
 // =====================
 // CART — suporta itens normais E variações
