@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28f -->
+<!-- v2026-11-28g -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -246,27 +246,117 @@
   .tipo-btn .tipo-icon { font-size: 16px; display: block; margin-bottom: 3px; }
   .tipo-btn.active { border-color: var(--verde); background: var(--verde); color: white; }
   .prod-info-chips {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-    padding-top: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
     border-top: 1px dashed var(--cinza2);
-    flex-wrap: wrap;
   }
   .prod-chip {
-    flex: 1;
-    min-width: 70px;
     background: var(--cinza);
-    border-radius: 7px;
-    padding: 5px 8px;
-    text-align: center;
+    border-radius: 10px;
+    padding: 10px 12px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
   }
   .prod-chip.venda { background: var(--verde-bg); }
   .prod-chip.lucro { background: #fff8ee; }
-  .prod-chip-label { font-size: 9px; color: var(--cinza3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px; }
-  .prod-chip-val { font-size: 12px; font-weight: 700; color: var(--text); }
+  .prod-chip-label { font-size: 10px; color: var(--cinza3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  .prod-chip-val { font-size: 15px; font-weight: 800; color: var(--text); }
   .prod-chip.venda .prod-chip-val { color: var(--verde); }
   .prod-chip.lucro .prod-chip-val { color: #d07000; }
+
+  /* PAINEL EDIT COLAPSÁVEL */
+  .edit-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 8px;
+    border: 1.5px dashed var(--cinza2);
+    border-radius: 8px;
+    background: none;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cinza3);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.15s;
+  }
+  .edit-toggle-btn:active { background: var(--cinza); }
+  .edit-toggle-btn.open { border-color: var(--verde); color: var(--verde); background: var(--verde-bg); }
+  .edit-panel {
+    display: none;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--cinza2);
+    flex-direction: column;
+    gap: 8px;
+  }
+  .edit-panel.open { display: flex; }
+
+  /* Linha de campo padronizada */
+  .edit-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .edit-field-label {
+    font-size: 11px;
+    color: var(--cinza3);
+    font-weight: 700;
+    white-space: nowrap;
+    min-width: 90px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .edit-field-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--cinza);
+    border-radius: 8px;
+    border: 1.5px solid var(--cinza2);
+    overflow: hidden;
+    flex: 1;
+    transition: border-color 0.15s;
+  }
+  .edit-field-wrap:focus-within { border-color: var(--verde); background: white; }
+  .edit-field-input {
+    border: none;
+    background: none;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: var(--text);
+    width: 100%;
+    min-width: 0;
+  }
+  .edit-field-input::placeholder { color: var(--cinza3); font-weight: 500; }
+  .edit-field-input:focus { outline: none; }
+  .edit-save-all-btn {
+    background: var(--verde);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .edit-save-all-btn:active { opacity: 0.85; }
   .frete-prod-row {
     display: flex;
     align-items: center;
@@ -1551,64 +1641,59 @@ function renderProducts(list) {
         <div class="prod-chip"><span class="prod-chip-label">Imposto unit.</span><span class="prod-chip-val">${fmt(impostosUnit)}</span></div>
         <div class="prod-chip lucro"><span class="prod-chip-label">Lucro +${margemPct}%</span><span class="prod-chip-val">${fmt(lucroUnit)}</span></div>
       </div>
-      ${showMat ? `
-      <div class="custo-edit-row">
-        <span class="custo-label">Compra R$</span>
-        <div class="custo-input-wrap">
-          <input class="custo-input" type="number" id="custo-${p.id}" value="${custoAtual.toFixed(2)}" step="0.01" min="0"
-            onkeydown="if(event.key==='Enter'){salvarCusto('${p.id}');event.target.blur();}">
+
+      <button class="edit-toggle-btn" id="etbtn-${p.id}" onclick="toggleEditPanel('${p.id}')">
+        ✏️ Editar valores${modEm ? ' · ' + modEm : ''}
+      </button>
+
+      <div class="edit-panel" id="epanel-${p.id}">
+        ${showMat ? `
+        <div class="edit-field-row">
+          <span class="edit-field-label">Compra R$</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="number" id="custo-${p.id}" value="${custoAtual.toFixed(2)}" step="0.01" min="0">
+          </div>
         </div>
-        <button class="custo-save-btn" onclick="salvarCusto('${p.id}')">Salvar</button>
+        <div class="edit-field-row">
+          <span class="edit-field-label">Frete R$</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="number" id="frete-${p.id}" value="${freteAtual.toFixed(2)}" step="0.5" min="0">
+          </div>
+        </div>` : ''}
+        ${showInst ? (() => {
+          const moAtual = getMOAtual(p.id);
+          const moPlaceholder = moAtual !== null ? moAtual.toFixed(2) : ((p.tempoMin / 60) * params.hora).toFixed(2);
+          const moVal = moAtual !== null ? moAtual.toFixed(2) : '';
+          return `<div class="edit-field-row">
+          <span class="edit-field-label">M.O. R$/un</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="number" id="mo-${p.id}" value="${moVal}" placeholder="${moPlaceholder}" step="0.5" min="0">
+          </div>
+        </div>`;
+        })() : ''}
+        <div class="edit-field-row">
+          <span class="edit-field-label">Multiplicador</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="number" id="mult-${p.id}" value="${multAtual.toFixed(2)}" step="0.01" min="0">
+          </div>
+        </div>
+        <div class="edit-field-row">
+          <span class="edit-field-label">Fabricante</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="text" id="fab-${p.id}" value="${getFabricanteAtual(p.id)}" placeholder="Nome do fabricante">
+          </div>
+        </div>
+        <div class="edit-field-row">
+          <span class="edit-field-label">Link compra</span>
+          <div class="edit-field-wrap">
+            <input class="edit-field-input" type="url" id="link-${p.id}" value="${getLinkAtual(p.id)}" placeholder="https://">
+          </div>
+          ${getLinkAtual(p.id) ? `<a href="${getLinkAtual(p.id)}" target="_blank" rel="noopener" style="color:var(--verde);font-size:20px;line-height:1;text-decoration:none;flex-shrink:0">🔗</a>` : ''}
+        </div>
+        <button class="edit-save-all-btn" onclick="salvarTudo('${p.id}')">
+          💾 Salvar alterações
+        </button>
       </div>
-      <div class="frete-prod-row">
-        <span class="frete-prod-label">Frete R$ (total)</span>
-        <div class="frete-prod-wrap">
-          <input class="frete-prod-input" type="number" id="frete-${p.id}" value="${freteAtual.toFixed(2)}" step="0.5" min="0"
-            onkeydown="if(event.key==='Enter'){salvarFreteProd('${p.id}');this.blur();}"
-            onblur="salvarFreteProd('${p.id}')">
-        </div>
-      </div>` : ''}
-      ${showInst ? (() => {
-        const moAtual = getMOAtual(p.id);
-        const moPlaceholder = moAtual !== null ? moAtual.toFixed(2) : ((p.tempoMin / 60) * params.hora).toFixed(2);
-        const moVal = moAtual !== null ? moAtual.toFixed(2) : '';
-        return `<div class="frete-prod-row">
-        <span class="frete-prod-label">M.O. R$/un</span>
-        <div class="frete-prod-wrap">
-          <input class="frete-prod-input" type="number" id="mo-${p.id}" value="${moVal}" placeholder="${moPlaceholder}" step="0.5" min="0"
-            onkeydown="if(event.key==='Enter'){salvarMOProd('${p.id}');this.blur();}"
-            onblur="salvarMOProd('${p.id}')">
-        </div>
-      </div>`;
-      })() : ''}
-      <div class="mult-edit-row">
-        <span class="mult-label">Multiplicador</span>
-        <div class="mult-input-wrap">
-          <input class="mult-input" type="number" id="mult-${p.id}" value="${multAtual.toFixed(2)}" step="0.01" min="0"
-            onkeydown="if(event.key==='Enter'){salvarMult('${p.id}');this.blur();}"
-            onblur="salvarMult('${p.id}')">
-        </div>
-      </div>
-      <div class="frete-prod-row">
-        <span class="frete-prod-label">Fabricante</span>
-        <div class="frete-prod-wrap" style="flex:1">
-          <input class="frete-prod-input" type="text" id="fab-${p.id}" value="${getFabricanteAtual(p.id)}" placeholder="Nome do fabricante"
-            style="width:100%"
-            onkeydown="if(event.key==='Enter'){salvarFabricante('${p.id}');this.blur();}"
-            onblur="salvarFabricante('${p.id}')">
-        </div>
-      </div>
-      <div class="frete-prod-row" style="align-items:center;gap:6px">
-        <span class="frete-prod-label" style="white-space:nowrap">Link compra</span>
-        <div class="frete-prod-wrap" style="flex:1">
-          <input class="frete-prod-input" type="url" id="link-${p.id}" value="${getLinkAtual(p.id)}" placeholder="https://"
-            style="width:100%"
-            onkeydown="if(event.key==='Enter'){salvarLink('${p.id}');this.blur();}"
-            onblur="salvarLink('${p.id}')">
-        </div>
-        ${getLinkAtual(p.id) ? `<a href="${getLinkAtual(p.id)}" target="_blank" rel="noopener" style="color:var(--verde);font-size:18px;line-height:1;text-decoration:none" title="Abrir link">🔗</a>` : ''}
-      </div>
-      ${modEm ? `<div class="custo-modified">✏️ Última modificação: ${modEm}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1658,6 +1743,90 @@ function salvarLink(id) {
   upsertSupabase(id, { link_compra: val.trim() || null });
   updateAll();
   showToast('✓ Link salvo');
+}
+
+function toggleEditPanel(id) {
+  const panel = document.getElementById('epanel-' + id);
+  const btn = document.getElementById('etbtn-' + id);
+  if (!panel || !btn) return;
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  btn.classList.toggle('open', !isOpen);
+  if (!isOpen) {
+    btn.innerHTML = '✖ Fechar edição';
+    const firstInput = panel.querySelector('.edit-field-input');
+    if (firstInput) firstInput.focus();
+  } else {
+    const params = getParams();
+    const p = PRODUTOS.find(x => x.id === id);
+    const modEm = getModificadoEm(id);
+    btn.innerHTML = '✏️ Editar valores' + (modEm ? ' · ' + modEm : '');
+  }
+}
+
+function salvarTudo(id) {
+  const params = getParams();
+  const fields = {};
+
+  // custo
+  const custoInput = document.getElementById('custo-' + id);
+  if (custoInput) {
+    const val = parseFloat(custoInput.value);
+    if (!isNaN(val) && val >= 0) { saveCusto(id, val); fields.custo_unitario = val; }
+  }
+  // frete
+  const freteInput = document.getElementById('frete-' + id);
+  if (freteInput) {
+    const val = parseFloat(freteInput.value) || 0;
+    saveFrete(id, val); fields.frete = val;
+  }
+  // mo
+  const moInput = document.getElementById('mo-' + id);
+  if (moInput) {
+    const val = moInput.value === '' ? null : parseFloat(moInput.value);
+    saveMO(id, val === null ? 0 : val);
+  }
+  // mult
+  const multInput = document.getElementById('mult-' + id);
+  if (multInput) {
+    const val = parseFloat(multInput.value);
+    if (!isNaN(val) && val > 0) {
+      if (Math.abs(val - params.mult) < 0.001) {
+        const data = loadMults(); delete data[id];
+        try { localStorage.setItem(LS_MULT_KEY, JSON.stringify(data)); } catch(e) {}
+      } else { saveMult(id, val); }
+      fields.multiplicador = val;
+    }
+  }
+  // fabricante
+  const fabInput = document.getElementById('fab-' + id);
+  if (fabInput) {
+    const val = fabInput.value.trim();
+    saveFabricante(id, val);
+    fields.fabricante = val || null;
+  }
+  // link
+  const linkInput = document.getElementById('link-' + id);
+  if (linkInput) {
+    const val = linkInput.value.trim();
+    saveLink(id, val);
+    fields.link_compra = val || null;
+  }
+
+  if (Object.keys(fields).length > 0) upsertSupabase(id, fields);
+  PRODUTOS = buildProdutos();
+  updateAll();
+  showToast('✓ Alterações salvas!');
+
+  // fecha o painel
+  const panel = document.getElementById('epanel-' + id);
+  const btn = document.getElementById('etbtn-' + id);
+  if (panel) panel.classList.remove('open');
+  if (btn) {
+    btn.classList.remove('open');
+    const modEm = getModificadoEm(id);
+    btn.innerHTML = '✏️ Editar valores' + (modEm ? ' · ' + modEm : '');
+  }
 }
 
 function updateVar(parentId, vid, field, value) {
