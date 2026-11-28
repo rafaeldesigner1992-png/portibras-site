@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28t -->
+<!-- v2026-11-28u -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -1685,9 +1685,10 @@ function calcVarBase(parentId, v, params) {
   }
 
   if (custoBase !== null) {
-    const mult = getMultAtual(prod.id, params.mult);
+    // Fator: multCustom (do modal) > configurado por produto > global
+    const mult = v.multCustom != null ? v.multCustom : getMultAtual(prod.id, params.mult);
     const freteTotal = getFreteAtual(prod.id);
-    // MO: custoCustom do modal > localStorage > tempo estimado
+    // MO: moCustom (do modal) > localStorage > tempo estimado
     const moUnit = v.moCustom != null ? v.moCustom : getMOAtual(prod.id);
     const usaMat = tipoOrcamento !== 'instalacao';
     const usaFrete = tipoOrcamento !== 'instalacao';
@@ -2030,6 +2031,11 @@ function addVariacaoConfig(parentId) {
   document.getElementById('varModalSecMO').style.display = moInst ? '' : 'none';
   document.getElementById('varModalMO').value = (moAtual !== null && moAtual > 0) ? moAtual.toFixed(2) : '';
 
+  // Pré-preencher fator multiplicador com o valor atual configurado para o produto
+  const params = getParams();
+  const multAtual = getMultAtual(parentId, params.mult);
+  document.getElementById('varModalMult').value = multAtual > 0 ? multAtual.toFixed(2) : '';
+
   atualizarVarModalCalc();
   document.getElementById('varModalOverlay').classList.add('open');
   setTimeout(() => document.getElementById('varModalDesc').focus(), 200);
@@ -2081,9 +2087,10 @@ function atualizarVarModalCalc() {
   // Ler valores dos campos editáveis
   const custoInput = parseFloat(document.getElementById('varModalCusto').value) || 0;
   const moInput = parseFloat(document.getElementById('varModalMO').value) || 0;
+  const multInput = parseFloat(document.getElementById('varModalMult').value) || getMultAtual(prod.id, params.mult);
 
   const qty = _varModalQty;
-  const mult = getMultAtual(prod.id, params.mult);
+  const mult = multInput;
   const freteTotal = getFreteAtual(prod.id);
   const usaMat = tipoOrcamento !== 'instalacao';
   const usaFrete = tipoOrcamento !== 'instalacao';
@@ -2120,6 +2127,11 @@ function confirmarVarModal() {
   const desc = document.getElementById('varModalDesc').value.trim();
   const custoCustom = parseFloat(document.getElementById('varModalCusto').value) || 0;
   const moCustom = parseFloat(document.getElementById('varModalMO').value) || 0;
+  const multCustomRaw = parseFloat(document.getElementById('varModalMult').value);
+  const params2 = getParams();
+  const multPadrao = getMultAtual(_varModalParentId, params2.mult);
+  // Só salva multCustom se diferente do padrão (tolerância 0.001)
+  const multCustom = (!isNaN(multCustomRaw) && Math.abs(multCustomRaw - multPadrao) > 0.001) ? multCustomRaw : null;
   const newVar = {
     vid: newVarId(),
     desc: desc,
@@ -2130,6 +2142,7 @@ function confirmarVarModal() {
     precoLivre: 0,
     custoCustom: custoCustom > 0 ? custoCustom : null,  // override custo de compra
     moCustom: moCustom > 0 ? moCustom : null,            // override MO
+    multCustom: multCustom,                              // override fator multiplicador
   };
   varCart[_varModalParentId].push(newVar);
   document.getElementById('varModalOverlay').classList.remove('open');
@@ -2977,6 +2990,13 @@ document.addEventListener('visibilitychange', () => {
         <input class="var-modal-desc" id="varModalMO" type="number" min="0" step="0.01"
           placeholder="0,00" oninput="atualizarVarModalCalc()" style="padding:9px 10px;font-size:14px">
       </div>
+    </div>
+
+    <!-- Fator multiplicador -->
+    <div class="var-modal-section">
+      <div class="var-modal-label">Fator multiplicador (×)</div>
+      <input class="var-modal-desc" id="varModalMult" type="number" min="1" step="0.01"
+        placeholder="ex: 2.5" oninput="atualizarVarModalCalc()" style="padding:9px 10px;font-size:14px">
     </div>
 
     <!-- Descrição -->
