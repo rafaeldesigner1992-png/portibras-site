@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28u -->
+<!-- v2026-11-28v -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -1519,8 +1519,22 @@ function getTercAtual(key, padrao) { const d = loadTercs(); return d[key] ? d[ke
 function getTercData(key) { const d = loadTercs(); return d[key] ? d[key].data : null; }
 
 function loadPCFPrecos() { try { return JSON.parse(localStorage.getItem(LS_PCF_PRECOS_KEY) || '{}'); } catch(e) { return {}; } }
-function savePCFPreco(tipo, folhas, valor) { const d = loadPCFPrecos(); d[tipo+'-'+folhas] = parseFloat(valor) || 0; try { localStorage.setItem(LS_PCF_PRECOS_KEY, JSON.stringify(d)); } catch(e) {} }
-function getPCFPreco(tipo, folhas) { const d = loadPCFPrecos(); return d[tipo+'-'+folhas] || 0; }
+// modalidade: 'kit' (porta completa) ou 'folha' (folha + ferragens). Fallback para chave sem modalidade (retrocompatível).
+function savePCFPreco(tipo, folhas, valor, modalidade) {
+  const d = loadPCFPrecos();
+  const key = modalidade ? tipo+'-'+folhas+'-'+modalidade : tipo+'-'+folhas;
+  d[key] = parseFloat(valor) || 0;
+  try { localStorage.setItem(LS_PCF_PRECOS_KEY, JSON.stringify(d)); } catch(e) {}
+}
+function getPCFPreco(tipo, folhas, modalidade) {
+  const d = loadPCFPrecos();
+  if (modalidade) {
+    const keyMod = tipo+'-'+folhas+'-'+modalidade;
+    if (d[keyMod] > 0) return d[keyMod];
+  }
+  // fallback para chave legada (sem modalidade)
+  return d[tipo+'-'+folhas] || 0;
+}
 
 function loadTercServ() { try { return JSON.parse(localStorage.getItem(LS_TERC_SERV_KEY) || '{}'); } catch(e) { return {}; } }
 function isTerceirizado(id) { return !!loadTercServ()[id]; }
@@ -1681,7 +1695,8 @@ function calcVarBase(parentId, v, params) {
   } else if (parentId === 'POR-CF') {
     const tipoPCF = v.tipoPCF || 'P60';
     const folhas = v.folhas || 'simples';
-    custoBase = getPCFPreco(tipoPCF, folhas) || null;
+    const mod = v.modalidade || null;
+    custoBase = getPCFPreco(tipoPCF, folhas, mod) || null;
   }
 
   if (custoBase !== null) {
@@ -1893,14 +1908,17 @@ function renderProducts(list) {
       <div class="edit-panel" id="epanel-${p.id}">
         ${showMat ? (isVar && p.id === 'POR-CF' ? `
         <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🏗️ Custo de compra por tipo de porta</div>
-        ${TIPOS_PCF.map(t => ['simples','dupla'].map(f => `
+        ${TIPOS_PCF.map(t => ['simples','dupla'].map(f => [
+          {mod:'kit',  label:'Kit completo'},
+          {mod:'folha',label:'Folha+Ferragens'}
+        ].map(({mod,label}) => `
         <div class="edit-field-row">
-          <span class="edit-field-label" style="min-width:90px">${t} ${f.charAt(0).toUpperCase()+f.slice(1)}</span>
+          <span class="edit-field-label" style="min-width:140px">${t} ${f.charAt(0).toUpperCase()+f.slice(1)} · ${label}</span>
           <div class="edit-field-wrap">
-            <input class="edit-field-input" type="number" id="pcf-${t}-${f}" value="${getPCFPreco(t,f) > 0 ? getPCFPreco(t,f).toFixed(2) : ''}" placeholder="0,00" step="0.01" min="0"
-              onblur="savePCFPreco('${t}','${f}',this.value||0);renderProducts(PRODUTOS.filter(x=>x.cat===selectedCat||selectedCat==='Todos'));renderOrcamento();">
+            <input class="edit-field-input" type="number" id="pcf-${t}-${f}-${mod}" value="${getPCFPreco(t,f,mod) > 0 ? getPCFPreco(t,f,mod).toFixed(2) : ''}" placeholder="0,00" step="0.01" min="0"
+              onblur="savePCFPreco('${t}','${f}',this.value||0,'${mod}');renderProducts(PRODUTOS.filter(x=>x.cat===selectedCat||selectedCat==='Todos'));renderOrcamento();">
           </div>
-        </div>`).join('')).join('')}
+        </div>`).join('')).join('')).join('')}
         <div class="edit-field-row">
           <span class="edit-field-label">Frete R$</span>
           <div class="edit-field-wrap">
@@ -1967,6 +1985,7 @@ function renderProducts(list) {
 let _varModalParentId = null;
 let _varModalTipoPCF = 'P60';
 let _varModalFolhas = 'simples';
+let _varModalModalidade = 'kit'; // 'kit' ou 'folha'
 let _varModalBandeira = false;
 let _varModalQty = 1;
 
@@ -1993,6 +2012,7 @@ function addVariacaoConfig(parentId) {
   _varModalParentId = parentId;
   _varModalTipoPCF = 'P60';
   _varModalFolhas = 'simples';
+  _varModalModalidade = 'kit';
   _varModalBandeira = false;
   _varModalQty = 1;
 
@@ -2006,6 +2026,7 @@ function addVariacaoConfig(parentId) {
   // Mostrar/ocultar seções específicas de POR-CF
   document.getElementById('varModalSecTipo').style.display = isPCF ? '' : 'none';
   document.getElementById('varModalSecFolhas').style.display = isPCF ? '' : 'none';
+  document.getElementById('varModalSecModalidade').style.display = isPCF ? '' : 'none';
   document.getElementById('varModalSecBandeira').style.display = isPCF ? '' : 'none';
 
   // Chips de tipo PCF
@@ -2021,8 +2042,14 @@ function addVariacaoConfig(parentId) {
 
   document.getElementById('varModalQtyVal').textContent = _varModalQty;
 
+  // Reset modalidade chips
+  if (isPCF) {
+    document.getElementById('chipModalidadeKit').classList.add('active');
+    document.getElementById('chipModalidadeFolha').classList.remove('active');
+  }
+
   // Pré-preencher custo de compra com valor configurado para o tipo atual
-  const custoInicial = isPCF ? getPCFPreco(_varModalTipoPCF, _varModalFolhas) : getCustoAtual(parentId, (prod ? prod.custo : 0));
+  const custoInicial = isPCF ? getPCFPreco(_varModalTipoPCF, _varModalFolhas, _varModalModalidade) : getCustoAtual(parentId, (prod ? prod.custo : 0));
   document.getElementById('varModalCusto').value = custoInicial > 0 ? custoInicial.toFixed(2) : '';
 
   // Pré-preencher MO com valor atual do produto
@@ -2052,7 +2079,16 @@ function setVarModalTipo(tipo) {
     b.classList.toggle('active', b.textContent === tipo);
   });
   // Atualizar custo sugerido para o novo tipo
-  const custo = getPCFPreco(tipo, _varModalFolhas);
+  const custo = getPCFPreco(tipo, _varModalFolhas, _varModalModalidade);
+  if (custo > 0) document.getElementById('varModalCusto').value = custo.toFixed(2);
+  atualizarVarModalCalc();
+}
+
+function setVarModalModalidade(mod) {
+  _varModalModalidade = mod;
+  document.getElementById('chipModalidadeKit').classList.toggle('active', mod === 'kit');
+  document.getElementById('chipModalidadeFolha').classList.toggle('active', mod === 'folha');
+  const custo = getPCFPreco(_varModalTipoPCF, _varModalFolhas, mod);
   if (custo > 0) document.getElementById('varModalCusto').value = custo.toFixed(2);
   atualizarVarModalCalc();
 }
@@ -2062,7 +2098,7 @@ function setVarModalFolhas(folhas) {
   document.getElementById('chipSimples').classList.toggle('active', folhas === 'simples');
   document.getElementById('chipDupla').classList.toggle('active', folhas === 'dupla');
   // Atualizar custo sugerido para a nova combinação
-  const custo = getPCFPreco(_varModalTipoPCF, folhas);
+  const custo = getPCFPreco(_varModalTipoPCF, folhas, _varModalModalidade);
   if (custo > 0) document.getElementById('varModalCusto').value = custo.toFixed(2);
   atualizarVarModalCalc();
 }
@@ -2143,6 +2179,7 @@ function confirmarVarModal() {
     custoCustom: custoCustom > 0 ? custoCustom : null,  // override custo de compra
     moCustom: moCustom > 0 ? moCustom : null,            // override MO
     multCustom: multCustom,                              // override fator multiplicador
+    modalidade: _varModalModalidade,                     // 'kit' ou 'folha'
   };
   varCart[_varModalParentId].push(newVar);
   document.getElementById('varModalOverlay').classList.remove('open');
@@ -2348,7 +2385,7 @@ function renderOrcamento() {
 
       // Badge da variação
       let badge = '';
-      if (isPCF) badge = v.tipoPCF + (v.folhas === 'dupla' ? ' Dupla' : ' Simples');
+      if (isPCF) badge = v.tipoPCF + (v.folhas === 'dupla' ? ' Dupla' : ' Simples') + (v.modalidade === 'folha' ? ' · Folha+Fer.' : ' · Kit');
       else if (isCTR) badge = 'CTR #' + vars.indexOf(v) + 1;
 
       // Descrição preview (placeholder)
@@ -2822,7 +2859,7 @@ function buildText(params, tot) {
       const c = calcVarBase(parentId, v, params);
       const preco = getPrecoVarEfetivo(v, c);
       const isPCF = parentId === 'POR-CF';
-      let badge = isPCF ? (v.tipoPCF + ' ' + (v.folhas === 'dupla' ? 'Dupla' : 'Simples') + (v.bandeira ? ' + Bandeira' : '')) : '';
+      let badge = isPCF ? (v.tipoPCF + ' ' + (v.folhas === 'dupla' ? 'Dupla' : 'Simples') + (v.modalidade === 'folha' ? ' · Folha+Fer.' : ' · Kit') + (v.bandeira ? ' + Bandeira' : '')) : '';
       const descLine = v.desc ? ` — ${v.desc}` : '';
       const precoUnitVar = v.qty > 1 ? preco / v.qty : preco;
       txt += `• ${prod.nome}${badge ? ' (' + badge + ')' : ''}${descLine} ${v.qty} x (unit. ${fmt(precoUnitVar)}) → ${fmt(preco)}\n`;
@@ -2967,6 +3004,15 @@ document.addEventListener('visibilitychange', () => {
       <div class="var-modal-chips">
         <button class="var-modal-chip active" id="chipSimples" onclick="setVarModalFolhas('simples')">Simples</button>
         <button class="var-modal-chip" id="chipDupla" onclick="setVarModalFolhas('dupla')">Dupla</button>
+      </div>
+    </div>
+
+    <!-- Modalidade de fornecimento (só para POR-CF) -->
+    <div class="var-modal-section" id="varModalSecModalidade">
+      <div class="var-modal-label">Fornecimento</div>
+      <div class="var-modal-chips">
+        <button class="var-modal-chip active" id="chipModalidadeKit" onclick="setVarModalModalidade('kit')">🚪 Kit completo</button>
+        <button class="var-modal-chip" id="chipModalidadeFolha" onclick="setVarModalModalidade('folha')">🔩 Folha + Ferragens</button>
       </div>
     </div>
 
