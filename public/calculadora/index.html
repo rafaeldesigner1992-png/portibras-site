@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28g -->
+<!-- v2026-11-28h -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1198,7 +1198,7 @@ function setSbStatus(ok, msg) {
 
 async function loadSupabase() {
   try {
-    const data = await sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra');
+    const data = await sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra,mo_unitario');
     sbCache = {};
     (data || []).forEach(r => { sbCache[r.codigo] = r; });
     PRODUTOS = buildProdutos();
@@ -1346,8 +1346,14 @@ function saveFrete(id, valor) { const d = loadFretes(); if (!valor) delete d[id]
 function getFreteAtual(id) { const d = loadFretes(); return d[id] !== undefined ? d[id] : 0; }
 
 function loadMOs() { try { return JSON.parse(localStorage.getItem(LS_MO_KEY) || '{}'); } catch(e) { return {}; } }
-function saveMO(id, valor) { const d = loadMOs(); if (!valor) delete d[id]; else d[id] = valor; try { localStorage.setItem(LS_MO_KEY, JSON.stringify(d)); } catch(e) {} }
-function getMOAtual(id) { const d = loadMOs(); return d[id] !== undefined ? d[id] : null; }
+function saveMO(id, valor) { const d = loadMOs(); if (valor === null || valor === undefined || valor === 0) delete d[id]; else d[id] = valor; try { localStorage.setItem(LS_MO_KEY, JSON.stringify(d)); } catch(e) {} }
+function getMOAtual(id) {
+  // Prioridade: Supabase > localStorage
+  if (sbCache[id] && sbCache[id].mo_unitario !== undefined && sbCache[id].mo_unitario !== null)
+    return Number(sbCache[id].mo_unitario);
+  const d = loadMOs();
+  return d[id] !== undefined ? d[id] : null;
+}
 
 function loadTercs() { try { return JSON.parse(localStorage.getItem(LS_TERC_KEY) || '{}'); } catch(e) { return {}; } }
 function saveTerc(key, valor) { const d = loadTercs(); d[key] = { valor: parseFloat(valor), data: new Date().toLocaleDateString('pt-BR') }; try { localStorage.setItem(LS_TERC_KEY, JSON.stringify(d)); } catch(e) {} }
@@ -1784,7 +1790,9 @@ function salvarTudo(id) {
   const moInput = document.getElementById('mo-' + id);
   if (moInput) {
     const val = moInput.value === '' ? null : parseFloat(moInput.value);
-    saveMO(id, val === null ? 0 : val);
+    const moVal = val === null ? null : (isNaN(val) ? null : val);
+    saveMO(id, moVal);
+    fields.mo_unitario = moVal;
   }
   // mult
   const multInput = document.getElementById('mult-' + id);
