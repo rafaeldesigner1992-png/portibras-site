@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28k -->
+<!-- v2026-11-28l -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1209,7 +1209,7 @@ async function loadSupabase() {
       })
       .catch(e => { console.warn('configuracoes fetch err', e); return []; });
     const [data, cfgRows] = await Promise.all([
-      sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra,mo_unitario'),
+      sbGet('logistica_suprimentos', 'codigo,nome,categoria,custo_unitario,frete,multiplicador,fabricante,link_compra,mo_unitario,tempo_instalacao_min'),
       cfgFetch
     ]);
     sbCache = {};
