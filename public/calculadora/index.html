@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28v -->
+<!-- v2026-11-28w -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -2149,12 +2149,14 @@ function atualizarVarModalCalc() {
 
   const precoCalc = selectedPriceMode === 'minimo' ? precoMin : selectedPriceMode === 'premium' ? precoPremium : precoIdeal;
   const imposto = precoCalc - precoCalc / (1 + params.aliq / 100);
-  const lucro = precoCalc / (1 + params.aliq / 100) - custoTotal - moPropriaTotal;
+  // Margem de contribuição: PV − (custo material + frete + imposto) — MO própria não entra
+  const lucro = precoCalc - custoMat - frete - imposto;
+  const lucroPerc = precoCalc > 0 ? (lucro / precoCalc * 100) : 0;
 
   document.getElementById('vmCalcCusto').textContent = (custoTotal + moPropriaTotal) > 0 ? fmt(custoTotal + moPropriaTotal) : '—';
   document.getElementById('vmCalcVenda').textContent = precoCalc > 0 ? fmt(precoCalc) : '—';
   document.getElementById('vmCalcImposto').textContent = imposto > 0 ? fmt(imposto) : '—';
-  document.getElementById('vmCalcLucro').textContent = lucro > 0 ? fmt(lucro) : '—';
+  document.getElementById('vmCalcLucro').textContent = precoCalc > 0 ? fmt(lucro) + ' (' + lucroPerc.toFixed(1) + '%)' : '—';
 }
 
 function confirmarVarModal() {
