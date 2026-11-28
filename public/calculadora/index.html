@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28r -->
+<!-- v2026-11-28s -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PORTIBRAS">
@@ -857,6 +857,133 @@
     white-space: nowrap;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Modal de configuração de variação */
+  .var-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .var-modal-overlay.open { display: flex; }
+  .var-modal-box {
+    background: white;
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 480px;
+    padding: 20px 20px 32px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .var-modal-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .var-modal-close {
+    background: var(--cinza);
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .var-modal-section { margin-bottom: 14px; }
+  .var-modal-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 6px;
+  }
+  .var-modal-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .var-modal-chip {
+    padding: 7px 14px;
+    border-radius: 20px;
+    border: 2px solid var(--cinza2);
+    background: white;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--text2);
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .var-modal-chip.active { border-color: var(--verde); background: var(--verde); color: white; }
+  .var-modal-desc {
+    width: 100%;
+    border: 2px solid var(--cinza2);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    outline: none;
+    box-sizing: border-box;
+  }
+  .var-modal-desc:focus { border-color: var(--verde); }
+  .var-modal-qty {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .var-modal-qty-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 2px solid var(--cinza2);
+    background: white;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text);
+  }
+  .var-modal-qty-val {
+    font-size: 18px;
+    font-weight: 800;
+    min-width: 32px;
+    text-align: center;
+  }
+  .var-modal-calc-chips {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    padding: 10px;
+    background: var(--cinza);
+    border-radius: 10px;
+  }
+  .var-modal-calc-chip {
+    display: flex; flex-direction: column;
+    font-size: 11px; color: var(--text2);
+    gap: 2px;
+  }
+  .var-modal-calc-chip b { font-size: 13px; color: var(--text); font-weight: 800; }
+  .var-modal-calc-chip.venda b { color: var(--verde); }
+  .var-modal-confirmar {
+    width: 100%;
+    padding: 14px;
+    background: var(--verde);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 16px;
+  }
   .client-input {
     width: 100%;
     border: 2px solid var(--cinza2);
@@ -1834,7 +1961,14 @@ function renderProducts(list) {
 // =====================
 // VARIAÇÕES — adicionar / remover / atualizar
 // =====================
-// Inclui variação direto com defaults (P60 Simples, qty=1) e vai para o orçamento
+// Estado temporário do modal de variação
+let _varModalParentId = null;
+let _varModalTipoPCF = 'P60';
+let _varModalFolhas = 'simples';
+let _varModalBandeira = false;
+let _varModalQty = 1;
+
+// Inclui variação direto com defaults (P60 Simples, qty=1) — botão "✓ Incluir"
 function incluirVariacaoDefault(parentId) {
   if (!varCart[parentId]) varCart[parentId] = [];
   const newVar = {
@@ -1848,27 +1982,117 @@ function incluirVariacaoDefault(parentId) {
   };
   varCart[parentId].push(newVar);
   updateAll();
-  showToast('✓ Variação adicionada ao orçamento');
-  // Muda para aba Orçamento para o usuário ver e ajustar se quiser
+  showToast('✓ Adicionado ao orçamento');
   setTimeout(() => switchView('orcamento'), 300);
 }
 
-// Adiciona variação e vai para o orçamento para configurar (tipo, folhas, etc.)
+// Abre modal de configuração — botão "+ Variação"
 function addVariacaoConfig(parentId) {
-  if (!varCart[parentId]) varCart[parentId] = [];
-  const newVar = {
-    vid: newVarId(),
+  _varModalParentId = parentId;
+  _varModalTipoPCF = 'P60';
+  _varModalFolhas = 'simples';
+  _varModalBandeira = false;
+  _varModalQty = 1;
+
+  const prod = PRODUTOS.find(p => p.id === parentId);
+  const isPCF = parentId === 'POR-CF';
+  const isCTR = parentId === 'CTR-MAR';
+
+  document.getElementById('varModalTitulo').textContent = '+ Variação — ' + (prod ? prod.nome : parentId);
+  document.getElementById('varModalDesc').value = '';
+
+  // Mostrar/ocultar seções específicas de POR-CF
+  document.getElementById('varModalSecTipo').style.display = isPCF ? '' : 'none';
+  document.getElementById('varModalSecFolhas').style.display = isPCF ? '' : 'none';
+  document.getElementById('varModalSecBandeira').style.display = isPCF ? '' : 'none';
+
+  // Chips de tipo PCF
+  if (isPCF) {
+    document.getElementById('varModalChipsTipo').innerHTML = TIPOS_PCF.map(t =>
+      `<button class="var-modal-chip ${t === _varModalTipoPCF ? 'active' : ''}" onclick="setVarModalTipo('${t}')">${t}</button>`
+    ).join('');
+    // Reset folhas
+    document.getElementById('chipSimples').classList.add('active');
+    document.getElementById('chipDupla').classList.remove('active');
+    document.getElementById('chipBandeira').classList.remove('active');
+  }
+
+  document.getElementById('varModalQtyVal').textContent = _varModalQty;
+
+  atualizarVarModalCalc();
+  document.getElementById('varModalOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('varModalDesc').focus(), 200);
+}
+
+function fecharVarModal(e) {
+  if (e && e.target !== document.getElementById('varModalOverlay')) return;
+  document.getElementById('varModalOverlay').classList.remove('open');
+}
+
+function setVarModalTipo(tipo) {
+  _varModalTipoPCF = tipo;
+  document.querySelectorAll('#varModalChipsTipo .var-modal-chip').forEach(b => {
+    b.classList.toggle('active', b.textContent === tipo);
+  });
+  atualizarVarModalCalc();
+}
+
+function setVarModalFolhas(folhas) {
+  _varModalFolhas = folhas;
+  document.getElementById('chipSimples').classList.toggle('active', folhas === 'simples');
+  document.getElementById('chipDupla').classList.toggle('active', folhas === 'dupla');
+  atualizarVarModalCalc();
+}
+
+function toggleVarModalBandeira() {
+  _varModalBandeira = !_varModalBandeira;
+  document.getElementById('chipBandeira').classList.toggle('active', _varModalBandeira);
+}
+
+function mudarVarModalQty(delta) {
+  _varModalQty = Math.max(1, _varModalQty + delta);
+  document.getElementById('varModalQtyVal').textContent = _varModalQty;
+  atualizarVarModalCalc();
+}
+
+function atualizarVarModalCalc() {
+  if (!_varModalParentId) return;
+  const params = getParams();
+  const tempVar = {
+    vid: 'temp',
     desc: '',
-    qty: 1,
-    tipoPCF: 'P60',
-    folhas: 'simples',
-    bandeira: false,
+    qty: _varModalQty,
+    tipoPCF: _varModalTipoPCF,
+    folhas: _varModalFolhas,
+    bandeira: _varModalBandeira,
     precoLivre: 0,
   };
-  varCart[parentId].push(newVar);
+  const c = calcVarBase(_varModalParentId, tempVar, params);
+  const precoCalc = selectedPriceMode === 'minimo' ? c.precoMin : selectedPriceMode === 'premium' ? c.precoPremium : c.precoIdeal;
+  const imposto = precoCalc - precoCalc / (1 + params.aliq / 100);
+  document.getElementById('vmCalcCusto').textContent = c.custoTotal > 0 ? fmt(c.custoTotal) : '—';
+  document.getElementById('vmCalcVenda').textContent = precoCalc > 0 ? fmt(precoCalc) : '—';
+  document.getElementById('vmCalcImposto').textContent = imposto > 0 ? fmt(imposto) : '—';
+}
+
+function confirmarVarModal() {
+  if (!_varModalParentId) return;
+  if (!varCart[_varModalParentId]) varCart[_varModalParentId] = [];
+  const desc = document.getElementById('varModalDesc').value.trim();
+  const newVar = {
+    vid: newVarId(),
+    desc: desc,
+    qty: _varModalQty,
+    tipoPCF: _varModalTipoPCF,
+    folhas: _varModalFolhas,
+    bandeira: _varModalBandeira,
+    precoLivre: 0,
+  };
+  varCart[_varModalParentId].push(newVar);
+  document.getElementById('varModalOverlay').classList.remove('open');
   updateAll();
-  showToast('✓ Variação adicionada — configure na aba Orçamento');
-  setTimeout(() => switchView('orcamento'), 300);
+  showToast('✓ Variação incluída no orçamento');
+  setTimeout(() => switchView('orcamento'), 350);
 }
 
 // Mantém compatibilidade com chamadas antigas
@@ -2666,5 +2890,68 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 </script>
+
+<!-- Modal de configuração de variação (abre na aba Produtos) -->
+<div class="var-modal-overlay" id="varModalOverlay" onclick="fecharVarModal(event)">
+  <div class="var-modal-box" onclick="event.stopPropagation()">
+    <div class="var-modal-title">
+      <span id="varModalTitulo">Nova Variação</span>
+      <button class="var-modal-close" onclick="fecharVarModal()">✕</button>
+    </div>
+
+    <!-- Tipo PCF (só para POR-CF) -->
+    <div class="var-modal-section" id="varModalSecTipo">
+      <div class="var-modal-label">Tipo</div>
+      <div class="var-modal-chips" id="varModalChipsTipo"></div>
+    </div>
+
+    <!-- Folhas PCF (só para POR-CF) -->
+    <div class="var-modal-section" id="varModalSecFolhas">
+      <div class="var-modal-label">Folhas</div>
+      <div class="var-modal-chips">
+        <button class="var-modal-chip active" id="chipSimples" onclick="setVarModalFolhas('simples')">Simples</button>
+        <button class="var-modal-chip" id="chipDupla" onclick="setVarModalFolhas('dupla')">Dupla</button>
+      </div>
+    </div>
+
+    <!-- Bandeira PCF (só para POR-CF) -->
+    <div class="var-modal-section" id="varModalSecBandeira">
+      <div class="var-modal-label">Extras</div>
+      <div class="var-modal-chips">
+        <button class="var-modal-chip" id="chipBandeira" onclick="toggleVarModalBandeira()">🏳️ Bandeira</button>
+      </div>
+    </div>
+
+    <!-- Descrição -->
+    <div class="var-modal-section">
+      <div class="var-modal-label">Descrição / Localização</div>
+      <input class="var-modal-desc" id="varModalDesc" type="text"
+        placeholder="Ex: 0,90×2,10m — Pavimento 3"
+        oninput="atualizarVarModalCalc()">
+    </div>
+
+    <!-- Quantidade -->
+    <div class="var-modal-section">
+      <div class="var-modal-label">Quantidade</div>
+      <div class="var-modal-qty">
+        <button class="var-modal-qty-btn" onclick="mudarVarModalQty(-1)">−</button>
+        <span class="var-modal-qty-val" id="varModalQtyVal">1</span>
+        <button class="var-modal-qty-btn" onclick="mudarVarModalQty(1)">+</button>
+      </div>
+    </div>
+
+    <!-- Chips calculados -->
+    <div class="var-modal-section">
+      <div class="var-modal-label">Valores calculados</div>
+      <div class="var-modal-calc-chips" id="varModalCalcChips">
+        <div class="var-modal-calc-chip"><span>Custo</span><b id="vmCalcCusto">—</b></div>
+        <div class="var-modal-calc-chip venda"><span>Venda ref.</span><b id="vmCalcVenda">—</b></div>
+        <div class="var-modal-calc-chip"><span>Imposto</span><b id="vmCalcImposto">—</b></div>
+      </div>
+    </div>
+
+    <button class="var-modal-confirmar" onclick="confirmarVarModal()">✓ Incluir no Orçamento</button>
+  </div>
+</div>
 </body>
 </html>
