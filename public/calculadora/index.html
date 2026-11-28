@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28e -->
+<!-- v2026-11-28f -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1146,7 +1146,7 @@ async function upsertSupabase(codigo, fields) {
     const nome = prod ? prod.nome : codigo;
     // Upsert nativo do PostgREST: POST com Prefer: resolution=merge-duplicates
     // Funciona como INSERT ... ON CONFLICT (codigo) DO UPDATE
-    const r = await fetch(sbUrl('logistica_suprimentos', ''), {
+    const r = await fetch(sbUrl('logistica_suprimentos', 'on_conflict=codigo'), {
       method: 'POST',
       headers: {
         ...SB_HEADERS,
