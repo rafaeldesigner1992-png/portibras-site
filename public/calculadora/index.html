@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28h -->
+<!-- v2026-11-28i -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1186,6 +1186,7 @@ async function sbInsert(table, row) {
   return r.json();
 }
 let sbCache = {};
+let fornecedoresLista = []; // lista carregada do Supabase (configuracoes)
 
 function setSbStatus(ok, msg) {
   const el = document.getElementById('sb-status');
@@ -1198,9 +1199,18 @@ function setSbStatus(ok, msg) {
 
 async function loadSupabase() {
   try {
-    const data = await sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra,mo_unitario');
+    // Carrega suprimentos e fornecedores em paralelo
+    const cfgFetch = fetch(sbUrl('configuracoes', 'select=chave,valor&chave=eq.logistica_fornecedores'), { headers: SB_HEADERS }).then(r => r.json()).catch(() => []);
+    const [data, cfgData] = await Promise.all([
+      sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra,mo_unitario'),
+      cfgFetch
+    ]);
     sbCache = {};
     (data || []).forEach(r => { sbCache[r.codigo] = r; });
+    // Extrai lista de fornecedores
+    if (cfgData && cfgData.length > 0) {
+      try { fornecedoresLista = JSON.parse(cfgData[0].valor) || []; } catch(e) { fornecedoresLista = []; }
+    }
     PRODUTOS = buildProdutos();
     renderCats();
     filterProducts();
@@ -1646,6 +1656,7 @@ function renderProducts(list) {
         <div class="prod-chip venda"><span class="prod-chip-label">Venda unit.</span><span class="prod-chip-val">${fmt(precoUnitIdeal)}</span></div>
         <div class="prod-chip"><span class="prod-chip-label">Imposto unit.</span><span class="prod-chip-val">${fmt(impostosUnit)}</span></div>
         <div class="prod-chip lucro"><span class="prod-chip-label">Lucro +${margemPct}%</span><span class="prod-chip-val">${fmt(lucroUnit)}</span></div>
+        ${getFabricanteAtual(p.id) ? `<div class="prod-chip" style="background:#eaf4ff"><span class="prod-chip-label">Fornecedor</span><span class="prod-chip-val" style="color:#1a5fa6">${getFabricanteAtual(p.id)}</span></div>` : ''}
       </div>
 
       <button class="edit-toggle-btn" id="etbtn-${p.id}" onclick="toggleEditPanel('${p.id}')">
@@ -1684,9 +1695,12 @@ function renderProducts(list) {
           </div>
         </div>
         <div class="edit-field-row">
-          <span class="edit-field-label">Fabricante</span>
+          <span class="edit-field-label">Fornecedor</span>
           <div class="edit-field-wrap">
-            <input class="edit-field-input" type="text" id="fab-${p.id}" value="${getFabricanteAtual(p.id)}" placeholder="Nome do fabricante">
+            <select class="edit-field-input" id="fab-${p.id}" style="background:#fff">
+              <option value="">— nenhum —</option>
+              ${fornecedoresLista.map(f => `<option value="${f}"${getFabricanteAtual(p.id) === f ? ' selected' : ''}>${f}</option>`).join('')}
+            </select>
           </div>
         </div>
         <div class="edit-field-row">
@@ -2381,7 +2395,8 @@ function buildText(params, tot) {
       const isPCF = parentId === 'POR-CF';
       let badge = isPCF ? (v.tipoPCF + ' ' + (v.folhas === 'dupla' ? 'Dupla' : 'Simples') + (v.bandeira ? ' + Bandeira' : '')) : '';
       const descLine = v.desc ? ` — ${v.desc}` : '';
-      txt += `• ${prod.nome}${badge ? ' (' + badge + ')' : ''}${descLine} × ${v.qty} → ${fmt(preco)}\n`;
+      const precoUnitVar = v.qty > 1 ? preco / v.qty : preco;
+      txt += `• ${prod.nome}${badge ? ' (' + badge + ')' : ''}${descLine} ${v.qty} x (unit. ${fmt(precoUnitVar)}) → ${fmt(preco)}\n`;
     }
   }
 
@@ -2393,7 +2408,8 @@ function buildText(params, tot) {
     const c = calcItem(prod, qty, params);
     const preco = selectedPriceMode === 'minimo' ? c.precoMin : selectedPriceMode === 'premium' ? c.precoPremium : c.precoIdeal;
     const diariaInfo = PROD_DIARIA.includes(id) ? ` (${getDiarias(id)} diária${getDiarias(id)!==1?'s':''})` : '';
-    txt += `• ${prod.nome} × ${qty}${diariaInfo} → ${fmt(preco)}\n`;
+    const precoUnitNorm = qty > 1 ? preco / qty : preco;
+    txt += `• ${prod.nome} ${qty} x (unit. ${fmt(precoUnitNorm)})${diariaInfo} → ${fmt(preco)}\n`;
   }
 
   txt += `\n*Valor total: ${fmt(precoFinal)}*\n`;
