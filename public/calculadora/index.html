@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28i -->
+<!-- v2026-11-28j -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1200,17 +1200,32 @@ function setSbStatus(ok, msg) {
 async function loadSupabase() {
   try {
     // Carrega suprimentos e fornecedores em paralelo
-    const cfgFetch = fetch(sbUrl('configuracoes', 'select=chave,valor&chave=eq.logistica_fornecedores'), { headers: SB_HEADERS }).then(r => r.json()).catch(() => []);
-    const [data, cfgData] = await Promise.all([
+    const cfgFetch = fetch(sbUrl('configuracoes', 'select=chave,valor'), { headers: SB_HEADERS })
+      .then(async r => {
+        if (!r.ok) { console.warn('configuracoes HTTP', r.status); return []; }
+        const rows = await r.json();
+        console.log('[cfg] rows:', rows);
+        return rows;
+      })
+      .catch(e => { console.warn('configuracoes fetch err', e); return []; });
+    const [data, cfgRows] = await Promise.all([
       sbGet('logistica_suprimentos', 'codigo,custo_unitario,frete,multiplicador,fabricante,link_compra,mo_unitario'),
       cfgFetch
     ]);
     sbCache = {};
     (data || []).forEach(r => { sbCache[r.codigo] = r; });
-    // Extrai lista de fornecedores
-    if (cfgData && cfgData.length > 0) {
-      try { fornecedoresLista = JSON.parse(cfgData[0].valor) || []; } catch(e) { fornecedoresLista = []; }
+    // Extrai lista de fornecedores da tabela configuracoes
+    const cfgForn = (cfgRows || []).find(r => r.chave === 'logistica_fornecedores');
+    console.log('[cfg] logistica_fornecedores row:', cfgForn);
+    if (cfgForn?.valor) {
+      try { fornecedoresLista = JSON.parse(cfgForn.valor) || []; } catch(e) { fornecedoresLista = []; }
     }
+    // Fallback: se não carregou da configuracoes, usa fabricantes já gravados nos suprimentos
+    if (!fornecedoresLista.length) {
+      const unicos = [...new Set((data || []).map(r => r.fabricante).filter(Boolean))].sort();
+      if (unicos.length) fornecedoresLista = unicos;
+    }
+    console.log('[cfg] fornecedoresLista:', fornecedoresLista);
     PRODUTOS = buildProdutos();
     renderCats();
     filterProducts();
