@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28d -->
+<!-- v2026-11-28e -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1141,6 +1141,9 @@ function initRealtime() {
 async function upsertSupabase(codigo, fields) {
   try {
     const ts = new Date().toISOString();
+    // Inclui nome do produto (NOT NULL na tabela) para o caso de INSERT novo
+    const prod = PRODUTOS_BASE.find(p => p.id === codigo);
+    const nome = prod ? prod.nome : codigo;
     // Upsert nativo do PostgREST: POST com Prefer: resolution=merge-duplicates
     // Funciona como INSERT ... ON CONFLICT (codigo) DO UPDATE
     const r = await fetch(sbUrl('logistica_suprimentos', ''), {
@@ -1149,7 +1152,7 @@ async function upsertSupabase(codigo, fields) {
         ...SB_HEADERS,
         'Prefer': 'resolution=merge-duplicates,return=representation'
       },
-      body: JSON.stringify({ codigo, ...fields, atualizado_em: ts })
+      body: JSON.stringify({ codigo, nome, ...fields, atualizado_em: ts })
     });
     if (!r.ok) { const t = await r.text(); throw new Error('UPSERT ' + r.status + ': ' + t); }
     if (!sbCache[codigo]) sbCache[codigo] = {};
