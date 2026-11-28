@@ -33,6 +33,7 @@ type Suprimento = {
   categoria: string | null;
   unidade: string;
   custo_unitario: number;
+  mo_unitario: number | null;
   tempo_instalacao_min: number;
   profissionais_ids: string[] | null;
   link_compra: string | null;
@@ -47,7 +48,7 @@ function diasDesdeAtualizacaoSup(iso: string) {
 
 const EMPTY_SUP: Partial<Suprimento> = {
   nome: "", codigo: "", categoria: "", unidade: "un",
-  custo_unitario: 0, tempo_instalacao_min: 0,
+  custo_unitario: 0, mo_unitario: null, tempo_instalacao_min: 0,
   profissionais_ids: [], link_compra: "",
 };
 
@@ -265,6 +266,9 @@ function SecaoSuprimentos() {
       categoria: form.categoria || null,
       unidade: form.unidade || "un",
       custo_unitario: Number(form.custo_unitario ?? 0),
+      mo_unitario: form.mo_unitario !== undefined && form.mo_unitario !== null && form.mo_unitario !== ("" as unknown as number)
+        ? Number(form.mo_unitario)
+        : null,
       tempo_instalacao_min: Number(form.tempo_instalacao_min ?? 0),
       profissionais_ids: form.profissionais_ids ?? [],
       link_compra: form.link_compra || null,
@@ -345,6 +349,7 @@ function SecaoSuprimentos() {
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Produto / Serviço</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Categoria</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Custo Unit.</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">M.O. Unit.</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden md:table-cell">Tempo Inst.</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden sm:table-cell">Atualização</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hidden lg:table-cell">Link</th>
@@ -367,6 +372,13 @@ function SecaoSuprimentos() {
                         {s.custo_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                       </span>
                       <span className="ml-1 text-xs text-gray-400">/{s.unidade}</span>
+                    </td>
+                    <td className="px-5 py-4 hidden md:table-cell">
+                      {s.mo_unitario !== null && s.mo_unitario !== undefined ? (
+                        <span className="text-sm font-semibold text-gray-800">
+                          {Number(s.mo_unitario).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                      ) : <span className="text-xs text-gray-300">—</span>}
                     </td>
                     <td className="px-5 py-4 hidden md:table-cell">
                       {s.tempo_instalacao_min > 0 ? (
@@ -475,15 +487,23 @@ function SecaoSuprimentos() {
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Unidade</label>
-                  <select value={form.unidade || "un"}
-                    onChange={e => setForm(f => ({ ...f, unidade: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
-                    {["un", "cx", "pc", "m", "kg", "l", "rolo", "par", "jg"].map(u => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">M.O. unitária (R$)</label>
+                  <input type="number" min={0} step={0.01}
+                    value={form.mo_unitario !== null && form.mo_unitario !== undefined ? form.mo_unitario : ""}
+                    onChange={e => setForm(f => ({ ...f, mo_unitario: e.target.value === "" ? null : Number(e.target.value) }))}
+                    placeholder="0,00"
+                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]" />
                 </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Unidade</label>
+                <select value={form.unidade || "un"}
+                  onChange={e => setForm(f => ({ ...f, unidade: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-[#1a6b2f]">
+                  {["un", "cx", "pc", "m", "kg", "l", "rolo", "par", "jg"].map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
