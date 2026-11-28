@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- v2026-11-28b -->
+<!-- v2026-11-28c -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PORTIBRAS — Calculadora de Orçamentos</title>
@@ -1140,13 +1140,16 @@ function initRealtime() {
 
 async function upsertSupabase(codigo, fields) {
   try {
+    const ts = new Date().toISOString();
     const data = await sbUpdate('logistica_suprimentos',
       'codigo', codigo,
-      { ...fields, atualizado_em: new Date().toISOString() }
+      { ...fields, atualizado_em: ts }
     );
     if (!data || data.length === 0) {
-      showToast('⚠️ Código não encontrado: ' + codigo);
-      return;
+      // Produto não existe no banco ainda — cria com INSERT
+      await sbInsert('logistica_suprimentos',
+        { codigo, ...fields, atualizado_em: ts }
+      );
     }
     if (!sbCache[codigo]) sbCache[codigo] = {};
     Object.assign(sbCache[codigo], fields);
