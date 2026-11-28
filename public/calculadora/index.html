@@ -1069,20 +1069,34 @@ function setSbStatus(ok, msg) {
 
 async function loadSupabase() {
   try {
-    const { data, error } = await sb.from('logistica_suprimentos')
-      .select('codigo,custo_unitario,frete,multiplicador,fabricante,link_compra');
-    if (error) throw error;
+    // Força bypass de qualquer cache HTTP para o PWA
+    const ts = Date.now();
+    const url = `${SB_URL}/rest/v1/logistica_suprimentos?select=codigo,custo_unitario,frete,multiplicador,fabricante,link_compra&_=${ts}`;
+    const resp = await fetch(url, {
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY,
+        'Cache-Control': 'no-cache, no-store',
+        'Pragma': 'no-cache'
+      },
+      cache: 'no-store'
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
     sbCache = {};
     (data || []).forEach(r => { sbCache[r.codigo] = r; });
     PRODUTOS = buildProdutos();
     renderCats();
     filterProducts();
     renderOrcamento();
+    renderTerceirizados();
+    renderConfigServicos();
     setSbStatus(true);
-    showToast('✓ Dados sincronizados');
+    showToast('✓ Dados sincronizados (' + (data||[]).length + ' itens)');
   } catch(e) {
     console.warn('Supabase offline, usando cache local', e);
     setSbStatus(false, e.message || String(e));
+    showToast('⚠️ Sem conexão: ' + (e.message || 'erro desconhecido'));
   }
 }
 
